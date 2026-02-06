@@ -1,0 +1,1274 @@
+[
+    {
+        "timestamp": "2026-02-01 13:03:31",
+        "endpoint": "/clear_logs",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:03:31",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:03:31",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:09:27",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:09:27",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:09:40",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:09:40",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:09:41",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:09:42",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:09:43",
+        "endpoint": "/life",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:09:43",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:09:44",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:09:45",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:15:47",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:15:47",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:22:21",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:22:21",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:22:46",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:22:46",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:22:47",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:22:47",
+        "endpoint": "/favicon.ico",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 500,
+        "error": "werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    },
+    {
+        "timestamp": "2026-02-01 13:33:28",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:10",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:22",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:23",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:26",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:28",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:28",
+        "endpoint": "/sync_data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:29",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:30",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:32",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:43",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:44",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:50",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:51",
+        "endpoint": "/life",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:35:52",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:41:46",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:42:11",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:42:12",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:42:15",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:42:16",
+        "endpoint": "/sync_data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:42:18",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:42:56",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:15",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:38",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:39",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:47",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:48",
+        "endpoint": "/sync_data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:49",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:43:59",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:44:26",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:44:28",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:44:29",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:44:48",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:44:55",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:44:58",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:45:20",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:45:37",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:45:48",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:45:55",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 13:50:03",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:43:52",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:54:54",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:54:59",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:55:04",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:55:09",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:55:10",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 14:55:12",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:01:24",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:01:29",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:01:38",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:01:39",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:10:33",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:10:35",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:14:09",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:17:59",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:21:12",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:21:14",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:21:15",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:21:15",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:23:34",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:26:29",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:29:55",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:41:26",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:41:30",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:42:35",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:44:06",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:46:22",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:48:26",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:49:56",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:50:00",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:50:00",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:50:01",
+        "endpoint": "/sync_data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:50:02",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:50:03",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:50:16",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:51:48",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:53:52",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 15:57:47",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:14:36",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:14:37",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:14:49",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:17",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:17",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:22",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:23",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:30",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:30",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:46",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:46",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:49",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 16:15:49",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:09:39",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:09:44",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:10:46",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:11:18",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:11:19",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:13:12",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:13:17",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:13:20",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:14:32",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:14:39",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:14:40",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:15:45",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:15:45",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:15:48",
+        "endpoint": "/health",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 302,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:15:48",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 17:18:39",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:42:30",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:42:35",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:10",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:12",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:15",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:21",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:27",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:29",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:36",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:39",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:54",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:44:56",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:45:56",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:46:04",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 18:46:10",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 19:55:16",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:01",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:12",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:21",
+        "endpoint": "/admin",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:21",
+        "endpoint": "/sync_data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:26",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:27",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:28",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:03:56",
+        "endpoint": "/data",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:04:18",
+        "endpoint": "/data",
+        "method": "POST",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:05:00",
+        "endpoint": "/compliance",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:05:37",
+        "endpoint": "/health",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-01 20:05:38",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-07 00:16:03",
+        "endpoint": "/analytics",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-07 00:16:10",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    },
+    {
+        "timestamp": "2026-02-07 00:17:31",
+        "endpoint": "/",
+        "method": "GET",
+        "ip": "127.0.0.1",
+        "status": 200,
+        "error": null
+    }
+]

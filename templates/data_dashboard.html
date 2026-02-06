@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>IRIS - Data Explorer</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .logo-text { margin-top: 8px; font-family: 'Montserrat', sans-serif; font-size: 30px; font-weight: 700; background: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; letter-spacing: 1.5px; line-height: 1; text-transform: uppercase; padding-left: 1.5px; }
+        
+        .filter-search-box { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; font-size: 13px; box-sizing: border-box; }
+        .quick-filter-chips { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .chip-btn { background: #eef2f6; border: 1px solid #dce1e6; padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; color: #1a237e; transition: 0.2s; }
+        .chip-btn:hover { background: #e3f2fd; border-color: #2196f3; }
+
+        /* FIXED MODAL SCROLLING */
+        .modal-body { display: flex; height: 400px; overflow: hidden; border-top: 1px solid #eee; border-bottom: 1px solid #eee; }
+        .modal-sidebar { width: 140px; background: #f9f9f9; border-right: 1px solid #eee; overflow-y: auto; flex-shrink: 0; }
+        .modal-content { flex-grow: 1; padding: 15px; overflow-y: auto; }
+
+        /* SCROLL CONTAINER FIX */
+        .chat-window { 
+            flex: 1; 
+            overflow-y: auto; 
+            padding: 20px 40px; 
+            display: flex; 
+            flex-direction: column; 
+            min-width: 0; /* Important for flex child */
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #resultsArea { 
+            width: 100%; 
+            max-width: 100%; /* Force containment */
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo">
+        <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
+        <div class="logo-text">IRIS</div>
+    </div>
+    <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
+    <div class="menu-label">Knowledge Base</div>
+    <a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
+    <a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
+    <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
+    <div class="menu-label">Data Intelligence</div>
+    <a href="/data" class="nav-item active"><i class="fas fa-chart-line"></i> Data Explorer</a>
+    <a href="/compliance" class="nav-item"><i class="fas fa-gavel"></i> Compliance Cockpit</a>
+    <div class="menu-label">System</div>
+    <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+    <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
+</div>
+
+<div class="main-content">
+    <div class="header-area">
+        <div class="full-form-text">IRDAI's Regulatory Intelligence System</div>
+        <div class="header-title-row">
+            <i class="fas fa-chart-line module-icon"></i>
+            <h2>Data Explorer</h2>
+        </div>
+        <p class="scope-indicator"><span class="scope-dot"></span> Scope: Financials & Market Data</p>
+    </div>
+
+    <div class="chat-window">
+        <div class="filter-actions-bar">
+            <button class="filter-btn-main" onclick="openFilterModal()">
+                <i class="fas fa-sliders-h"></i> Filters
+                <span class="filter-badge" id="filterCount" style="display:none;">0</span>
+            </button>
+            <span class="active-filters-text" id="activeFiltersText">No filters applied</span>
+            <button class="reset-link" onclick="window.location.reload()">Clear All</button>
+        </div>
+        <div id="resultsArea">
+            <div class="empty-state"><i class="fas fa-chart-bar"></i><p>Click <strong>Filters</strong> to generate a report.</p></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="filterModal">
+    <div class="modal-container">
+        <div class="modal-header"><h3>Filters</h3><span class="close-modal" onclick="closeFilterModal()">&times;</span></div>
+        <form id="filterForm" onsubmit="applyFilters(event)">
+            <div class="modal-body">
+                <div class="modal-sidebar">
+                    <div class="category-item active" onclick="showCategory('insurers', this)">Insurers</div>
+                    <div class="category-item" onclick="showCategory('metrics', this)">Metrics</div>
+                    <div class="category-item" onclick="showCategory('classes', this)">Class of Business</div>
+                    <div class="category-item" onclick="showCategory('years', this)">Financial Year</div>
+                    <div class="category-item" onclick="showCategory('quarters', this)">Quarter</div>
+                    <div class="category-item" onclick="showCategory('lobs', this)">Line of Business</div>
+                </div>
+
+                <div class="modal-content">
+                    <input type="text" id="filterSearch" class="filter-search-box" placeholder="Search options..." onkeyup="filterCheckboxes()">
+
+                    <div id="cat-insurers" class="filter-options active">
+                        <div class="quick-filter-chips">
+                            <span class="chip-btn" onclick="selectGroup('SAHI')">All SAHIs</span>
+                            <span class="chip-btn" onclick="selectGroup('General')">All General</span>
+                            <span class="chip-btn" onclick="selectGroup('Life')">All Life</span>
+                            <span class="chip-btn" onclick="deselectAll('insurers')">None</span>
+                        </div>
+                        <hr style="margin: 5px 0 10px 0; border:0; border-top:1px solid #eee;">
+                        {% if options.insurers %}
+                            {% for i in options.insurers %}
+                            <label class="checkbox-item"><input type="checkbox" name="insurers" value="{{i}}"><span>{{i}}</span></label>
+                            {% endfor %}
+                        {% else %}
+                            <div class="no-data-msg">No Insurers found.</div>
+                        {% endif %}
+                    </div>
+
+                    <div id="cat-metrics" class="filter-options">
+                        {% if options.metrics %}
+                            {% for m in options.metrics %}
+                            <label class="checkbox-item"><input type="checkbox" name="metrics" value="{{m}}"><span>{{m}}</span></label>
+                            {% endfor %}
+                        {% else %} <div class="no-data-msg">No Metrics found.</div> {% endif %}
+                    </div>
+
+                    <div id="cat-classes" class="filter-options">
+                        {% if options.classes %}
+                            {% for c in options.classes %}
+                            <label class="checkbox-item"><input type="checkbox" name="classes" value="{{c}}"><span>{{c}}</span></label>
+                            {% endfor %}
+                        {% else %} <div class="no-data-msg">No Classes found.</div> {% endif %}
+                    </div>
+
+                    <div id="cat-years" class="filter-options">
+                        {% if options.years %}
+                            {% for y in options.years %}
+                            <label class="checkbox-item"><input type="checkbox" name="years" value="{{y}}"><span>{{y}}</span></label>
+                            {% endfor %}
+                        {% else %} <div class="no-data-msg">No Data.</div> {% endif %}
+                    </div>
+
+                    <div id="cat-quarters" class="filter-options">
+                        {% if options.quarters %}
+                            {% for q in options.quarters %}
+                            <label class="checkbox-item"><input type="checkbox" name="quarters" value="{{q}}"><span>{{q}}</span></label>
+                            {% endfor %}
+                        {% else %} <div class="no-data-msg">No Data.</div> {% endif %}
+                    </div>
+
+                    <div id="cat-lobs" class="filter-options">
+                        {% if options.lobs %}
+                            {% for l in options.lobs %}
+                            <label class="checkbox-item"><input type="checkbox" name="lobs" value="{{l}}"><span>{{l}}</span></label>
+                            {% endfor %}
+                        {% else %} <div class="no-data-msg">No Data.</div> {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-text" onclick="clearModalInputs()">Clear All</button>
+                <button type="submit" class="btn-primary">Apply Filters</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const GROUPS = {
+        'SAHI': ["Star", "Care", "Aditya Birla", "Niva Bupa", "Manipal", "Cigna", "Galaxy", "Narayana"],
+        'General': ["ICICI Lombard", "Bajaj Allianz", "HDFC Ergo", "Go Digit", "Acko", "New India", "United India", "Oriental", "National", "Zurich", "Kotak", "SBI General"],
+        'Life': ["LIC", "HDFC Life", "SBI Life", "ICICI Prudential", "Max Life", "Tata AIA", "Bajaj Allianz Life"]
+    };
+
+    function openFilterModal() { document.getElementById('filterModal').classList.add('show'); }
+    function closeFilterModal() { document.getElementById('filterModal').classList.remove('show'); }
+
+    function showCategory(catName, element) {
+        document.querySelectorAll('.category-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
+        document.getElementById('cat-' + catName).classList.add('active');
+        document.getElementById('filterSearch').value = "";
+        filterCheckboxes(); 
+    }
+
+    function filterCheckboxes() {
+        const input = document.getElementById('filterSearch');
+        const filter = input.value.toLowerCase();
+        const activeTab = document.querySelector('.filter-options.active');
+        const labels = activeTab.getElementsByTagName('label');
+        for (let i = 0; i < labels.length; i++) {
+            const span = labels[i].getElementsByTagName("span")[0];
+            const txtValue = span.textContent || span.innerText;
+            if (txtValue.toLowerCase().indexOf(filter) > -1) { labels[i].style.display = ""; } 
+            else { labels[i].style.display = "none"; }
+        }
+    }
+
+    function selectGroup(groupName) {
+        const keywords = GROUPS[groupName];
+        if (!keywords) return;
+        const inputs = document.querySelectorAll('#cat-insurers input[type="checkbox"]');
+        inputs.forEach(cb => cb.checked = false);
+        inputs.forEach(cb => {
+            const isMatch = keywords.some(k => cb.value.toLowerCase().includes(k.toLowerCase()));
+            if (isMatch) { cb.checked = true; }
+        });
+    }
+
+    function deselectAll(catName) {
+        document.querySelectorAll(`#cat-${catName} input[type="checkbox"]`).forEach(cb => cb.checked = false);
+    }
+
+    function clearModalInputs() { 
+        document.getElementById('filterForm').reset(); 
+        document.getElementById('filterSearch').value = "";
+        filterCheckboxes();
+    }
+
+    function applyFilters(e) {
+        e.preventDefault();
+        const form = document.getElementById('filterForm');
+        const formData = new FormData(form);
+        
+        if (formData.getAll('insurers').length === 0 || formData.getAll('metrics').length === 0 || formData.getAll('years').length === 0) {
+            alert("⚠️ Missing Selection!\n\nPlease select at least one:\n- Insurer\n- Metric\n- Financial Year");
+            return;
+        }
+
+        closeFilterModal();
+        let count = 0;
+        let summary = [];
+        for(let pair of formData.entries()) { count++; if(count <= 3) summary.push(pair[1]); }
+        const badge = document.getElementById('filterCount');
+        if(count > 0) { badge.innerText = count; badge.style.display = 'inline-flex'; }
+        else { badge.style.display = 'none'; }
+        document.getElementById('activeFiltersText').innerText = count > 0 ? "Filtering by: " + summary.join(", ") + (count > 3 ? "..." : "") : "No filters applied";
+        document.getElementById('resultsArea').innerHTML = '<div style="text-align:center; padding:40px; color:#666;"><div class="typing-indicator" style="display:inline-flex;"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><br>Generating Report...</div>';
+
+        fetch('/data', { method: 'POST', body: formData })
+        .then(response => response.text())
+        .then(html => { document.getElementById('resultsArea').innerHTML = html; });
+    }
+
+    function copyTableToClipboard() {
+        const table = document.getElementById('exportTable');
+        if (!table) { alert("No table to copy!"); return; }
+        const range = document.createRange();
+        range.selectNode(table);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        try { document.execCommand('copy'); alert("✅ Table copied!"); } 
+        catch (err) { alert("❌ Failed to copy"); }
+        window.getSelection().removeAllRanges();
+    }
+
+    function downloadExcel() {
+        const form = document.getElementById('filterForm');
+        form.action = "/download_data";
+        form.method = "POST";
+        form.target = "_blank";
+        form.submit();
+        setTimeout(() => { form.action = ""; form.target = ""; }, 100);
+    }
+</script>
+</body>
+</html>

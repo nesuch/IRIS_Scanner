@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>IRIS Admin</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* --- LOGO STYLES --- */
+        .logo-text { 
+            margin-top: 8px;
+            font-family: 'Montserrat', sans-serif; 
+            font-size: 30px; 
+            font-weight: 700; 
+            background: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: 1.5px;
+            line-height: 1;
+            text-transform: uppercase;
+            padding-left: 1.5px; 
+        }
+
+        /* --- PAGE SPECIFIC STYLES --- */
+        .admin-container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.08); width: 450px; text-align: center; }
+        .sync-btn { background-color: #1a237e; color: white; border: none; padding: 12px 25px; font-size: 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; width: 100%; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .sync-btn:hover { background-color: #0d47a1; transform: translateY(-2px); }
+    </style>
+</head>
+<body style="background-color: #f4f7f6; margin: 0;">
+
+    <div class="sidebar">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
+            <div class="logo-text">IRIS</div>
+        </div>
+        <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
+        
+        <div class="menu-label">Knowledge Base</div>
+        <a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
+        <a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
+        <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
+        
+        <div class="menu-label">Data Intelligence</div>
+        <a href="/data" class="nav-item"><i class="fas fa-chart-line"></i> Data Explorer</a>
+        <a href="/compliance" class="nav-item"><i class="fas fa-gavel"></i> Compliance Cockpit</a>
+        
+        <div class="menu-label">System</div>
+        <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+        <a href="/admin" class="nav-item active"><i class="fas fa-cog"></i> Admin Panel</a>
+    </div>
+
+    <div class="main-content" style="display:flex; justify-content:center; align-items:center; height:100vh; margin-left: 260px;">
+        <div class="admin-container">
+            <h1 style="color:#333; margin-bottom:10px; font-size:24px;">Knowledge Base Sync</h1>
+            <p style="color:#666; margin-bottom:30px; line-height:1.5;">
+                <strong>Step 1:</strong> Place insurer Excel files into: <br>
+                <code style="background:#eee; padding:2px 6px; border-radius:4px;">knowledge_base/raw_submissions/</code>
+                <br><br>
+                <strong>Step 2:</strong> Click the button below to merge them into the Master Database.
+            </p>
+            <form action="/sync_data" method="POST">
+                <button type="submit" class="sync-btn"><i class="fas fa-sync-alt"></i> Aggregate & Sync Data</button>
+            </form>
+            {% if message %}
+            <div style="margin-top:25px; padding:15px; background:#e8f5e9; color:#2e7d32; border-radius:6px; font-weight:bold; border:1px solid #c8e6c9;">
+                <i class="fas fa-check-circle"></i> {{ message }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</body>
+</html>
