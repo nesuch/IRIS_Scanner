@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>IRIS - Regulatory Intelligence</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
@@ -12,13 +13,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         /* --- GLOBAL RESET & LAYOUT --- */
-        * { box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Segoe UI', sans-serif; 
-            background-color: #f4f7f6; 
-            margin: 0; padding: 0; 
-            height: 100vh; 
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
             width: 100vw;
             overflow: hidden;
             display: flex;
@@ -39,46 +43,87 @@
         }
 
         /* --- LOGO STYLES (DARKER GRADIENT) --- */
-        .logo { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 0 15px; 
-            margin-bottom: 5px; 
+        .logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 15px;
+            margin-bottom: 5px;
         }
-        .logo img { 
-            max-width: 100%; 
-            height: auto; 
-            max-height: 85px; 
-            display: block; 
+
+        .logo img {
+            max-width: 100%;
+            height: auto;
+            max-height: 85px;
+            display: block;
         }
-        
-        .logo-text { 
+
+        .logo-text {
             margin-top: 8px;
-            font-family: 'Montserrat', sans-serif; 
-            font-size: 30px; 
-            font-weight: 700; 
-            
+            font-family: 'Montserrat', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
+
             /* --- DARKER BLUE GRADIENT EFFECT --- */
             /* Changed from light blues to deeper navy blues */
             background: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            color: transparent; /* Fallback */
-            
+            color: transparent;
+            /* Fallback */
+
             letter-spacing: 1.5px;
             line-height: 1;
             text-transform: uppercase;
-            padding-left: 1.5px; 
+            padding-left: 1.5px;
         }
-        
-        .sidebar-tagline { text-align: center; font-size: 13px; color: #444; font-weight: 500; font-style: italic; margin-top: 8px; margin-bottom: 20px; padding: 0 10px; line-height: 1.4; }
-        .menu-label { font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; padding: 10px 25px; margin-top: 10px; }
-        
-        .nav-item { padding: 12px 25px; color: #555; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.2s; text-decoration: none; font-size: 14px; font-weight: 500; }
-        .nav-item:hover { background-color: #e8eaf6; color: #1a237e; }
-        .nav-item.active { background-color: #c5cae9; color: #1a237e; border-right: 4px solid #1a237e; font-weight: 700; }
+
+        .sidebar-tagline {
+            text-align: center;
+            font-size: 13px;
+            color: #444;
+            font-weight: 500;
+            font-style: italic;
+            margin-top: 8px;
+            margin-bottom: 20px;
+            padding: 0 10px;
+            line-height: 1.4;
+        }
+
+        .menu-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #999;
+            text-transform: uppercase;
+            padding: 10px 25px;
+            margin-top: 10px;
+        }
+
+        .nav-item {
+            padding: 12px 25px;
+            color: #555;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: 0.2s;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background-color: #e8eaf6;
+            color: #1a237e;
+        }
+
+        .nav-item.active {
+            background-color: #c5cae9;
+            color: #1a237e;
+            border-right: 4px solid #1a237e;
+            font-weight: 700;
+        }
 
         /* --- MAIN CONTENT --- */
         .main-content {
@@ -90,14 +135,59 @@
             background-color: #f4f7f6;
             min-width: 0;
         }
-        
-        .header-area { padding: 25px 40px; flex: 0 0 auto; background: white; border-bottom: 1px solid #eee; }
-        .header-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 5px; }
-        .module-icon { font-size: 24px; color: #555; }
-        .header-area h2 { margin: 0; color: #333; font-size: 26px; font-weight: 700; }
-        .full-form-text { font-size: 12px; color: #1a237e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-        .scope-indicator { margin: 0; color: #666; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
-        .scope-dot { height: 8px; width: 8px; background-color: #4caf50; border-radius: 50%; display: inline-block; }
+
+        .header-area {
+            padding: 25px 40px;
+            flex: 0 0 auto;
+            background: white;
+            border-bottom: 1px solid #eee;
+        }
+
+        .header-title-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 5px;
+        }
+
+        .module-icon {
+            font-size: 24px;
+            color: #555;
+        }
+
+        .header-area h2 {
+            margin: 0;
+            color: #333;
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .full-form-text {
+            font-size: 12px;
+            color: #1a237e;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .scope-indicator {
+            margin: 0;
+            color: #666;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .scope-dot {
+            height: 8px;
+            width: 8px;
+            background-color: #4caf50;
+            border-radius: 50%;
+            display: inline-block;
+        }
 
         /* --- CHAT AREA --- */
         .chat-window {
@@ -108,14 +198,57 @@
             flex-direction: column;
         }
 
-        .chat-block { margin-bottom: 25px; max-width: 90%; }
-        .chat-block.user { align-self: flex-end; text-align: right; margin-left: auto; }
-        .chat-block.iris { align-self: flex-start; text-align: left; margin-right: auto; width: 100%; }
-        
-        .label { font-size: 12px; color: #999; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-        .bubble { display: inline-block; padding: 15px 20px; border-radius: 12px; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.05); font-size: 15px; line-height: 1.6; }
-        .user-bubble { background-color: #c5cae9; color: #1a237e; border-bottom-right-radius: 2px; border: 1px solid #9fa8da; }
-        .iris-bubble { background-color: white; border: 1px solid #e0e0e0; border-bottom-left-radius: 2px; width: 100%; box-sizing: border-box; }
+        .chat-block {
+            margin-bottom: 25px;
+            max-width: 90%;
+        }
+
+        .chat-block.user {
+            align-self: flex-end;
+            text-align: right;
+            margin-left: auto;
+        }
+
+        .chat-block.iris {
+            align-self: flex-start;
+            text-align: left;
+            margin-right: auto;
+            width: 100%;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .bubble {
+            display: inline-block;
+            padding: 15px 20px;
+            border-radius: 12px;
+            text-align: left;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .user-bubble {
+            background-color: #c5cae9;
+            color: #1a237e;
+            border-bottom-right-radius: 2px;
+            border: 1px solid #9fa8da;
+        }
+
+        .iris-bubble {
+            background-color: white;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 2px;
+            width: 100%;
+            box-sizing: border-box;
+        }
 
         /* --- INPUT AREA --- */
         .input-area {
@@ -124,276 +257,448 @@
             padding: 20px 40px 30px 40px;
             z-index: 50;
         }
+
         .input-container-inner {
-            background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; border: 1px solid #e0e0e0;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            position: relative;
+            border: 1px solid #e0e0e0;
         }
-        .search-wrapper { position: relative; display: flex; align-items: center; }
-        textarea { width: 100%; padding: 10px; border: none; font-size: 16px; font-family: inherit; resize: none; height: 50px; outline: none; background: transparent; }
-        button[type="submit"] { background-color: #1a237e; color: white; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-left: 10px; transition: 0.2s; }
-        button[type="submit"]:hover { background-color: #000051; }
+
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            font-size: 16px;
+            font-family: inherit;
+            resize: none;
+            height: 50px;
+            outline: none;
+            background: transparent;
+        }
+
+        button[type="submit"] {
+            background-color: #1a237e;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-left: 10px;
+            transition: 0.2s;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #000051;
+        }
 
         /* --- EXTRAS --- */
-        #suggestions-box { position: absolute; bottom: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-bottom: none; border-radius: 8px 8px 0 0; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000; display: none; max-height: 250px; overflow-y: auto; margin-bottom: 15px; }
-        .suggestion-item { padding: 12px 20px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
-        .suggestion-item:hover { background-color: #e8eaf6; }
-        .badge { font-size: 10px; text-transform: uppercase; font-weight: bold; padding: 3px 8px; border-radius: 4px; }
-        .badge-insurer { background: #e3f2fd; color: #0d47a1; } .badge-metric { background: #e8f5e9; color: #1b5e20; } .badge-year { background: #fff3e0; color: #e65100; } .badge-concept { background: #f3e5f5; color: #4a148c; } .badge-doc { background: #eeeeee; color: #616161; }
+        #suggestions-box {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: none;
+            max-height: 250px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
 
-        .typing-indicator { display: inline-flex; height: 24px; gap: 4px; }
-        .dot { width: 8px; height: 8px; background-color: #9fa8da; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
-        .dot:nth-child(1) { animation-delay: -0.32s; } .dot:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }
-        
-        #copy-toast { visibility: hidden; min-width: 200px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 10px; position: fixed; z-index: 2000; left: 50%; bottom: 100px; transform: translateX(-50%); font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
-        #copy-toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 1.5s; }
-        @keyframes fadein { from {bottom: 80px; opacity: 0;} to {bottom: 100px; opacity: 1;} } @keyframes fadeout { from {bottom: 100px; opacity: 1;} to {bottom: 80px; opacity: 0;} }
+        .suggestion-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .suggestion-item:hover {
+            background-color: #e8eaf6;
+        }
+
+        .badge {
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: bold;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .badge-insurer {
+            background: #e3f2fd;
+            color: #0d47a1;
+        }
+
+        .badge-metric {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+
+        .badge-year {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .badge-concept {
+            background: #f3e5f5;
+            color: #4a148c;
+        }
+
+        .badge-doc {
+            background: #eeeeee;
+            color: #616161;
+        }
+
+        .typing-indicator {
+            display: inline-flex;
+            height: 24px;
+            gap: 4px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background-color: #9fa8da;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .dot:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        #copy-toast {
+            visibility: hidden;
+            min-width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 4px;
+            padding: 10px;
+            position: fixed;
+            z-index: 2000;
+            left: 50%;
+            bottom: 100px;
+            transform: translateX(-50%);
+            font-size: 14px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        #copy-toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 1.5s;
+        }
+
+        @keyframes fadein {
+            from {
+                bottom: 80px;
+                opacity: 0;
+            }
+
+            to {
+                bottom: 100px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeout {
+            from {
+                bottom: 100px;
+                opacity: 1;
+            }
+
+            to {
+                bottom: 80px;
+                opacity: 0;
+            }
+        }
     </style>
 </head>
+
 <body>
 
-<div class="sidebar">
-    <div class="logo">
-        <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
-        <div class="logo-text">IRIS</div>
-    </div>
-    
-    <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
-    
-    <div class="menu-label">Knowledge Base</div>
-    <a href="/" class="nav-item {{ 'active' if active_module == 'universal' else '' }}">
-        <i class="fas fa-search"></i> Universal Search
-    </a>
-    <a href="/health" class="nav-item {{ 'active' if active_module == 'health' else '' }}">
-        <i class="fas fa-heartbeat"></i> Health Dept
-    </a>
-    <a href="/life" class="nav-item {{ 'active' if active_module == 'life' else '' }}">
-        <i class="fas fa-umbrella"></i> Life Dept
-    </a>
-    
-    <div class="menu-label">Data Intelligence</div>
-    <a href="/data" class="nav-item {{ 'active' if active_module == 'data' else '' }}">
-        <i class="fas fa-chart-line"></i> Data Explorer
-    </a>
-    <a href="/compliance" class="nav-item {{ 'active' if active_module == 'compliance' else '' }}">
-        <i class="fas fa-gavel"></i> Compliance Cockpit
-    </a>
-    
-    <div class="menu-label">System</div>
-    <a href="/analytics" class="nav-item {{ 'active' if active_module == 'analytics' else '' }}">
-        <i class="fas fa-server"></i> System Analytics
-    </a>
-    <a href="/admin" class="nav-item {{ 'active' if active_module == 'admin' else '' }}">
-        <i class="fas fa-cog"></i> Admin Panel
-    </a>
-</div>
-
-<div class="main-content">
-    
-    <div class="header-area">
-        <div class="full-form-text">IRDAI's Regulatory Intelligence System</div>
-        <div class="header-title-row">
-            {% if active_module == 'health' %} <i class="fas fa-heartbeat module-icon"></i>
-            {% elif active_module == 'life' %} <i class="fas fa-umbrella module-icon"></i>
-            {% elif active_module == 'data' %} <i class="fas fa-chart-line module-icon"></i>
-            {% elif active_module == 'compliance' %} <i class="fas fa-gavel module-icon"></i>
-            {% elif active_module == 'analytics' %} <i class="fas fa-server module-icon"></i>
-            {% else %} <i class="fas fa-search module-icon"></i>
-            {% endif %}
-            
-            <h2>
-                {% if active_module == 'health' %} Health Department
-                {% elif active_module == 'life' %} Life Department
-                {% elif active_module == 'data' %} Data Explorer
-                {% elif active_module == 'compliance' %} Compliance Cockpit
-                {% elif active_module == 'analytics' %} System Analytics
-                {% else %} Universal Search
-                {% endif %}
-            </h2>
+    <div class="sidebar">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
+            <div class="logo-text">IRIS</div>
         </div>
-        
-        <p class="scope-indicator">
-            <span class="scope-dot"></span>
-            {% if active_module == 'health' %} Scope: Acts, Regulations & Master Circulars (Health)
-            {% elif active_module == 'life' %} Scope: Regulatory Framework (Life Insurance)
-            {% elif active_module == 'data' %} Scope: Financials & Market Data
-            {% elif active_module == 'compliance' %} Scope: Compliance Monitoring
-            {% elif active_module == 'analytics' %} Scope: System Health & Logs
-            {% else %} Scope: Unified Search (All Departments)
-            {% endif %}
-        </p>
+
+        <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
+
+        <div class="menu-label">Knowledge Base</div>
+        <a href="/" class="nav-item {{ 'active' if active_module == 'universal' else '' }}">
+            <i class="fas fa-search"></i> Universal Search
+        </a>
+        <a href="/health" class="nav-item {{ 'active' if active_module == 'health' else '' }}">
+            <i class="fas fa-heartbeat"></i> Health Dept
+        </a>
+        <a href="/life" class="nav-item {{ 'active' if active_module == 'life' else '' }}">
+            <i class="fas fa-umbrella"></i> Life Dept
+        </a>
+
+        <div class="menu-label">Data Intelligence</div>
+        <a href="/data" class="nav-item {{ 'active' if active_module == 'data' else '' }}">
+            <i class="fas fa-chart-line"></i> Data Explorer
+        </a>
+        <a href="/compliance" class="nav-item {{ 'active' if active_module == 'compliance' else '' }}">
+            <i class="fas fa-gavel"></i> Compliance Cockpit
+        </a>
+
+        <div class="menu-label">System</div>
+        <a href="/analytics" class="nav-item {{ 'active' if active_module == 'analytics' else '' }}">
+            <i class="fas fa-server"></i> System Analytics
+        </a>
+        <a href="/admin" class="nav-item {{ 'active' if active_module == 'admin' else '' }}">
+            <i class="fas fa-cog"></i> Admin Panel
+        </a>
     </div>
 
-    <div class="chat-window" id="chatWindow">
-        {% if not history %}
+    <div class="main-content">
+
+        <div class="header-area">
+            <div class="full-form-text">IRDAI's Regulatory Intelligence System</div>
+            <div class="header-title-row">
+                {% if active_module == 'health' %} <i class="fas fa-heartbeat module-icon"></i>
+                {% elif active_module == 'life' %} <i class="fas fa-umbrella module-icon"></i>
+                {% elif active_module == 'data' %} <i class="fas fa-chart-line module-icon"></i>
+                {% elif active_module == 'compliance' %} <i class="fas fa-gavel module-icon"></i>
+                {% elif active_module == 'analytics' %} <i class="fas fa-server module-icon"></i>
+                {% else %} <i class="fas fa-search module-icon"></i>
+                {% endif %}
+
+                <h2>
+                    {% if active_module == 'health' %} Health Department
+                    {% elif active_module == 'life' %} Life Department
+                    {% elif active_module == 'data' %} Data Explorer
+                    {% elif active_module == 'compliance' %} Compliance Cockpit
+                    {% elif active_module == 'analytics' %} System Analytics
+                    {% else %} Universal Search
+                    {% endif %}
+                </h2>
+            </div>
+
+            <p class="scope-indicator">
+                <span class="scope-dot"></span>
+                {% if active_module == 'health' %} Scope: Acts, Regulations & Master Circulars (Health)
+                {% elif active_module == 'life' %} Scope: Regulatory Framework (Life Insurance)
+                {% elif active_module == 'data' %} Scope: Financials & Market Data
+                {% elif active_module == 'compliance' %} Scope: Compliance Monitoring
+                {% elif active_module == 'analytics' %} Scope: System Health & Logs
+                {% else %} Scope: Unified Search (All Departments)
+                {% endif %}
+            </p>
+        </div>
+
+        <div class="chat-window" id="chatWindow">
+            {% if not history %}
             <div class="empty-state" style="text-align: center; padding: 40px; color: #888;">
                 <i class="fas fa-lightbulb" style="font-size: 24px; margin-bottom: 10px; color: #bbb;"></i>
-                <p><strong>Ready to assist.</strong><br>Try searching for "Solvency Margin", "Claims Procedure", or "Rural Obligations".</p>
+                <p><strong>Ready to assist.</strong><br>Try searching for "Solvency Margin", "Claims Procedure", or
+                    "Rural Obligations".</p>
             </div>
-        {% endif %}
+            {% endif %}
 
-        {% for item in history %}
+            {% for item in history %}
             <div class="chat-block user">
                 <div class="label">You</div>
                 <div class="bubble user-bubble">{{ item.query }}</div>
             </div>
-            
+
             <div class="chat-block iris">
                 <div class="label">IRIS</div>
                 <div class="bubble iris-bubble">{{ item.response | safe }}</div>
             </div>
-        {% endfor %}
-        <div style="height: 10px;"></div>
-    </div>
-
-    <div class="input-area">
-        <div class="input-container-inner">
-            <form method="POST" id="search-form" autocomplete="off">
-                <div class="search-wrapper">
-                    <div id="suggestions-box"></div>
-                    <textarea id="query-input" name="query" placeholder="Ask IRIS..." required onkeydown="handleKey(event)" autofocus></textarea>
-                    <button type="submit">Search</button>
-                </div>
-            </form>
+            {% endfor %}
+            <div style="height: 10px;"></div>
         </div>
+
+        <div class="input-area">
+            <div class="input-container-inner">
+                <form method="POST" id="search-form" autocomplete="off">
+                    <div class="search-wrapper">
+                        <div id="suggestions-box"></div>
+                        <textarea id="query-input" name="query" placeholder="Ask IRIS..." required
+                            onkeydown="handleKey(event)" autofocus></textarea>
+                        <button type="submit">Search</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="copy-toast">Clause text copied!</div>
+
     </div>
 
-    <div id="copy-toast">Clause text copied!</div>
+    <script>
+        const chatWindow = document.getElementById("chatWindow");
+        const form = document.getElementById("search-form");
+        const input = document.getElementById("query-input");
+        const box = document.getElementById("suggestions-box");
 
-</div>
+        const VOCAB = JSON.parse('{{ vocab|tojson|safe }}');
+        const ACTIVE_MODULE = "{{ active_module }}";
 
-<script>
-    const chatWindow = document.getElementById("chatWindow");
-    const form = document.getElementById("search-form");
-    const input = document.getElementById("query-input");
-    const box = document.getElementById("suggestions-box");
-    
-    const VOCAB = {{ vocab|tojson }};
-    const ACTIVE_MODULE = "{{ active_module }}";
+        function appendInteractionAndSubmit() {
+            if (!input.value.trim()) return;
+            const userBlock = document.createElement('div');
+            userBlock.className = 'chat-block user';
+            userBlock.innerHTML = `<div class="label">You</div><div class="bubble user-bubble">${escapeHtml(input.value.trim())}</div>`;
+            chatWindow.appendChild(userBlock);
 
-    function appendInteractionAndSubmit() {
-        if (!input.value.trim()) return;
-        const userBlock = document.createElement('div');
-        userBlock.className = 'chat-block user';
-        userBlock.innerHTML = `<div class="label">You</div><div class="bubble user-bubble">${escapeHtml(input.value.trim())}</div>`;
-        chatWindow.appendChild(userBlock);
+            const thinkingContainer = document.createElement('div');
+            thinkingContainer.className = 'standalone-thinking';
+            thinkingContainer.innerHTML = `<div class="typing-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+            chatWindow.appendChild(thinkingContainer);
 
-        const thinkingContainer = document.createElement('div');
-        thinkingContainer.className = 'standalone-thinking';
-        thinkingContainer.innerHTML = `<div class="typing-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
-        chatWindow.appendChild(thinkingContainer);
+            scrollToBottom();
+            form.submit();
+        }
 
-        scrollToBottom();
-        form.submit();
-    }
+        function handleKey(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                appendInteractionAndSubmit();
+            }
+        }
 
-    function handleKey(e) {
-        if (e.key === "Enter" && !e.shiftKey) {
+        form.addEventListener('submit', function (e) {
             e.preventDefault();
             appendInteractionAndSubmit();
-        }
-    }
-
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        appendInteractionAndSubmit();
-    });
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    function scrollToBottom() { chatWindow.scrollTop = chatWindow.scrollHeight; }
-
-    function scrollToLatestContent() {
-        const userBlocks = document.querySelectorAll('.chat-block.user');
-        if (userBlocks.length > 0) {
-            const lastBlock = userBlocks[userBlocks.length - 1];
-            lastBlock.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-    }
-    if (chatWindow) setTimeout(scrollToLatestContent, 300);
-
-    input.addEventListener('input', function() {
-        const text = this.value.toLowerCase();
-        const currentWords = text.split(/[\s,]+/); 
-        const lastWord = currentWords[currentWords.length - 1]; 
-        
-        if (lastWord.length < 2) { box.style.display = 'none'; return; }
-
-        let allMatches = [];
-        function addMatches(sourceList, category, badgeClass) {
-            if (!sourceList) return;
-            sourceList.forEach(item => {
-                if (item.toLowerCase().includes(lastWord) && !text.includes(item.toLowerCase())) {
-                    allMatches.push({ text: item, cat: category, badge: badgeClass, priority: 0 });
-                }
-            });
-        }
-
-        if (ACTIVE_MODULE === 'data' || ACTIVE_MODULE === 'universal') {
-            addMatches(VOCAB.INSURERS, "Insurer", "badge-insurer");
-            addMatches(VOCAB.METRICS, "Metric", "badge-metric");
-            addMatches(VOCAB.YEARS, "Year", "badge-year");
-        }
-        if (ACTIVE_MODULE === 'health' || ACTIVE_MODULE === 'universal') {
-            addMatches(VOCAB.CONCEPTS, "Concept", "badge-concept");
-            addMatches(VOCAB.DOCS, "Document", "badge-doc");
-        }
-
-        allMatches.sort((a, b) => b.priority - a.priority);
-        renderSuggestions(allMatches.slice(0, 8));
-    });
-
-    function renderSuggestions(list) {
-        if (list.length === 0) { box.style.display = 'none'; return; }
-        let html = '';
-        list.forEach(item => {
-            html += `<div class="suggestion-item" onclick="selectItem('${item.text}')"><span>${item.text}</span><span class="badge ${item.badge}">${item.cat}</span></div>`;
         });
-        box.innerHTML = html; box.style.display = 'block';
-    }
 
-    function selectItem(value) {
-        const val = input.value;
-        const lastSpaceIndex = val.lastIndexOf(' ');
-        if (lastSpaceIndex === -1) { input.value = value + " "; } 
-        else { input.value = val.substring(0, lastSpaceIndex + 1) + value + " "; }
-        box.style.display = 'none';
-        input.focus();
-        input.dispatchEvent(new Event('input'));
-    }
-
-    document.addEventListener('click', function(e) {
-        if (e.target !== input && e.target !== box) { box.style.display = 'none'; }
-    });
-
-    function copyToClipboard(elementId) {
-        const node = document.getElementById(elementId);
-        const wrapper = document.createElement('div');
-        wrapper.style.position = 'fixed'; wrapper.style.left = '-9999px'; wrapper.style.top = '0';
-        const clone = node.cloneNode(true);
-        const tables = clone.querySelectorAll('table');
-        tables.forEach(tbl => { tbl.style.width = "100%"; tbl.style.maxWidth = "650px"; tbl.style.tableLayout = "fixed"; tbl.style.borderCollapse = "collapse"; tbl.border = "1"; });
-        clone.innerHTML = clone.innerHTML.replace(/\n/g, '<br>');
-        clone.style.whiteSpace = 'normal'; 
-        wrapper.appendChild(clone);
-        document.body.appendChild(wrapper);
-        if (window.getSelection && document.createRange) {
-            const range = document.createRange();
-            range.selectNodeContents(wrapper);
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-            try { document.execCommand('copy'); 
-                  const x = document.getElementById("copy-toast"); x.className = "show"; setTimeout(function(){ x.className = x.className.replace("show", ""); }, 2000);
-            } catch (err) { console.error("Unable to copy", err); }
-            selection.removeAllRanges();
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
-        document.body.removeChild(wrapper);
-    }
-</script>
+
+        function scrollToBottom() { chatWindow.scrollTop = chatWindow.scrollHeight; }
+
+        function scrollToLatestContent() {
+            const userBlocks = document.querySelectorAll('.chat-block.user');
+            if (userBlocks.length > 0) {
+                const lastBlock = userBlocks[userBlocks.length - 1];
+                lastBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }
+        if (chatWindow) setTimeout(scrollToLatestContent, 300);
+
+        input.addEventListener('input', function () {
+            const text = this.value.toLowerCase();
+            const currentWords = text.split(/[\s,]+/);
+            const lastWord = currentWords[currentWords.length - 1];
+
+            if (lastWord.length < 2) { box.style.display = 'none'; return; }
+
+            let allMatches = [];
+            function addMatches(sourceList, category, badgeClass) {
+                if (!sourceList) return;
+                sourceList.forEach(item => {
+                    if (item.toLowerCase().includes(lastWord) && !text.includes(item.toLowerCase())) {
+                        allMatches.push({ text: item, cat: category, badge: badgeClass, priority: 0 });
+                    }
+                });
+            }
+
+            if (ACTIVE_MODULE === 'data' || ACTIVE_MODULE === 'universal') {
+                addMatches(VOCAB.INSURERS, "Insurer", "badge-insurer");
+                addMatches(VOCAB.METRICS, "Metric", "badge-metric");
+                addMatches(VOCAB.YEARS, "Year", "badge-year");
+            }
+            if (ACTIVE_MODULE === 'health' || ACTIVE_MODULE === 'universal') {
+                addMatches(VOCAB.CONCEPTS, "Concept", "badge-concept");
+                addMatches(VOCAB.DOCS, "Document", "badge-doc");
+            }
+
+            allMatches.sort((a, b) => b.priority - a.priority);
+            renderSuggestions(allMatches.slice(0, 8));
+        });
+
+        function renderSuggestions(list) {
+            if (list.length === 0) { box.style.display = 'none'; return; }
+            let html = '';
+            list.forEach(item => {
+                html += `<div class="suggestion-item" onclick="selectItem('${item.text}')"><span>${item.text}</span><span class="badge ${item.badge}">${item.cat}</span></div>`;
+            });
+            box.innerHTML = html; box.style.display = 'block';
+        }
+
+        function selectItem(value) {
+            const val = input.value;
+            const lastSpaceIndex = val.lastIndexOf(' ');
+            if (lastSpaceIndex === -1) { input.value = value + " "; }
+            else { input.value = val.substring(0, lastSpaceIndex + 1) + value + " "; }
+            box.style.display = 'none';
+            input.focus();
+            input.dispatchEvent(new Event('input'));
+        }
+
+        document.addEventListener('click', function (e) {
+            if (e.target !== input && e.target !== box) { box.style.display = 'none'; }
+        });
+
+        function copyToClipboard(elementId) {
+            const node = document.getElementById(elementId);
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'fixed'; wrapper.style.left = '-9999px'; wrapper.style.top = '0';
+            const clone = node.cloneNode(true);
+            const tables = clone.querySelectorAll('table');
+            tables.forEach(tbl => { tbl.style.width = "100%"; tbl.style.maxWidth = "650px"; tbl.style.tableLayout = "fixed"; tbl.style.borderCollapse = "collapse"; tbl.border = "1"; });
+            clone.innerHTML = clone.innerHTML.replace(/\n/g, '<br>');
+            clone.style.whiteSpace = 'normal';
+            wrapper.appendChild(clone);
+            document.body.appendChild(wrapper);
+            if (window.getSelection && document.createRange) {
+                const range = document.createRange();
+                range.selectNodeContents(wrapper);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                try {
+                    document.execCommand('copy');
+                    const x = document.getElementById("copy-toast"); x.className = "show"; setTimeout(function () { x.className = x.className.replace("show", ""); }, 2000);
+                } catch (err) { console.error("Unable to copy", err); }
+                selection.removeAllRanges();
+            }
+            document.body.removeChild(wrapper);
+        }
+    </script>
 
 </body>
+
 </html>

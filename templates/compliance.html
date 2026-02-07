@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>IRIS - Compliance Cockpit</title>
@@ -10,13 +11,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         /* --- 1. FLEX LAYOUT (FIXES GAP & SCROLLING) --- */
-        body, html { 
-            height: 100%; 
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden; /* Prevent double scrollbars */
-            font-family: 'Segoe UI', sans-serif; 
-            background: #f8f9fa; 
+        body,
+        html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            /* Prevent double scrollbars */
+            font-family: 'Segoe UI', sans-serif;
+            background: #f8f9fa;
         }
 
         .app-container {
@@ -39,263 +42,495 @@
         /* Main Content: Fills remaining space, SCROLLS INDEPENDENTLY */
         .main-content {
             flex-grow: 1;
-            overflow-y: auto; /* <--- ENABLES SCROLLING */
+            overflow-y: auto;
+            /* <--- ENABLES SCROLLING */
             padding: 30px;
             box-sizing: border-box;
         }
 
         /* --- 2. LOGO & NAV STYLES --- */
-        .logo-text { margin-top: 8px; font-family: 'Montserrat', sans-serif; font-size: 30px; font-weight: 700; background: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; letter-spacing: 1.5px; line-height: 1; text-transform: uppercase; padding-left: 1.5px; }
-        
+        .logo-text {
+            margin-top: 8px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
+            background: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: 1.5px;
+            line-height: 1;
+            text-transform: uppercase;
+            padding-left: 1.5px;
+        }
+
         /* --- 3. COMPLIANCE GRID --- */
-        .compliance-grid { 
-            display: grid; 
+        .compliance-grid {
+            display: grid;
             /* Min width 400px ensures cards aren't too skinny and fills space */
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); 
-            gap: 25px; 
-            margin-top: 20px; 
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
             padding-bottom: 50px;
         }
-        
-        .company-card { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #eee; overflow: hidden; transition: 0.2s; display: flex; flex-direction: column; }
-        .company-card:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
-        
-        .card-header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f0f0f0; background: #fff; }
-        .card-title { font-size: 15px; font-weight: 700; color: #333; width: 75%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        
+
+        .company-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border: 1px solid #eee;
+            overflow: hidden;
+            transition: 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .company-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #f0f0f0;
+            background: #fff;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #333;
+            width: 75%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* Status Badges */
-        .status-badge { font-size: 10px; font-weight: bold; padding: 4px 10px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .status-violation { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-        .status-watchlist { background: #fff3e0; color: #ef6c00; border: 1px solid #ffe0b2; }
-        .status-compliant { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .status-mixed     { background: #f3e5f5; color: #7b1fa2; border: 1px solid #e1bee7; }
+        .status-badge {
+            font-size: 10px;
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-violation {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+
+        .status-watchlist {
+            background: #fff3e0;
+            color: #ef6c00;
+            border: 1px solid #ffe0b2;
+        }
+
+        .status-compliant {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+
+        .status-mixed {
+            background: #f3e5f5;
+            color: #7b1fa2;
+            border: 1px solid #e1bee7;
+        }
 
         /* 4. METRIC GRID */
-        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #eee; border-bottom: 1px solid #eee; }
-        .metric-cell { background: white; padding: 15px; text-align: center; }
-        .metric-val { font-size: 18px; font-weight: 800; color: #1a237e; display: block; margin-bottom: 2px; }
-        .metric-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-        
-        /* Alerts */
-        .alert-area { padding: 15px; flex-grow: 1; }
-        .alert-item { font-size: 11px; padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; display: flex; align-items: start; gap: 8px; line-height: 1.4; }
-        .alert-critical { background: #ffebee; color: #b71c1c; border-left: 3px solid #b71c1c; }
-        .alert-warning { background: #fff8e1; color: #f57f17; border-left: 3px solid #f57f17; }
-        
-        .update-tag { font-size: 10px; color: #bbb; text-align: right; margin-top: auto; padding: 10px 15px; background: #fafafa; border-top: 1px solid #eee; }
-        
-        /* Filter Bar & Controls */
-        .controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .filter-group { display: flex; gap: 10px; }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1px;
+            background: #eee;
+            border-bottom: 1px solid #eee;
+        }
 
-        .filter-btn { border: 1px solid #ddd; background: white; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; color: #555; transition: 0.2s; }
-        .filter-btn:hover { background: #f5f5f5; }
-        .filter-btn.active { background: #e3f2fd; color: #1565c0; border-color: #2196f3; box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2); }
-        .filter-btn.danger { color: #c62828; border-color: #ef9a9a; background: #ffebee; }
+        .metric-cell {
+            background: white;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .metric-val {
+            font-size: 18px;
+            font-weight: 800;
+            color: #1a237e;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .metric-label {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        /* Alerts */
+        .alert-area {
+            padding: 15px;
+            flex-grow: 1;
+        }
+
+        .alert-item {
+            font-size: 11px;
+            padding: 8px 10px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            display: flex;
+            align-items: start;
+            gap: 8px;
+            line-height: 1.4;
+        }
+
+        .alert-critical {
+            background: #ffebee;
+            color: #b71c1c;
+            border-left: 3px solid #b71c1c;
+        }
+
+        .alert-warning {
+            background: #fff8e1;
+            color: #f57f17;
+            border-left: 3px solid #f57f17;
+        }
+
+        .update-tag {
+            font-size: 10px;
+            color: #bbb;
+            text-align: right;
+            margin-top: auto;
+            padding: 10px 15px;
+            background: #fafafa;
+            border-top: 1px solid #eee;
+        }
+
+        /* Filter Bar & Controls */
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .filter-btn {
+            border: 1px solid #ddd;
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            transition: 0.2s;
+        }
+
+        .filter-btn:hover {
+            background: #f5f5f5;
+        }
+
+        .filter-btn.active {
+            background: #e3f2fd;
+            color: #1565c0;
+            border-color: #2196f3;
+            box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+        }
+
+        .filter-btn.danger {
+            color: #c62828;
+            border-color: #ef9a9a;
+            background: #ffebee;
+        }
 
         /* Year Select Style */
-        .year-select { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; font-family: inherit; color: #333; outline: none; cursor: pointer; background: white; }
-        .year-select:hover { border-color: #2196f3; }
+        .year-select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 13px;
+            font-family: inherit;
+            color: #333;
+            outline: none;
+            cursor: pointer;
+            background: white;
+        }
+
+        .year-select:hover {
+            border-color: #2196f3;
+        }
+
+        /* Utility Classes */
+        .border-compliant {
+            border-top: 4px solid #2e7d32;
+        }
+
+        .border-violation {
+            border-top: 4px solid #d32f2f;
+        }
+
+        .border-watchlist {
+            border-top: 4px solid #fb8c00;
+        }
+
+        .border-mixed {
+            border-top: 4px solid #7b1fa2;
+        }
+
+        .text-violation {
+            color: #d32f2f;
+        }
+
+        .text-watchlist {
+            color: #f57f17;
+        }
+
+        .text-primary {
+            color: #1a237e;
+        }
+
+        .text-dark {
+            color: #333;
+        }
     </style>
 </head>
+
 <body>
 
-<div class="app-container">
-    
-    <div class="sidebar">
-        <div class="logo">
-            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
-            <div class="logo-text">IRIS</div>
-        </div>
-        <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
-        <div class="menu-label">Knowledge Base</div>
-        <a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
-        <a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
-        <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
-        <div class="menu-label">Data Intelligence</div>
-        <a href="/data" class="nav-item"><i class="fas fa-chart-line"></i> Data Explorer</a>
-        <a href="/compliance" class="nav-item active"><i class="fas fa-gavel"></i> Compliance Cockpit</a>
-        <div class="menu-label">System</div>
-        <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
-        <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
-    </div>
+    <div class="app-container">
 
-    <div class="main-content">
-        <div class="header-area">
-            <div class="full-form-text">REGULATORY OVERSIGHT</div>
-            <div class="header-title-row">
-                <i class="fas fa-shield-alt module-icon"></i>
-                <h2>Compliance Status</h2>
+        <div class="sidebar">
+            <div class="logo">
+                <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
+                <div class="logo-text">IRIS</div>
             </div>
-            <p class="scope-indicator">Live Monitoring: Solvency, EoM & Ratios</p>
+            <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
+            <div class="menu-label">Knowledge Base</div>
+            <a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
+            <a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
+            <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
+            <div class="menu-label">Data Intelligence</div>
+            <a href="/data" class="nav-item"><i class="fas fa-chart-line"></i> Data Explorer</a>
+            <a href="/compliance" class="nav-item active"><i class="fas fa-gavel"></i> Compliance Cockpit</a>
+            <div class="menu-label">System</div>
+            <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+            <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
         </div>
 
-        <div class="controls-row">
-            <div class="filter-group">
-                <button class="filter-btn active" onclick="filterMode('all', this)">All View</button>
-                <button class="filter-btn danger" onclick="filterMode('critical', this)">Violations Only</button>
-                <button class="filter-btn" onclick="filterMode('warning', this)">Watchlist Only</button>
+        <div class="main-content">
+            <div class="header-area">
+                <div class="full-form-text">REGULATORY OVERSIGHT</div>
+                <div class="header-title-row">
+                    <i class="fas fa-shield-alt module-icon"></i>
+                    <h2>Compliance Status</h2>
+                </div>
+                <p class="scope-indicator">Live Monitoring: Solvency, EoM & Ratios</p>
             </div>
 
-            <form method="GET" action="/compliance" style="margin:0;">
-                <select name="year" class="year-select" onchange="this.form.submit()">
-                    <option value="" {% if not active_year or active_year == 'Latest' %}selected{% endif %}>Latest Available</option>
-                    {% for y in years %}
-                        <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>FY {{ y }}</option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
+            <div class="controls-row">
+                <div class="filter-group">
+                    <button class="filter-btn active" onclick="filterMode('all', this)">All View</button>
+                    <button class="filter-btn danger" onclick="filterMode('critical', this)">Violations Only</button>
+                    <button class="filter-btn" onclick="filterMode('warning', this)">Watchlist Only</button>
+                </div>
 
-        <div class="compliance-grid">
-            {% for co in companies %}
-            
-            {# --- JINJA NAMESPACE FIX --- #}
-            {% set ns = namespace(crit=false, warn=false) %}
-            {% for a in co.alerts %}
+                <form method="GET" action="/compliance" style="margin:0;">
+                    <select name="year" class="year-select" onchange="this.form.submit()">
+                        <option value="" {% if not active_year or active_year=='Latest' %}selected{% endif %}>Latest
+                            Available</option>
+                        {% for y in years %}
+                        <option value="{{ y }}" {% if active_year==y %}selected{% endif %}>FY {{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </div>
+
+            <div class="compliance-grid">
+                {% for co in companies %}
+
+                {# --- JINJA NAMESPACE FIX --- #}
+                {% set ns = namespace(crit=false, warn=false) %}
+                {% for a in co.alerts %}
                 {% if a.level == 'critical' %}{% set ns.crit = true %}{% endif %}
                 {% if a.level == 'warning' %}{% set ns.warn = true %}{% endif %}
-            {% endfor %}
+                {% endfor %}
 
-            {% set initial_status = co.status %}
-            {% set initial_class = 'status-' + co.status | lower %}
-            {% set initial_border = '#2e7d32' %} 
-            {% if co.status == 'VIOLATION' %}{% set initial_border = '#d32f2f' %}{% endif %}
-            {% if co.status == 'WATCHLIST' %}{% set initial_border = '#fb8c00' %}{% endif %}
+                {% set initial_status = co.status %}
+                {% set initial_class = 'status-' + co.status | lower %}
+                {% set initial_border = '#2e7d32' %}
+                {% set initial_border_css = 'border-compliant' %}
 
-            {% if ns.crit and ns.warn %}
+                {% if co.status == 'VIOLATION' %}
+                {% set initial_border = '#d32f2f' %}
+                {% set initial_border_css = 'border-violation' %}
+                {% endif %}
+                {% if co.status == 'WATCHLIST' %}
+                {% set initial_border = '#fb8c00' %}
+                {% set initial_border_css = 'border-watchlist' %}
+                {% endif %}
+
+                {% if ns.crit and ns.warn %}
                 {% set initial_status = 'VIOLATION & WATCH' %}
                 {% set initial_class = 'status-mixed' %}
-                {% set initial_border = '#7b1fa2' %} 
-            {% endif %}
+                {% set initial_border = '#7b1fa2' %}
+                {% set initial_border_css = 'border-mixed' %}
+                {% endif %}
 
-            <div class="company-card comp-card" 
-                 data-has-critical="{{ '1' if ns.crit else '0' }}"
-                 data-has-warning="{{ '1' if ns.warn else '0' }}"
-                 data-orig-border="{{ initial_border }}"
-                 data-orig-text="{{ initial_status }}"
-                 data-orig-class="{{ initial_class }}"
-                 style="border-top: 4px solid {{ initial_border }};">
-                
-                <div class="card-header">
-                    <div class="card-title">{{ co.name }}</div>
-                    <span class="status-badge {{ initial_class }} card-badge">{{ initial_status }}</span>
-                </div>
+                {# --- METRIC COLOR LOGIC --- #}
+                {% set sol_cls = 'text-primary' %}
+                {% if co.metrics.solvency != 'N/A' and co.metrics.solvency < 1.5 %}{% set sol_cls='text-violation' %}{%
+                    endif %} {% set exp_cls='text-primary' %} {% if co.metrics.expenses !='N/A' and co.metrics.expenses>
+                    35 %}{% set exp_cls = 'text-violation' %}{% endif %}
 
-                <div class="metrics-grid">
-                    <div class="metric-cell">
-                        <span class="metric-val" style="color: {% if co.metrics.solvency != 'N/A' and co.metrics.solvency < 1.5 %}#d32f2f{% else %}#1a237e{% endif %};">
-                            {{ co.metrics.solvency }}
-                        </span>
-                        <span class="metric-label">Solvency</span>
-                    </div>
-                    <div class="metric-cell">
-                        <span class="metric-val" style="color: {% if co.metrics.expenses != 'N/A' and co.metrics.expenses > 35 %}#d32f2f{% else %}#1a237e{% endif %};">
-                            {{ co.metrics.expenses }}%
-                        </span>
-                        <span class="metric-label">EoM</span>
-                    </div>
-                    <div class="metric-cell">
-                        <span class="metric-val" style="color: {% if co.metrics.combined != 'N/A' and co.metrics.combined > 100 %}#f57f17{% else %}#333{% endif %};">
-                            {{ co.metrics.combined }}%
-                        </span>
-                        <span class="metric-label">Comb. Ratio</span>
-                    </div>
-                    <div class="metric-cell">
-                        <span class="metric-val" style="color: {% if co.metrics.claims != 'N/A' and co.metrics.claims > 90 %}#f57f17{% else %}#333{% endif %};">
-                            {{ co.metrics.claims }}%
-                        </span>
-                        <span class="metric-label">Claims Ratio</span>
-                    </div>
-                </div>
+                    {% set comb_cls = 'text-dark' %}
+                    {% if co.metrics.combined != 'N/A' and co.metrics.combined > 100 %}{% set comb_cls =
+                    'text-watchlist' %}{% endif %}
 
-                <div class="alert-area">
-                    {% if co.alerts %}
-                        {% for alert in co.alerts %}
-                            <div class="alert-item {{ 'alert-critical' if alert.level == 'critical' else 'alert-warning' }}">
-                                <i class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-exclamation-circle' }}"></i>
+                    {% set claims_cls = 'text-dark' %}
+                    {% if co.metrics.claims != 'N/A' and co.metrics.claims > 90 %}{% set claims_cls = 'text-watchlist'
+                    %}{% endif %}
+
+                    <div class="company-card comp-card {{ initial_border_css }}"
+                        data-has-critical="{{ '1' if ns.crit else '0' }}"
+                        data-has-warning="{{ '1' if ns.warn else '0' }}" data-orig-border="{{ initial_border }}"
+                        data-orig-text="{{ initial_status }}" data-orig-class="{{ initial_class }}">
+
+                        <div class="card-header">
+                            <div class="card-title">{{ co.name }}</div>
+                            <span class="status-badge {{ initial_class }} card-badge">{{ initial_status }}</span>
+                        </div>
+
+                        <div class="metrics-grid">
+                            <div class="metric-cell">
+                                <span class="metric-val {{ sol_cls }}">
+                                    {{ co.metrics.solvency }}
+                                </span>
+                                <span class="metric-label">Solvency</span>
+                            </div>
+                            <div class="metric-cell">
+                                <span class="metric-val {{ exp_cls }}">
+                                    {{ co.metrics.expenses }}%
+                                </span>
+                                <span class="metric-label">EoM</span>
+                            </div>
+                            <div class="metric-cell">
+                                <span class="metric-val {{ comb_cls }}">
+                                    {{ co.metrics.combined }}%
+                                </span>
+                                <span class="metric-label">Comb. Ratio</span>
+                            </div>
+                            <div class="metric-cell">
+                                <span class="metric-val {{ claims_cls }}">
+                                    {{ co.metrics.claims }}%
+                                </span>
+                                <span class="metric-label">Claims Ratio</span>
+                            </div>
+                        </div>
+
+                        <div class="alert-area">
+                            {% if co.alerts %}
+                            {% for alert in co.alerts %}
+                            <div
+                                class="alert-item {{ 'alert-critical' if alert.level == 'critical' else 'alert-warning' }}">
+                                <i
+                                    class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-exclamation-circle' }}"></i>
                                 <span>{{ alert.msg }}</span>
                             </div>
-                        {% endfor %}
-                    {% else %}
-                        <div style="text-align:center; color:#2e7d32; font-size:12px; padding:10px; opacity:0.8;">
-                            <i class="fas fa-check-circle" style="font-size:20px; margin-bottom:5px; display:block;"></i>
-                            All key metrics within limits.
+                            {% endfor %}
+                            {% else %}
+                            <div style="text-align:center; color:#2e7d32; font-size:12px; padding:10px; opacity:0.8;">
+                                <i class="fas fa-check-circle"
+                                    style="font-size:20px; margin-bottom:5px; display:block;"></i>
+                                All key metrics within limits.
+                            </div>
+                            {% endif %}
                         </div>
-                    {% endif %}
-                </div>
-                
-                <div class="update-tag">Data: {{ co.last_updated }}</div>
+
+                        <div class="update-tag">Data: {{ co.last_updated }}</div>
+                    </div>
+                    {% endfor %}
             </div>
-            {% endfor %}
+
+            <div style="height: 50px;"></div>
         </div>
-        
-        <div style="height: 50px;"></div>
     </div>
-</div>
 
-<script>
-    function filterMode(mode, btn) {
-        // 1. Update Button State
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+    <script>
+        function filterMode(mode, btn) {
+            // 1. Update Button State
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
 
-        const cards = document.querySelectorAll('.comp-card');
-        
-        cards.forEach(card => {
-            const hasCrit = card.getAttribute('data-has-critical') === '1';
-            const hasWarn = card.getAttribute('data-has-warning') === '1';
-            
-            const badge = card.querySelector('.card-badge');
-            const critAlerts = card.querySelectorAll('.alert-critical');
-            const warnAlerts = card.querySelectorAll('.alert-warning');
+            const cards = document.querySelectorAll('.comp-card');
 
-            // --- 1. ALL VIEW ---
-            if (mode === 'all') {
-                card.style.display = 'flex';
-                // Restore Original Mixed State
-                card.style.borderTopColor = card.getAttribute('data-orig-border');
-                badge.innerText = card.getAttribute('data-orig-text');
-                badge.className = 'status-badge card-badge ' + card.getAttribute('data-orig-class');
-                // Show Everything
-                critAlerts.forEach(el => el.style.display = 'flex');
-                warnAlerts.forEach(el => el.style.display = 'flex');
-            }
-            
-            // --- 2. VIOLATIONS TAB ---
-            else if (mode === 'critical') {
-                if (hasCrit) {
+            cards.forEach(card => {
+                const hasCrit = card.getAttribute('data-has-critical') === '1';
+                const hasWarn = card.getAttribute('data-has-warning') === '1';
+
+                const badge = card.querySelector('.card-badge');
+                const critAlerts = card.querySelectorAll('.alert-critical');
+                const warnAlerts = card.querySelectorAll('.alert-warning');
+
+                // --- 1. ALL VIEW ---
+                if (mode === 'all') {
                     card.style.display = 'flex';
-                    // Force Red Violation Look
-                    card.style.borderTopColor = '#d32f2f';
-                    badge.innerText = 'VIOLATION';
-                    badge.className = 'status-badge status-violation card-badge';
-                    // Hide Warnings
+                    // Restore Original Mixed State
+                    card.style.borderTopColor = card.getAttribute('data-orig-border');
+                    badge.innerText = card.getAttribute('data-orig-text');
+                    badge.className = 'status-badge card-badge ' + card.getAttribute('data-orig-class');
+                    // Show Everything
                     critAlerts.forEach(el => el.style.display = 'flex');
-                    warnAlerts.forEach(el => el.style.display = 'none');
-                } else {
-                    card.style.display = 'none';
-                }
-            }
-            
-            // --- 3. WATCHLIST TAB ---
-            else if (mode === 'warning') {
-                if (hasWarn) {
-                    card.style.display = 'flex';
-                    // Force Orange Watchlist Look
-                    card.style.borderTopColor = '#fb8c00';
-                    badge.innerText = 'WATCHLIST';
-                    badge.className = 'status-badge status-watchlist card-badge';
-                    // Hide Criticals
-                    critAlerts.forEach(el => el.style.display = 'none');
                     warnAlerts.forEach(el => el.style.display = 'flex');
-                } else {
-                    card.style.display = 'none';
                 }
-            }
-        });
-    }
-</script>
+
+                // --- 2. VIOLATIONS TAB ---
+                else if (mode === 'critical') {
+                    if (hasCrit) {
+                        card.style.display = 'flex';
+                        // Force Red Violation Look
+                        card.style.borderTopColor = '#d32f2f';
+                        badge.innerText = 'VIOLATION';
+                        badge.className = 'status-badge status-violation card-badge';
+                        // Hide Warnings
+                        critAlerts.forEach(el => el.style.display = 'flex');
+                        warnAlerts.forEach(el => el.style.display = 'none');
+                    } else {
+                        card.style.display = 'none';
+                    }
+                }
+
+                // --- 3. WATCHLIST TAB ---
+                else if (mode === 'warning') {
+                    if (hasWarn) {
+                        card.style.display = 'flex';
+                        // Force Orange Watchlist Look
+                        card.style.borderTopColor = '#fb8c00';
+                        badge.innerText = 'WATCHLIST';
+                        badge.className = 'status-badge status-watchlist card-badge';
+                        // Hide Criticals
+                        critAlerts.forEach(el => el.style.display = 'none');
+                        warnAlerts.forEach(el => el.style.display = 'flex');
+                    } else {
+                        card.style.display = 'none';
+                    }
+                }
+            });
+        }
+    </script>
 
 </body>
+
 </html>

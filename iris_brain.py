@@ -1,4 +1,5 @@
-import pandas as pd
+import sqlite3
+import pandas as pd # type: ignore
 import os
 import re
 import glob
@@ -7,24 +8,23 @@ import io  # Required for Excel Export
 
 # --- NLTK SETUP ---
 try:
-    from nltk.stem import PorterStemmer
+    from nltk.stem import PorterStemmer # type: ignore
     stemmer = PorterStemmer()
     USE_NLTK = True
-    print("✅ NLTK loaded.")
+    print("[+] NLTK loaded.")
 except ImportError:
     USE_NLTK = False
-    print("⚠️ NLTK not found. Using manual stemmer.")
+    print("[!] NLTK not found. Using manual stemmer.")
 
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
+DB_NAME = "iris.db"
 KB_FOLDER = "knowledge_base"
 RAW_SUBMISSIONS_FOLDER = os.path.join(KB_FOLDER, "raw_submissions")
-MASTER_DATA_FOLDER = os.path.join(KB_FOLDER, "master_data")
-MASTER_FILE = os.path.join(MASTER_DATA_FOLDER, "unified_database.csv")
 
+# Ensure folders exist (for admin upload staging)
 if not os.path.exists(RAW_SUBMISSIONS_FOLDER): os.makedirs(RAW_SUBMISSIONS_FOLDER)
-if not os.path.exists(MASTER_DATA_FOLDER): os.makedirs(MASTER_DATA_FOLDER)
 
 DOC_HIERARCHY = { "ACT": 1, "REGULATION": 2, "MASTER": 3, "CIRCULAR": 4, "GUIDELINE": 5, "UNKNOWN": 99 }
 GREETINGS = { "hi", "hello", "hey", "iris", "help", "greetings" }
@@ -78,7 +78,7 @@ def get_doc_type(filename):
     return "UNKNOWN"
 
 # ==========================================
-# 3. KNOWLEDGE BASE LOADER (TEXT)
+# 3. KNOWLEDGE BASE LOADER (SQL INTEGRATED)
 # ==========================================
 ALL_UNIQUE_TAGS = set()
 ALL_DOC_NAMES = set()
@@ -88,64 +88,62 @@ KNOWN_VOCAB = set()
 def load_knowledge_base(force_reload=False):
     global ALL_UNIQUE_TAGS, ALL_DOC_NAMES, TAG_INGREDIENTS, KNOWN_VOCAB
     
+    # Pre-load financial data if needed
     if force_reload: load_master_data_engine()
-    if not UNIFIED_DF.empty and force_reload: return UNIFIED_DF
 
-    ALL_UNIQUE_TAGS.clear(); ALL_DOC_NAMES.clear(); TAG_INGREDIENTS.clear(); KNOWN_VOCAB.clear()
-    
-    for k in SYNONYM_MAP.keys(): KNOWN_VOCAB.add(k)
-    for v_list in SYNONYM_MAP.values(): 
-        for v in v_list: KNOWN_VOCAB.add(v)
-    
-    all_files = glob.glob(os.path.join(KB_FOLDER, "*.xlsx"))
-    master_df = pd.DataFrame()
-    
-    for file_path in all_files:
-        if os.path.basename(file_path).startswith("~$"): continue
-        if "raw_submissions" in file_path or "master_data" in file_path: continue
+    # 1. Fetch from SQL
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        # Load directly into DataFrame
+        df = pd.read_sql_query("SELECT * FROM regulatory_clauses", conn)
+        conn.close()
+    except Exception as e:
+        print(f"[!] Error loading regulatory_clauses from DB: {e}")
+        return pd.DataFrame()
+
+    if df.empty: return df
+
+    # 2. Map SQL columns to Application Logic (PascalCase)
+    df = df.rename(columns={
+        "source_doc": "Source_Doc",
+        "doc_category": "Doc_Category",
+        "doc_type": "Doc_Type",
+        "clause_id": "Clause_ID",
+        "clause_text": "Clause_Text",
+        "context_header": "Context_Header",
+        "regulatory_tags": "Regulatory_Tags",
+        "priority": "Priority",
+        "is_header": "Is_Header"
+    })
+
+    # 3. Build Vocab / Tags (Only if not already built)
+    if not ALL_UNIQUE_TAGS or force_reload:
+        ALL_UNIQUE_TAGS.clear(); ALL_DOC_NAMES.clear(); TAG_INGREDIENTS.clear(); KNOWN_VOCAB.clear()
         
-        try:
-            df = pd.read_excel(file_path).fillna("")
-            clean_filename = os.path.basename(file_path).replace(".xlsx", "").replace("_", " ").upper()
-            
-            if "HEALTH" in clean_filename or "PRODUCT" in clean_filename: category = "HEALTH"
-            elif "LIFE" in clean_filename: category = "LIFE"
-            else: category = "OTHER"
-            
-            ALL_DOC_NAMES.add(clean_filename.title())
-
-            if "Regulatory_Tags" in df.columns:
-                for row_tags in df["Regulatory_Tags"].dropna().astype(str).tolist():
-                    for tag in [t.strip().lower() for t in row_tags.split(",")]:
-                        clean_tag = tag.replace("_", " ")
-                        if len(clean_tag) < 2: continue
-                        ALL_UNIQUE_TAGS.add(clean_tag)
-                        ingredients = set()
-                        for w in clean_tag.split():
-                            if w in STOP_WORDS: continue
-                            KNOWN_VOCAB.add(w) 
-                            ingredients.add(get_stem(w))
-                        if ingredients: TAG_INGREDIENTS[clean_tag] = ingredients
-
-            df["Source_Doc"] = clean_filename
-            df["Doc_Category"] = category
-            df["Doc_Type"] = get_doc_type(clean_filename)
-            df["Priority"] = DOC_HIERARCHY.get(df["Doc_Type"].iloc[0], 99)
-            df["Context_Header"] = ""; df["Is_Header"] = False
-            
-            current_header = "General"
-            for idx, row in df.iterrows():
-                text = str(row.get("Clause_Text", "")).strip()
-                if (text.lower().startswith("chapter") or text.lower().startswith("part")) and len(text) < 120:
-                    current_header = text.split("\n")[0]
-                    df.at[idx, "Is_Header"] = True
-                df.at[idx, "Context_Header"] = current_header
-            
-            master_df = pd.concat([master_df, df], ignore_index=True)
-        except: continue
+        # Load Synonyms
+        for k in SYNONYM_MAP.keys(): KNOWN_VOCAB.add(k)
+        for v_list in SYNONYM_MAP.values(): 
+            for v in v_list: KNOWN_VOCAB.add(v)
         
-    load_master_data_engine()
-    return master_df
+        # Process Tags from DB
+        for idx, row in df.iterrows():
+            ALL_DOC_NAMES.add(row["Source_Doc"])
+            row_tags = str(row["Regulatory_Tags"])
+            
+            if row_tags:
+                for tag in [t.strip().lower() for t in row_tags.split(",")]:
+                    clean_tag = tag.replace("_", " ")
+                    if len(clean_tag) < 2: continue
+                    ALL_UNIQUE_TAGS.add(clean_tag)
+                    
+                    ingredients = set()
+                    for w in clean_tag.split():
+                        if w in STOP_WORDS: continue
+                        KNOWN_VOCAB.add(str(w)) 
+                        ingredients.add(get_stem(w))
+                    if ingredients: TAG_INGREDIENTS[clean_tag] = ingredients
+
+    return df
 
 def get_autocomplete_data():
     vocab = {"CONCEPTS": []}
@@ -160,8 +158,9 @@ def get_autocomplete_data():
 # ==========================================
 # 4. TEXT SEARCH LOGIC
 # ==========================================
-def filter_df_by_module(df, module):
-    if df is None or df.empty: return df
+def filter_df_by_module(df, module) -> pd.DataFrame:
+    if df is None: return pd.DataFrame()
+    if df.empty: return df
     if module == "health": return df[df["Doc_Category"] == "HEALTH"]
     elif module == "life": return df[df["Doc_Category"] == "LIFE"]
     elif module == "data": return pd.DataFrame(columns=df.columns)
@@ -206,7 +205,7 @@ def sort_matches(matches):
     return sorted(matches, key=lambda x: (x['priority'], x['source'], x['id']))
 
 def search_tags_only(keyword_tuples, df, module="universal"):
-    scoped_df = filter_df_by_module(df, module)
+    scoped_df: pd.DataFrame = filter_df_by_module(df, module)
     if scoped_df.empty: return []
 
     matches = []
@@ -240,7 +239,7 @@ def search_tags_only(keyword_tuples, df, module="universal"):
     return sort_matches(matches)
 
 def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):
-    scoped_df = filter_df_by_module(df, module)
+    scoped_df: pd.DataFrame = filter_df_by_module(df, module)
     if scoped_df.empty: return []
 
     search_stems = set()
@@ -248,10 +247,10 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):
         if clean not in STOPWORDS_STRONG:
             search_stems.add(get_stem(clean))
             if clean in SYNONYM_MAP:
-                for syn in SYNONYM_MAP[clean]:
+                for syn in SYNONYM_MAP[str(clean)]:
                     search_stems.add(get_stem(syn))
 
-    exclude_set = set(exclude_ids) if exclude_ids else set()
+    exclude_set: set[str] = set(exclude_ids) if exclude_ids else set()
     matches = []
     
     for _, row in scoped_df.iterrows():
@@ -298,7 +297,7 @@ def _analyze_risk(selected_insurers):
         # We need at least 3 points to establish a "Trend" (e.g. 25 -> 30 -> 34)
         if len(group) < 3: 
             # Fallback to single latest value check
-            latest = group.iloc[-1]
+            latest = group.iloc[-1] # type: ignore
             val = latest['Value']
             
             # Simple threshold checks
@@ -311,7 +310,7 @@ def _analyze_risk(selected_insurers):
             continue
 
         # Get last 3 values for trend
-        last_3 = group.tail(3)
+        last_3 = group.tail(3) # type: ignore
         vals = [float(str(v).replace(',','')) for v in last_3['Value'].tolist()]
         years = last_3['Financial_Year'].tolist()
 
@@ -340,58 +339,97 @@ def _analyze_risk(selected_insurers):
     return alerts
 
 # ==========================================
-# 6. DATA INTELLIGENCE ENGINE
+# 6. DATA INTELLIGENCE ENGINE (SQL INTEGRATED)
 # ==========================================
 def aggregate_submissions():
+    """
+    Reads Excel files from raw_submissions and INSERTs them into SQL DB.
+    """
     all_files = glob.glob(os.path.join(RAW_SUBMISSIONS_FOLDER, "*.xlsx"))
     
     if not all_files: 
-        if os.path.exists(MASTER_FILE):
-            load_master_data_engine()
-            return "✅ No new input files. Reloaded existing Master Database (Manual Mode)."
-        return "❌ No files found in 'raw_submissions' and no Master Database found."
+        return "[-] No new files found in 'raw_submissions'."
 
-    merged_list = []
-    for file in all_files:
-        try:
+    total_rows: int = 0
+    total_files: int = 0
+
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        for file in all_files:
             if os.path.basename(file).startswith("~$"): continue
-            df = pd.read_excel(file)
-            df.columns = [c.strip().replace(" ", "_") for c in df.columns]
-            merged_list.append(df)
-        except Exception as e: print(f"⚠️ Failed to read {file}: {e}")
+            
+            try:
+                df = pd.read_excel(file)
+                # Standardize columns to match SQL
+                df.columns = [col.strip().replace(" ", "_").lower() for col in df.columns]
+                
+                rows_to_insert = []
+                for _, row in df.iterrows():
+                    rows_to_insert.append((
+                        row.get('insurer'), 
+                        str(row.get('financial_year')).replace('.0',''), 
+                        row.get('quarter', 'Annual'), 
+                        row.get('metric'), 
+                        row.get('value'), 
+                        row.get('line_of_business', 'General'), 
+                        row.get('class_of_business', 'General')
+                    ))
+                
+                c.executemany('''
+                    INSERT INTO financial_metrics (insurer, financial_year, quarter, metric, value, line_of_business, class_of_business)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', rows_to_insert)
+                
+                total_files = total_files + 1 # type: ignore
+                total_rows = total_rows + len(rows_to_insert) # type: ignore
+                
+            except Exception as e:
+                print(f"[!] Error processing {file}: {e}")
 
-    if merged_list:
-        final_df = pd.concat(merged_list, ignore_index=True)
-        final_df.to_csv(MASTER_FILE, index=False)
-        global UNIFIED_DF
-        UNIFIED_DF = final_df
+        conn.commit()
+        conn.close()
+        
+        # Reload the engine to reflect new data
         load_master_data_engine()
-        return f"✅ Success! Merged {len(all_files)} files into {len(final_df)} rows."
-    
-    return "Error: Could not merge files."
+        return f"[+] Success! Synced {total_files} files ({total_rows} rows) into SQL Database."
+
+    except Exception as e:
+        return f"Error syncing data: {e}"
 
 def load_master_data_engine():
     global UNIFIED_DF
-    if os.path.exists(MASTER_FILE):
-        try:
-            UNIFIED_DF = pd.read_csv(MASTER_FILE)
-            
-            if 'Quarter' in UNIFIED_DF.columns: UNIFIED_DF['Quarter'] = UNIFIED_DF['Quarter'].replace('-', 'Annual').fillna('Annual')
-            if 'Line_of_Business' in UNIFIED_DF.columns: UNIFIED_DF['Line_of_Business'] = UNIFIED_DF['Line_of_Business'].fillna('General')
-            if 'Class_of_Business' in UNIFIED_DF.columns: UNIFIED_DF['Class_of_Business'] = UNIFIED_DF['Class_of_Business'].fillna('General')
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        # Load all metrics into memory (pandas is fast enough for <1M rows)
+        UNIFIED_DF = pd.read_sql_query("SELECT * FROM financial_metrics", conn)
+        conn.close()
 
-            for col in ['Insurer', 'Financial_Year', 'Quarter', 'Metric', 'Class_of_Business']:
-                if col in UNIFIED_DF.columns:
-                    UNIFIED_DF[col] = UNIFIED_DF[col].astype(str).str.strip()
-                    if col == 'Financial_Year': UNIFIED_DF[col] = UNIFIED_DF[col].str.replace(r'\.0$', '', regex=True)
+        if UNIFIED_DF.empty:
+            print("[!] SQL Database 'financial_metrics' is empty.")
+            return
 
-            if 'Value' in UNIFIED_DF.columns:
-                UNIFIED_DF['Value'] = UNIFIED_DF['Value'].astype(str).str.replace(',', '')
-                UNIFIED_DF['Value'] = pd.to_numeric(UNIFIED_DF['Value'], errors='coerce')
+        # Map SQL columns (snake_case) to Application (PascalCase)
+        UNIFIED_DF = UNIFIED_DF.rename(columns={
+            "insurer": "Insurer",
+            "financial_year": "Financial_Year",
+            "quarter": "Quarter",
+            "metric": "Metric",
+            "value": "Value",
+            "line_of_business": "Line_of_Business",
+            "class_of_business": "Class_of_Business"
+        })
 
-            print(f"📊 Data Engine Loaded: {len(UNIFIED_DF)} rows.")
-        except Exception as e: print(f"⚠️ Error loading master data: {e}"); UNIFIED_DF = pd.DataFrame()
-    else: print("⚠️ No Master Data found.")
+        # Ensure correct types
+        UNIFIED_DF['Value'] = pd.to_numeric(UNIFIED_DF['Value'], errors='coerce')
+        for col in ['Insurer', 'Financial_Year', 'Quarter', 'Metric', 'Class_of_Business']:
+            UNIFIED_DF[col] = UNIFIED_DF[col].astype(str).str.strip()
+
+        print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
+        
+    except Exception as e:
+        print(f"[!] Error loading SQL data: {e}")
+        UNIFIED_DF = pd.DataFrame()
 
 def get_filter_options():
     if UNIFIED_DF.empty: return {"insurers": [], "metrics": [], "years": [], "quarters": [], "lobs": [], "classes": []}
@@ -433,8 +471,8 @@ def _create_pivoted_view(filters):
         
         new_cols = []
         for c in pivot_df.columns:
-            if c in UNIT_MAP: new_cols.append(f"{c} ({UNIT_MAP[c]})")
-            else: new_cols.append(c)
+            if str(c) in UNIT_MAP: new_cols.append(f"{c} ({UNIT_MAP[str(c)]})")
+            else: new_cols.append(str(c))
         pivot_df.columns = new_cols
         
         return pivot_df.fillna('-'), missing_alerts, risk_alerts
@@ -474,7 +512,10 @@ def get_compliance_dashboard(target_year=None):
     """
     Analyzes data against thresholds AND historical trends.
     """
-    df = load_knowledge_base(force_reload=True)
+    # FIX: Use the Financial Data Engine (UNIFIED_DF), not the Text Loader
+    load_master_data_engine()
+    df = UNIFIED_DF
+    
     if df.empty: return []
 
     # 1. Base Filter for target year (for the 'Current Values')
