@@ -1,98 +1,146 @@
+<style>
+    .alert-base {
+        padding: 8px 12px;
+        margin-bottom: 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .alert-crit {
+        background: #ffebee;
+        color: #b71c1c;
+        border-left: 4px solid #b71c1c;
+    }
+
+    .alert-warn {
+        background: #fff3e0;
+        color: #e65100;
+        border-left: 4px solid #fb8c00;
+    }
+
+    .th-style {
+        background: #eef2f6;
+        color: #1a237e;
+        padding: 12px 15px;
+        border-bottom: 2px solid #ddd;
+        border-right: 1px solid #eee;
+        font-size: 13px;
+        text-align: left;
+        white-space: nowrap;
+    }
+
+    .td-style {
+        padding: 10px 15px;
+        border-bottom: 1px solid #eee;
+        border-right: 1px solid #eee;
+        font-size: 13px;
+        color: #333;
+        white-space: nowrap;
+        background: #fff;
+    }
+
+    .fw-bold {
+        font-weight: 600;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(5px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
 {% if report.risks %}
-    <div style="background-color: #fff5f5; border: 1px solid #ffcccc; border-radius: 8px; margin-bottom: 20px; padding: 15px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <i class="fas fa-radiation-alt" style="color: #d32f2f; font-size: 18px;"></i>
-            <strong style="color: #d32f2f; font-size: 14px; text-transform: uppercase;">IRIS Early Warning System</strong>
-        </div>
-        <div style="max-height: 150px; overflow-y: auto;">
-            {% for alert in report.risks %}
-                <div style="padding: 8px 12px; margin-bottom: 6px; border-radius: 4px; font-size: 12px; font-weight: 500;
-                    {% if alert.level == 'critical' %} background: #ffebee; color: #b71c1c; border-left: 4px solid #b71c1c;
-                    {% else %} background: #fff3e0; color: #e65100; border-left: 4px solid #fb8c00; {% endif %}">
-                    {% if alert.level == 'critical' %} <i class="fas fa-times-circle"></i>
-                    {% else %} <i class="fas fa-chart-line"></i> {% endif %}
-                    {{ alert.msg }}
-                </div>
-            {% endfor %}
-        </div>
+<div
+    style="background-color: #fff5f5; border: 1px solid #ffcccc; border-radius: 8px; margin-bottom: 20px; padding: 15px;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <i class="fas fa-radiation-alt" style="color: #d32f2f; font-size: 18px;"></i>
+        <strong style="color: #d32f2f; font-size: 14px; text-transform: uppercase;">IRIS Early Warning System</strong>
     </div>
+    <div style="max-height: 150px; overflow-y: auto;">
+        {% for alert in report.risks %}
+        <div class="alert-base {{ 'alert-crit' if alert.level == 'critical' else 'alert-warn' }}">
+            {% if alert.level == 'critical' %} <i class="fas fa-times-circle"></i>
+            {% else %} <i class="fas fa-chart-line"></i> {% endif %}
+            {{ alert.msg }}
+        </div>
+        {% endfor %}
+    </div>
+</div>
 {% endif %}
 
 {% if report.missing %}
-    <div style="background-color: #fff3cd; color: #856404; padding: 12px; border: 1px solid #ffeeba; border-radius: 8px; margin-bottom: 20px; font-size: 12px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-            <i class="fas fa-info-circle"></i> <strong>Data Gaps Detected</strong>
-        </div>
-        <ul style="margin: 5px 0 0 25px; padding: 0; list-style-type: disc;">
-            {% for msg in report.missing %} <li>{{ msg }}</li> {% endfor %}
-        </ul>
+<div
+    style="background-color: #fff3cd; color: #856404; padding: 12px; border: 1px solid #ffeeba; border-radius: 8px; margin-bottom: 20px; font-size: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+        <i class="fas fa-info-circle"></i> <strong>Data Gaps Detected</strong>
     </div>
+    <ul style="margin: 5px 0 0 25px; padding: 0; list-style-type: disc;">
+        {% for msg in report.missing %} <li>{{ msg }}</li> {% endfor %}
+    </ul>
+</div>
 {% endif %}
 
 {% if not report.rows %}
-    <div style="text-align: center; padding: 40px; color: #888; border: 1px dashed #ccc; border-radius: 8px; background: #fafafa;">
-        <i class="fas fa-folder-open" style="font-size: 24px; margin-bottom: 10px; color: #bbb;"></i><br>
-        No matching records found.
-    </div>
+<div
+    style="text-align: center; padding: 40px; color: #888; border: 1px dashed #ccc; border-radius: 8px; background: #fafafa;">
+    <i class="fas fa-folder-open" style="font-size: 24px; margin-bottom: 10px; color: #bbb;"></i><br>
+    No matching records found.
+</div>
 {% else %}
-    <div class="data-table-wrapper" style="animation: fadeIn 0.3s ease-out; border:1px solid #eee; border-radius:8px; background: white; max-width: 100%;">
-        
-        <div style="padding: 10px 15px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <strong style="color: #1a237e; font-size: 13px; text-transform: uppercase;">Financial Report</strong>
-                <span style="font-size: 11px; color: #999;">{{ report.rows|length }} rows</span>
-            </div>
-            <div style="display:flex; gap:8px;">
-                <button onclick="copyTableToClipboard()" style="background:white; border:1px solid #ccc; color:#555; font-size:12px; padding:6px 12px; border-radius:4px; cursor:pointer;"><i class="fas fa-copy"></i> Copy</button>
-                <button onclick="downloadExcel()" style="background:#1d6f42; border:none; color:white; font-size:12px; padding:6px 12px; border-radius:4px; cursor:pointer;"><i class="fas fa-file-excel"></i> Excel</button>
-            </div>
+<div class="data-table-wrapper"
+    style="animation: fadeIn 0.3s ease-out; border:1px solid #eee; border-radius:8px; background: white; max-width: 100%;">
+
+    <div
+        style="padding: 10px 15px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <strong style="color: #1a237e; font-size: 13px; text-transform: uppercase;">Financial Report</strong>
+            <span style="font-size: 11px; color: #999;">{{ report.rows|length }} rows</span>
         </div>
-        
-        <div style="overflow-x: auto; width: 100%; display: block; max-width: calc(100vw - 340px);">
-            
-            <table class="iris-data-table" id="exportTable" style="width: max-content; border-collapse: separate; border-spacing: 0;">
-                <thead>
-                    <tr>
-                        {% for col in report.columns %}
-                            <th style="
-                                background: #eef2f6; 
-                                color: #1a237e; 
-                                padding: 12px 15px; 
-                                border-bottom: 2px solid #ddd; 
-                                border-right: 1px solid #eee;
-                                font-size: 13px; 
-                                text-align: left;
-                                white-space: nowrap; /* Forces wide columns */
-                            ">
-                                {{ col | replace('_', ' ') }}
-                            </th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in report.rows %}
-                    <tr>
-                        {% for col in report.columns %}
-                            <td style="
-                                padding: 10px 15px; 
-                                border-bottom: 1px solid #eee; 
-                                border-right: 1px solid #eee;
-                                font-size: 13px;
-                                color: #333;
-                                white-space: nowrap; /* Forces wide columns */
-                                background: #fff;
-                                {% if loop.index <= 4 %} font-weight: 600; {% endif %}
-                            ">
-                                {{ row[col] }}
-                            </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div style="display:flex; gap:8px;">
+            <button onclick="copyTableToClipboard()"
+                style="background:white; border:1px solid #ccc; color:#555; font-size:12px; padding:6px 12px; border-radius:4px; cursor:pointer;"><i
+                    class="fas fa-copy"></i> Copy</button>
+            <button onclick="downloadExcel()"
+                style="background:#1d6f42; border:none; color:white; font-size:12px; padding:6px 12px; border-radius:4px; cursor:pointer;"><i
+                    class="fas fa-file-excel"></i> Excel</button>
         </div>
     </div>
-    
-    <div style="height: 50px;"></div>
-    <style> @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } } </style>
+
+    <div style="overflow-x: auto; width: 100%; display: block; max-width: calc(100vw - 340px);">
+
+        <table class="iris-data-table" id="exportTable"
+            style="width: max-content; border-collapse: separate; border-spacing: 0;">
+            <thead>
+                <tr>
+                    {% for col in report.columns %}
+                    <th class="th-style">
+                        {{ col | replace('_', ' ') }}
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report.rows %}
+                <tr>
+                    {% for col in report.columns %}
+                    <td class="td-style {{ 'fw-bold' if loop.index <= 4 else '' }}">
+                        {{ row[col] }}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div style="height: 50px;"></div>
 {% endif %}

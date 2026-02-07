@@ -1,57 +1,52 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify # type: ignore
 import re
-import pandas as pd
+import pandas as pd # type: ignore
 import io
 import os
 import json
 import time
 import traceback
+import sqlite3
 from datetime import datetime
-import iris_brain as brain
+import iris_brain as brain # type: ignore
 
 app = Flask(__name__)
 
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
-LOG_FILE = "iris_system_logs.json"
+DB_NAME = "iris.db"
 
 # ==========================================
 # 0. SYSTEM ANALYTICS (MIDDLEWARE)
 # ==========================================
 
-# Ensure log file exists
-if not os.path.exists(LOG_FILE):
-    with open(LOG_FILE, 'w') as f:
-        json.dump([], f)
-
 def log_interaction(status_code, error_msg=None):
     """
-    Records every request to the black box (iris_system_logs.json).
+    Records every request to the SQLite database (system_logs table).
     Filters out static assets and favicons to keep analytics clean.
     """
     # --- FILTER: Ignore static files AND favicon ---
     if request.path.startswith('/static') or request.path == '/favicon.ico': 
         return
     
-    entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "endpoint": request.path,
-        "method": request.method,
-        "ip": request.remote_addr,
-        "status": status_code,
-        "error": error_msg
-    }
-    
     try:
-        with open(LOG_FILE, 'r+') as f:
-            try:
-                data = json.load(f)
-            except json.JSONDecodeError:
-                data = []
-            
-            data.append(entry)
-            f.seek(0)
-            json.dump(data, f, indent=4)
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        c.execute('''
+            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            request.path,
+            request.method,
+            request.remote_addr,
+            status_code,
+            error_msg
+        ))
+        
+        conn.commit()
+        conn.close()
     except Exception as e:
         print(f"Logging Failed: {e}") 
 
@@ -83,21 +78,18 @@ def handle_crash(e):
 @app.route("/clear_logs", methods=["POST"])
 def clear_logs():
     """
-    Wipes ONLY crashes and favicon noise from the log file.
+    Wipes ONLY crashes and favicon noise from the database.
     Keeps legitimate user traffic stats intact.
     """
     try:
-        with open(LOG_FILE, 'r') as f:
-            logs = json.load(f)
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
         
-        # Filter logic: Keep logs where (Status < 500) AND (Endpoint != favicon)
-        cleaned_logs = [
-            l for l in logs 
-            if l.get('status', 200) < 500 and l.get('endpoint') != '/favicon.ico'
-        ]
+        # Delete logs where status is 500+ OR endpoint is favicon
+        c.execute("DELETE FROM system_logs WHERE status >= 500 OR endpoint = '/favicon.ico'")
         
-        with open(LOG_FILE, 'w') as f:
-            json.dump(cleaned_logs, f, indent=4)
+        conn.commit()
+        conn.close()
             
     except Exception as e:
         print(f"Error clearing logs: {e}")
@@ -203,13 +195,22 @@ def compliance_dashboard():
                            active_year=selected_year if selected_year else "Latest",
                            active_module="compliance")
 
-# --- ANALYTICS ROUTE ---
+# --- ANALYTICS ROUTE (SQL INTEGRATED) ---
 @app.route("/analytics")
 def analytics_dashboard():
+    logs = []
     try:
-        with open(LOG_FILE, 'r') as f:
-            logs = json.load(f)
-    except:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row # This enables column access by name
+        c = conn.cursor()
+        c.execute("SELECT * FROM system_logs ORDER BY id DESC")
+        rows = c.fetchall()
+        
+        # Convert sqlite3.Row objects to dicts for easy processing
+        logs = [dict(row) for row in rows]
+        conn.close()
+    except Exception as e:
+        print(f"DB Error in Analytics: {e}")
         logs = []
 
     # --- 1. PRE-PROCESS LOGS ---
@@ -219,7 +220,7 @@ def analytics_dashboard():
     # --- 2. CALCULATE BASIC STATS ---
     total_requests = len(valid_logs)
     unique_users = len(set(l['ip'] for l in valid_logs))
-    errors = [l for l in valid_logs if l['status'] >= 500]
+    errors: list[dict] = [l for l in valid_logs if l['status'] >= 500]
     error_count = len(errors)
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
@@ -287,7 +288,7 @@ def analytics_dashboard():
     # Render template with all processed data
     return render_template("analytics.html", 
                            stats={"total": total_requests, "users": unique_users, "errors": error_count},
-                           logs=errors[::-1], 
+                           logs=errors, # type: ignore 
                            chart={"labels": chart_labels, "data": chart_data},
                            monthly={"labels": monthly_labels, "data": monthly_data},
                            yearly=yearly_stats,
@@ -314,6 +315,7 @@ def handle_search(active_module):
     """
     global CHAT_HISTORY, JUST_REDIRECTED
 
+    # Brain now handles SQL retrieval internally
     KB_DF = brain.load_knowledge_base()
     vocab = brain.get_autocomplete_data()
 
@@ -401,31 +403,46 @@ def handle_search(active_module):
 # =========================================================
 
 def build_chips_html(kw_tuples, original_query):
-    """Generates the 'Deep Scan' buttons for keywords."""
+    """
+    Generates the 'Deep Scan' buttons.
+    FIX: Removes redundant 'Phrase Search' if it matches a single keyword.
+    """
+    if not kw_tuples: return ""
+
     html = """<hr><div style="font-size:12px; color:#666; margin-bottom:8px;">
             Not finding what you need? <strong>Deep Scan specific terms:</strong></div>
             <div style="display: flex; flex-wrap: wrap; gap: 6px;">"""
     
-    # Chip for each individual keyword
+    # Track what we have shown to avoid duplicates
+    shown_labels = set()
+
+    # 1. Chips for individual keywords
     for raw, clean in kw_tuples:
+        label = f'Search "{raw}"'
+        if label in shown_labels: continue
+        
         payload = f"{raw}|{clean}"
         html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{payload}">
                 <button type="submit" style="background:#e8eaf6; border:1px solid #3f51b5; color:#1a237e; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
-                Search "{raw}"</button></form>"""
+                {label}</button></form>"""
+        shown_labels.add(label)
     
-    # Chip for the Exact Phrase (if multi-word)
-    clean_original = " ".join(original_query.split())
-    if len(clean_original.split()) > 1:
+    # 2. Chip for the Exact Phrase (ONLY if multi-word AND not already shown)
+    clean_original = " ".join(original_query.split()).strip()
+    phrase_label = f'Search Phrase "{clean_original}"'
+    
+    if len(clean_original.split()) > 1 and phrase_label not in shown_labels:
         html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
                 <button type="submit" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:6px 12px; border-radius:16px; font-weight:700; font-size:11px; cursor:pointer;">
-                Search Phrase "{clean_original}"</button></form>"""
+                {phrase_label}</button></form>"""
     
-    # Chip for 'Search All' (combined)
+    # 3. Chip for 'Search All' (combined) - Only if we have multiple distinct keywords
     if len(kw_tuples) > 1:
         all_payload = "||".join([f"{t[0]}|{t[1]}" for t in kw_tuples])
         html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{all_payload}">
                 <button type="submit" style="background:#fff; border:1px solid #999; color:#666; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
                 Search All</button></form>"""
+                
     html += "</div>"
     return html
 
@@ -447,9 +464,9 @@ def highlight_keywords(text, keywords):
 def convert_markdown_to_html(text):
     """Simple parser to handle basic Markdown tables and line breaks."""
     lines = text.splitlines()
-    new_lines = []
+    new_lines: list[str] = []
     in_table = False
-    table_rows = []
+    table_rows: list[str] = []
     
     def flush_table(rows):
         if not rows: return ""
@@ -484,7 +501,7 @@ def format_verbatim(raw_text, keywords):
     if not raw_text: return ""
     text_with_tables = convert_markdown_to_html(raw_text)
     lines = text_with_tables.splitlines()
-    bolded_lines = []
+    bolded_lines: list[str] = []
     for line in lines:
         if line.strip().startswith("<table"): bolded_lines.append(line)
         elif line.strip().endswith(":"): bolded_lines.append(f"<strong>{line}</strong>")
@@ -494,7 +511,10 @@ def format_verbatim(raw_text, keywords):
     return f'<div style="white-space: pre-wrap; font-family: inherit;">{final_text}</div>'
 
 def build_results_html(matches, keywords):
-    """Constructs the HTML card for each search result."""
+    """
+    Constructs the HTML card for each search result.
+    FIX: Makes PDF lookup case-insensitive.
+    """
     html = ""
     current_doc_type = None
     
@@ -510,9 +530,15 @@ def build_results_html(matches, keywords):
             
         formatted_body = format_verbatim(m['raw_text'], keywords)
         
-        # PDF Button Logic
-        pdf_path = PDF_MAP.get(m['source'], "#")
-        pdf_btn = f"<a href='/static/{pdf_path}' target='_blank' style='float:right;font-size:10px;font-weight:bold;text-decoration:none;color:#333;background:#fff;padding:2px 6px;border:1px solid #ccc;border-radius:3px;'>PDF ↗</a>" if pdf_path != "#" else ""
+        # --- FIX: Case-Insensitive PDF Lookup ---
+        doc_name_key = m['source'].strip().upper()
+        pdf_path = PDF_MAP.get(doc_name_key, "#")
+        
+        pdf_btn = ""
+        if pdf_path != "#":
+            pdf_btn = f"""<a href='/static/{pdf_path}' target='_blank' 
+                        style='float:right; margin-left:8px; font-size:10px; font-weight:bold; text-decoration:none; color:#d32f2f; background:#fff; padding:2px 6px; border:1px solid #d32f2f; border-radius:3px;'>
+                        <i class="fas fa-file-pdf"></i> PDF</a>"""
         
         # Copy Button Logic
         content_id = f"clause_text_{i}"
