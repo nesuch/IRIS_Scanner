@@ -504,6 +504,10 @@ def generate_excel(filters):
 # ==========================================
 
 def get_compliance_years():
+    # FIX: Ensure data is loaded before trying to list years
+    if UNIFIED_DF.empty: 
+        load_master_data_engine()
+
     if UNIFIED_DF.empty: return []
     if 'Financial_Year' not in UNIFIED_DF.columns: return []
     return sorted(UNIFIED_DF['Financial_Year'].dropna().unique().tolist(), reverse=True)
