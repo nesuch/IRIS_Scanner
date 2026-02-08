@@ -277,24 +277,28 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):
 # ==========================================
 # 5. EARLY WARNING SYSTEM (RISK LOGIC - TRENDS)
 # ==========================================
-def _analyze_risk(selected_insurers):
+def _analyze_risk(selected_entities, dimension):
     """
     Applies thresholds AND trend analysis for Data Explorer alerts.
+    Only applicable if Dimension is 'Insurer'.
     """
-    if UNIFIED_DF.empty or not selected_insurers: return []
+    if UNIFIED_DF.empty or not selected_entities: return []
+    # If looking at States or Sectors, standard Insurer alerts (Solvency, etc.) don't apply directly
+    if dimension != "Insurer": return []
     
     alerts = []
-    df = UNIFIED_DF[UNIFIED_DF['Insurer'].isin(selected_insurers)].copy()
+    # Filter by specific Entities (Insurers)
+    df = UNIFIED_DF[UNIFIED_DF['Entity'].isin(selected_entities)].copy()
     
     # Ensure correct sorting for trend analysis
     df['Sortable_Year'] = df['Financial_Year'].astype(str).str.extract(r'(\d+)').astype(float)
-    df = df.sort_values(by=['Insurer', 'Metric', 'Sortable_Year', 'Quarter'])
+    df = df.sort_values(by=['Entity', 'Metric', 'Sortable_Year', 'Quarter'])
 
     SAHI_INSURERS = ["Star", "Care", "Aditya Birla", "Niva Bupa", "Manipal", "Galaxy", "Narayana"]
 
     # 1. GROUP BY INSURER & METRIC TO CHECK TRENDS
-    for (insurer, metric), group in df.groupby(['Insurer', 'Metric']):
-        # We need at least 3 points to establish a "Trend" (e.g. 25 -> 30 -> 34)
+    for (entity, metric), group in df.groupby(['Entity', 'Metric']):
+        # We need at least 3 points to establish a "Trend"
         if len(group) < 3: 
             # Fallback to single latest value check
             latest = group.iloc[-1] # type: ignore
@@ -302,11 +306,11 @@ def _analyze_risk(selected_insurers):
             
             # Simple threshold checks
             if "Solvency" in metric and val < 1.5:
-                alerts.append({"level": "critical", "msg": f"{insurer}: Solvency {val} < 1.5."})
+                alerts.append({"level": "critical", "msg": f"{entity}: Solvency {val} < 1.5."})
             elif "Expense" in metric:
-                limit = 35 if any(s in insurer for s in SAHI_INSURERS) else 30
+                limit = 35 if any(s in entity for s in SAHI_INSURERS) else 30
                 if val > limit:
-                    alerts.append({"level": "critical", "msg": f"{insurer}: EoM {val}% exceeds limit."})
+                    alerts.append({"level": "critical", "msg": f"{entity}: EoM {val}% exceeds limit."})
             continue
 
         # Get last 3 values for trend
@@ -339,16 +343,21 @@ def _analyze_risk(selected_insurers):
     return alerts
 
 # ==========================================
-# 6. DATA INTELLIGENCE ENGINE (SQL INTEGRATED)
+# 6. DATA INTELLIGENCE ENGINE (DIMENSION AWARE + CSV SUPPORT)
 # ==========================================
 def aggregate_submissions():
     """
-    Reads Excel files from raw_submissions and INSERTs them into SQL DB.
+    Reads Excel AND CSV files from raw_submissions and INSERTs them into SQL DB.
+    Supports 'dimension' column. Defaults to 'Insurer' if not present.
+    Automatically converts '-' quarters to 'Annual'.
     """
-    all_files = glob.glob(os.path.join(RAW_SUBMISSIONS_FOLDER, "*.xlsx"))
+    # --- UPDATED: Look for both .xlsx and .csv files ---
+    excel_files = glob.glob(os.path.join(RAW_SUBMISSIONS_FOLDER, "*.xlsx"))
+    csv_files = glob.glob(os.path.join(RAW_SUBMISSIONS_FOLDER, "*.csv"))
+    all_files = excel_files + csv_files
     
     if not all_files: 
-        return "[-] No new files found in 'raw_submissions'."
+        return "[-] No new files found in 'raw_submissions' (checked .xlsx and .csv)."
 
     total_rows: int = 0
     total_files: int = 0
@@ -356,29 +365,53 @@ def aggregate_submissions():
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
+        
+        # --- MIGRATION: Ensure 'dimension' column exists in DB ---
+        try:
+            c.execute("ALTER TABLE financial_metrics ADD COLUMN dimension TEXT DEFAULT 'Insurer'")
+        except sqlite3.OperationalError:
+            pass # Column likely exists or table doesn't exist yet (handled below)
+
         for file in all_files:
             if os.path.basename(file).startswith("~$"): continue
             
             try:
-                df = pd.read_excel(file)
+                # --- UPDATED: READ BASED ON EXTENSION ---
+                if file.endswith('.csv'):
+                    df = pd.read_csv(file)
+                else:
+                    df = pd.read_excel(file)
+
                 # Standardize columns to match SQL
                 df.columns = [col.strip().replace(" ", "_").lower() for col in df.columns]
                 
                 rows_to_insert = []
                 for _, row in df.iterrows():
+                    # Handle flexible headers: 'insurer' OR 'entity' OR 'state' etc.
+                    dim = row.get('dimension', 'Insurer')
+                    
+                    # Try to find the entity name
+                    entity_name = row.get('insurer') or row.get('entity') or row.get('state') or row.get('tpa') or "Unknown"
+
+                    # --- FIX: DEFAULT QUARTER TO ANNUAL ---
+                    quarter_val = str(row.get('quarter', 'Annual')).strip()
+                    if quarter_val in ['-', 'nan', 'None', '', 'nan']: 
+                        quarter_val = 'Annual'
+
                     rows_to_insert.append((
-                        row.get('insurer'), 
+                        entity_name, 
                         str(row.get('financial_year')).replace('.0',''), 
-                        row.get('quarter', 'Annual'), 
+                        quarter_val,
                         row.get('metric'), 
                         row.get('value'), 
                         row.get('line_of_business', 'General'), 
-                        row.get('class_of_business', 'General')
+                        row.get('class_of_business', 'General'),
+                        dim
                     ))
                 
                 c.executemany('''
-                    INSERT INTO financial_metrics (insurer, financial_year, quarter, metric, value, line_of_business, class_of_business)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO financial_metrics (insurer, financial_year, quarter, metric, value, line_of_business, class_of_business, dimension)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', rows_to_insert)
                 
                 total_files = total_files + 1 # type: ignore
@@ -401,8 +434,12 @@ def load_master_data_engine():
     global UNIFIED_DF
     try:
         conn = sqlite3.connect(DB_NAME)
-        # Load all metrics into memory (pandas is fast enough for <1M rows)
-        UNIFIED_DF = pd.read_sql_query("SELECT * FROM financial_metrics", conn)
+        # Attempt to load with dimension
+        try:
+            UNIFIED_DF = pd.read_sql_query("SELECT * FROM financial_metrics", conn)
+        except:
+            # Fallback if migration hasn't run yet on existing DB
+            UNIFIED_DF = pd.read_sql_query("SELECT *, 'Insurer' as dimension FROM financial_metrics", conn)
         conn.close()
 
         if UNIFIED_DF.empty:
@@ -410,8 +447,10 @@ def load_master_data_engine():
             return
 
         # Map SQL columns (snake_case) to Application (PascalCase)
+        # We rename 'insurer' to generic 'Entity' because it might be a State or TPA now
         UNIFIED_DF = UNIFIED_DF.rename(columns={
-            "insurer": "Insurer",
+            "insurer": "Entity",
+            "dimension": "Dimension",
             "financial_year": "Financial_Year",
             "quarter": "Quarter",
             "metric": "Metric",
@@ -422,8 +461,15 @@ def load_master_data_engine():
 
         # Ensure correct types
         UNIFIED_DF['Value'] = pd.to_numeric(UNIFIED_DF['Value'], errors='coerce')
-        for col in ['Insurer', 'Financial_Year', 'Quarter', 'Metric', 'Class_of_Business']:
+        for col in ['Entity', 'Dimension', 'Financial_Year', 'Quarter', 'Metric', 'Class_of_Business']:
             UNIFIED_DF[col] = UNIFIED_DF[col].astype(str).str.strip()
+            
+        # Fill Missing Dimensions with Default
+        if 'Dimension' in UNIFIED_DF.columns:
+            UNIFIED_DF['Dimension'] = UNIFIED_DF['Dimension'].replace(['None', 'nan', ''], 'Insurer')
+
+        # --- KEY FIX: REPLACE DASHES WITH ANNUAL ---
+        UNIFIED_DF['Quarter'] = UNIFIED_DF['Quarter'].replace(['-', 'nan', 'None', ''], 'Annual')
 
         print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
         
@@ -432,9 +478,28 @@ def load_master_data_engine():
         UNIFIED_DF = pd.DataFrame()
 
 def get_filter_options():
-    if UNIFIED_DF.empty: return {"insurers": [], "metrics": [], "years": [], "quarters": [], "lobs": [], "classes": []}
+    """
+    Returns options structured by Dimension for the new UI.
+    """
+    # --- UPDATED: AUTO LOAD IF EMPTY ---
+    if UNIFIED_DF.empty: 
+        load_master_data_engine()
+
+    if UNIFIED_DF.empty: 
+        return {"dimensions": [], "entities": {}, "metrics": [], "years": [], "quarters": [], "lobs": [], "classes": []}
+
+    # Group Entities by Dimension
+    # Result: {'Insurer': ['Star', ...], 'State': ['Telangana', ...]}
+    entities_by_dim = {}
+    unique_dims = sorted(UNIFIED_DF['Dimension'].unique().tolist())
+
+    for dim in unique_dims:
+        entities = sorted(UNIFIED_DF[UNIFIED_DF['Dimension'] == dim]['Entity'].unique().tolist())
+        entities_by_dim[dim] = entities
+
     return {
-        "insurers": sorted(UNIFIED_DF['Insurer'].dropna().unique().tolist()) if 'Insurer' in UNIFIED_DF else [],
+        "dimensions": unique_dims,
+        "entities": entities_by_dim, # Dictionary of lists
         "metrics": sorted(UNIFIED_DF['Metric'].dropna().unique().tolist()) if 'Metric' in UNIFIED_DF else [],
         "years": sorted(UNIFIED_DF['Financial_Year'].dropna().unique().tolist()) if 'Financial_Year' in UNIFIED_DF else [],
         "quarters": sorted(UNIFIED_DF['Quarter'].dropna().unique().tolist()) if 'Quarter' in UNIFIED_DF else [],
@@ -447,27 +512,40 @@ def _create_pivoted_view(filters):
     if UNIFIED_DF.empty: return pd.DataFrame(), [], []
     
     df = UNIFIED_DF.copy()
-    missing_alerts = []
     
-    risk_alerts = []
-    if filters.get('insurers'): risk_alerts = _analyze_risk(filters['insurers'])
+    # 1. Filter by Dimension First (Default to Insurer if missing)
+    target_dim = filters.get('dimension', 'Insurer')
+    df = df[df['Dimension'] == target_dim]
 
-    if filters.get('insurers'): df = df[df['Insurer'].isin(filters['insurers'])]
+    # 2. Filter by Specific Entities (if selected)
+    # Note: frontend sends 'entities', mapped from db column 'Entity' (formerly insurer)
+    if filters.get('entities'): 
+        df = df[df['Entity'].isin(filters['entities'])]
+    
+    # 3. Other Filters
     if filters.get('years'): df = df[df['Financial_Year'].isin(filters['years'])]
     if filters.get('metrics'): df = df[df['Metric'].isin(filters['metrics'])]
     if filters.get('quarters'): df = df[df['Quarter'].isin(filters['quarters'])]
     if filters.get('lobs'): df = df[df['Line_of_Business'].isin(filters['lobs'])]
     if filters.get('classes'): df = df[df['Class_of_Business'].isin(filters['classes'])]
     
-    if df.empty: return pd.DataFrame(), ["No data found."], risk_alerts
+    if df.empty: return pd.DataFrame(), ["No data found."], []
+    
+    # 4. Risk Analysis (Pass Dimension to ensure we don't calculate Solvency for States)
+    risk_alerts = []
+    if filters.get('entities'): 
+        risk_alerts = _analyze_risk(filters['entities'], target_dim)
 
     try:
-        index_cols = ['Insurer', 'Financial_Year']
+        index_cols = ['Entity', 'Financial_Year']
         if 'Class_of_Business' in df.columns and (len(df['Class_of_Business'].unique()) > 1 or filters.get('classes')):
              index_cols.append('Class_of_Business')
         if 'Quarter' in df.columns: index_cols.append('Quarter')
         
         pivot_df = df.pivot_table(index=index_cols, columns='Metric', values='Value', aggfunc='sum').reset_index()
+        
+        # Rename 'Entity' column to the specific dimension name (e.g. "State") for display
+        pivot_df = pivot_df.rename(columns={'Entity': target_dim})
         
         new_cols = []
         for c in pivot_df.columns:
@@ -475,7 +553,7 @@ def _create_pivoted_view(filters):
             else: new_cols.append(str(c))
         pivot_df.columns = new_cols
         
-        return pivot_df.fillna('-'), missing_alerts, risk_alerts
+        return pivot_df.fillna('-'), [], risk_alerts
 
     except Exception as e:
         print(f"Pivot Error: {e}")
@@ -486,7 +564,12 @@ def filter_data(filters):
     pivot_df, missing_alerts, risk_alerts = _create_pivoted_view(filters)
     if pivot_df.empty: return {'columns': [], 'rows': [], 'missing': missing_alerts, 'risks': risk_alerts}
     
-    base_cols = [c for c in ['Insurer', 'Financial_Year', 'Quarter', 'Class_of_Business'] if c in pivot_df.columns]
+    # Extract columns dynamically (Dimension Name is now dynamic)
+    # Find the dimension column (it will be the first one usually, matching the filter)
+    target_dim = filters.get('dimension', 'Insurer')
+    
+    possible_headers = [target_dim, 'Financial_Year', 'Quarter', 'Class_of_Business']
+    base_cols = [c for c in possible_headers if c in pivot_df.columns]
     metric_cols = [c for c in pivot_df.columns if c not in base_cols]
     
     return {'columns': base_cols + metric_cols, 'rows': pivot_df.to_dict('records'), 'missing': missing_alerts, 'risks': risk_alerts}
@@ -515,6 +598,7 @@ def get_compliance_years():
 def get_compliance_dashboard(target_year=None):
     """
     Analyzes data against thresholds AND historical trends.
+    Only runs for Dimension = 'Insurer'.
     """
     # FIX: Use the Financial Data Engine (UNIFIED_DF), not the Text Loader
     load_master_data_engine()
@@ -522,17 +606,18 @@ def get_compliance_dashboard(target_year=None):
     
     if df.empty: return []
 
-    # 1. Base Filter for target year (for the 'Current Values')
-    # However, for TRENDS, we need history regardless of target year.
-    # So we'll grab history per insurer separately.
-    
+    # Compliance only makes sense for Insurers
+    if 'Dimension' in df.columns:
+        df = df[df['Dimension'] == 'Insurer']
+
     SAHI_INSURERS = ["Star", "Care", "Aditya Birla", "Niva Bupa", "Manipal", "Galaxy", "Narayana"]
 
     dashboard_data = []
-    insurers = df['Insurer'].unique()
+    # Note: 'Entity' column is used instead of 'Insurer' due to renaming
+    insurers = df['Entity'].unique()
 
     for insurer in insurers:
-        ins_df = df[df['Insurer'] == insurer]
+        ins_df = df[df['Entity'] == insurer]
         if ins_df.empty: continue
 
         # --- A. GET LATEST SNAPSHOT (for Card Display) ---
@@ -612,28 +697,23 @@ def get_compliance_dashboard(target_year=None):
             if status != "VIOLATION": status = "WATCHLIST"
             alerts.append({"level": "warning", "msg": f"Repudiation Ratio ({repud_policies}%) is high."})
 
-        # --- C. TREND CHECKS (New!) ---
-        # Helper to check trend on the FULL history (ins_df), not just snapshot
+        # --- C. TREND CHECKS ---
         def check_trend_alert(metric_patterns, alert_type="rising"):
-            # Get all rows for this metric for this insurer
             pattern = '|'.join(metric_patterns)
             metric_rows = ins_df[ins_df['Metric'].str.contains(pattern, case=False, na=False)].copy()
             if len(metric_rows) < 3: return
 
-            # Sort by Year/Quarter (Create sortable column)
             metric_rows['Sort_Y'] = metric_rows['Financial_Year'].astype(str).str.extract(r'(\d+)').astype(float)
             metric_rows = metric_rows.sort_values(by=['Sort_Y', 'Quarter'])
             
-            # Take last 3 points
             last_3 = metric_rows.tail(3)
             vals = [float(str(v).replace(',','').replace('%','')) for v in last_3['Value'].tolist()]
             years = last_3['Financial_Year'].tolist()
 
             if alert_type == "rising":
-                # Check for consistent increase
                 if vals[0] < vals[1] < vals[2]:
                     growth = vals[2] - vals[0]
-                    if growth >= 3: # Min 3% growth to warn
+                    if growth >= 3:
                         alerts.append({
                             "level": "warning",
                             "msg": f"Rising Trend: {metric_patterns[0]} rose from {vals[0]}% to {vals[2]}% ({years[0]}-{years[2]})."
@@ -647,7 +727,6 @@ def get_compliance_dashboard(target_year=None):
                             "msg": f"Deteriorating Trend: {metric_patterns[0]} dropped from {vals[0]} to {vals[2]} ({years[0]}-{years[2]})."
                         })
 
-        # Apply Trend Checks
         check_trend_alert(["Repudiation Ratio", "Claims Repudiated"], "rising")
         check_trend_alert(["Net Incurred Claims", "Incurred Claims"], "rising")
         check_trend_alert(["Expense of Management"], "rising")
