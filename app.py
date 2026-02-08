@@ -12,6 +12,14 @@ import iris_brain as brain # type: ignore
 
 app = Flask(__name__)
 
+# ==========================================
+# CRITICAL FIX: FORCE DATA LOAD ON STARTUP
+# ==========================================
+# This ensures that as soon as you run python app.py, 
+# the system loads the data from SQL into memory.
+print("--- IRIS: Initializing Data Engine ---")
+brain.load_master_data_engine()
+
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
 DB_NAME = "iris.db"
@@ -129,7 +137,7 @@ def health_module():
 def life_module():
     return handle_search("life")
 
-# --- DATA MODULE ---
+# --- DATA MODULE (UPDATED) ---
 @app.route("/data", methods=["GET", "POST"])
 def data_module():
     filter_options = brain.get_filter_options()
@@ -137,7 +145,8 @@ def data_module():
     if request.method == "POST":
         # Capture all filters from the form
         filters = {
-            "insurers": request.form.getlist("insurers"),
+            "dimension": request.form.get("dimension", "Insurer"),
+            "entities": request.form.getlist("entities"),
             "metrics": request.form.getlist("metrics"),
             "years": request.form.getlist("years"),
             "quarters": request.form.getlist("quarters"),
@@ -158,7 +167,8 @@ def data_module():
 def download_data():
     """Generates and downloads the Excel report based on active filters."""
     filters = {
-        "insurers": request.form.getlist("insurers"),
+        "dimension": request.form.get("dimension", "Insurer"),
+        "entities": request.form.getlist("entities"),
         "metrics": request.form.getlist("metrics"),
         "years": request.form.getlist("years"),
         "quarters": request.form.getlist("quarters"),
