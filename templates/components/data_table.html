@@ -1,65 +1,143 @@
 <style>
-    .alert-base {
-        padding: 8px 12px;
-        margin-bottom: 6px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
+    /* --- WRAPPER (GRID LAYOUT - Keeps layout perfect) --- */
+    .data-table-wrapper {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        background: white;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        
+        /* 1. LOCK LAYOUT */
+        display: grid;
+        grid-template-rows: auto 1fr; /* Header fits content, Table takes the rest */
+        
+        /* 2. FORCE WIDTH CONSTRAINT */
+        width: 100%;
+        max-width: 100%;
+        
+        /* 3. STOP EXPANSION */
+        overflow: hidden; 
+    }
+    
+    /* --- HEADER (Stays Fixed on Screen) --- */
+    .data-table-header {
+        grid-row: 1;
+        padding: 12px 20px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        box-sizing: border-box; 
     }
 
-    .alert-crit {
-        background: #ffebee;
-        color: #b71c1c;
-        border-left: 4px solid #b71c1c;
+    /* --- SCROLL CONTAINER (Handles the Overflow) --- */
+    .data-table-container {
+        grid-row: 2;
+        width: 100%;
+        overflow-x: auto; 
+        -webkit-overflow-scrolling: touch;
+        max-height: 600px;
+        display: block;
     }
 
-    .alert-warn {
-        background: #fff3e0;
-        color: #e65100;
-        border-left: 4px solid #fb8c00;
-    }
-
-    .th-style {
-        background: #eef2f6;
-        color: #1a237e;
-        padding: 12px 15px;
-        border-bottom: 2px solid #ddd;
-        border-right: 1px solid #eee;
+    /* --- TABLE (Expands Sideways) --- */
+    .data-table {
+        width: max-content; 
+        min-width: 100%;
+        border-collapse: collapse;
+        font-family: 'Segoe UI', sans-serif;
         font-size: 13px;
+        table-layout: auto;
+    }
+
+    /* --- CELLS --- */
+    .th-style {
+        background-color: #f1f3f5;
+        color: #495057;
+        font-weight: 600;
+        padding: 12px 15px;
         text-align: left;
-        white-space: nowrap;
+        border-bottom: 2px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        white-space: nowrap; /* Forces expansion */
     }
 
     .td-style {
         padding: 10px 15px;
-        border-bottom: 1px solid #eee;
-        border-right: 1px solid #eee;
-        font-size: 13px;
-        color: #333;
+        color: #212529;
+        border-bottom: 1px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        white-space: nowrap; /* Forces expansion */
+    }
+
+    .tr-style:nth-child(even) { background-color: #f8f9fa; }
+    .tr-style:hover { background-color: #e9ecef; }
+    .fw-bold { font-weight: 600; }
+
+    /* --- SOURCE FILE COLUMN --- */
+    th.source-col-header {
+        background-color: #f8f9fa !important;
+        color: #adb5bd !important;
+        font-size: 11px !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #dee2e6 !important;
+        border-left: 2px solid #e9ecef !important;
+        text-align: center !important;
+        min-width: 120px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
         white-space: nowrap;
-        background: #fff;
     }
 
-    .fw-bold {
-        font-weight: 600;
+    td.source-col-cell {
+        background-color: #ffffff !important;
+        color: #adb5bd !important;
+        font-size: 11px !important;
+        font-style: italic !important;
+        border-bottom: 1px solid #f1f3f5 !important;
+        border-left: 2px solid #e9ecef !important;
+        text-align: center !important;
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(5px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+    /* --- BUTTONS --- */
+    .btn-action {
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: 0.2s;
+        border: 1px solid #ccc;
+        background-color: #fff;
+        color: #495057;
     }
+    .btn-action:hover { background: #f8f9fa; border-color: #adb5bd; }
+    .btn-action:active { background: #e2e6ea; }
+    .btn-excel { background: #1d6f42; border-color: #1d6f42; color: white; }
+    .btn-excel:hover { background: #155d34; }
+
+    /* --- ALERTS --- */
+    .alert-base { padding: 10px 15px; margin-bottom: 8px; border-radius: 4px; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+    .alert-crit { background: #ffebee; color: #b71c1c; border-left: 4px solid #b71c1c; }
+    .alert-warn { background: #fff3e0; color: #e65100; border-left: 4px solid #fb8c00; }
+    
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 
 {% if report.risks %}
-<div
-    style="background-color: #fff5f5; border: 1px solid #ffcccc; border-radius: 8px; margin-bottom: 20px; padding: 15px;">
+<div style="background-color: #fff5f5; border: 1px solid #ffcccc; border-radius: 8px; margin-bottom: 20px; padding: 15px; animation: fadeIn 0.3s ease-out;">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
         <i class="fas fa-radiation-alt" style="color: #d32f2f; font-size: 18px;"></i>
         <strong style="color: #d32f2f; font-size: 14px; text-transform: uppercase;">IRIS Early Warning System</strong>
@@ -67,8 +145,7 @@
     <div style="max-height: 150px; overflow-y: auto;">
         {% for alert in report.risks %}
         <div class="alert-base {{ 'alert-crit' if alert.level == 'critical' else 'alert-warn' }}">
-            {% if alert.level == 'critical' %} <i class="fas fa-times-circle"></i>
-            {% else %} <i class="fas fa-chart-line"></i> {% endif %}
+            <i class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-chart-line' }}"></i>
             {{ alert.msg }}
         </div>
         {% endfor %}
@@ -77,8 +154,7 @@
 {% endif %}
 
 {% if report.missing %}
-<div
-    style="background-color: #fff3cd; color: #856404; padding: 12px; border: 1px solid #ffeeba; border-radius: 8px; margin-bottom: 20px; font-size: 12px;">
+<div style="background-color: #fff3cd; color: #856404; padding: 12px; border: 1px solid #ffeeba; border-radius: 8px; margin-bottom: 20px; font-size: 12px; animation: fadeIn 0.3s ease-out;">
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
         <i class="fas fa-info-circle"></i> <strong>Data Gaps Detected</strong>
     </div>
@@ -89,51 +165,52 @@
 {% endif %}
 
 {% if not report.rows %}
-<div
-    style="text-align: center; padding: 40px; color: #888; border: 1px dashed #ccc; border-radius: 8px; background: #fafafa;">
+<div style="text-align: center; padding: 40px; color: #888; border: 1px dashed #ccc; border-radius: 8px; background: #fafafa; animation: fadeIn 0.3s ease-out;">
     <i class="fas fa-folder-open" style="font-size: 24px; margin-bottom: 10px; color: #bbb;"></i><br>
     No matching records found.
 </div>
 {% else %}
-<div class="data-table-wrapper"
-    style="animation: fadeIn 0.3s ease-out; border:1px solid #eee; border-radius:8px; background: white; max-width: 100%;">
+<div class="data-table-wrapper" style="animation: fadeIn 0.3s ease-out;">
 
-    <div
-        style="padding: 10px 15px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+    <div class="data-table-header">
         <div style="display:flex; align-items:center; gap:10px;">
             <strong style="color: #1a237e; font-size: 13px; text-transform: uppercase;">Financial Report</strong>
-            <span style="font-size: 11px; color: #999;">{{ report.rows|length }} rows</span>
+            <span style="font-size: 11px; color: #6c757d; background: #e9ecef; padding: 2px 6px; border-radius: 4px;">{{ report.rows|length }} rows</span>
         </div>
         <div style="display:flex; gap:8px;">
-            <button onclick="copyTableToClipboard()"
-                style="background:white; border:1px solid #ccc; color:#555; font-size:12px; padding:6px 12px; border-radius:4px; cursor:pointer;"><i
-                    class="fas fa-copy"></i> Copy</button>
-            <button onclick="downloadExcel()"
-                style="background:#1d6f42; border:none; color:white; font-size:12px; padding:6px 12px; border-radius:4px; cursor:pointer;"><i
-                    class="fas fa-file-excel"></i> Excel</button>
+            <button onclick="copyTableToClipboard()" class="btn-action btn-copy">
+                <i class="fas fa-copy"></i> Copy Data
+            </button>
+            <button onclick="downloadExcel()" class="btn-action btn-excel">
+                <i class="fas fa-file-excel"></i> Export Excel
+            </button>
         </div>
     </div>
 
-    <div style="overflow-x: auto; width: 100%; display: block; max-width: calc(100vw - 340px);">
-
-        <table class="iris-data-table" id="exportTable"
-            style="width: max-content; border-collapse: separate; border-spacing: 0;">
+    <div class="data-table-container">
+        <table id="exportTable" class="data-table">
             <thead>
                 <tr>
                     {% for col in report.columns %}
-                    <th class="th-style">
-                        {{ col | replace('_', ' ') }}
-                    </th>
+                        {% if col == 'Source_File' %}
+                            <th class="source-col-header">{{ col | replace('_', ' ') }}</th>
+                        {% else %}
+                            <th class="th-style">{{ col | replace('_', ' ') }}</th>
+                        {% endif %}
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
                 {% for row in report.rows %}
-                <tr>
+                <tr class="tr-style">
                     {% for col in report.columns %}
-                    <td class="td-style {{ 'fw-bold' if loop.index <= 4 else '' }}">
-                        {{ row[col] }}
-                    </td>
+                        {% if col == 'Source_File' %}
+                            <td class="source-col-cell" title="{{ row[col] }}">{{ row[col] }}</td>
+                        {% else %}
+                            <td class="td-style {{ 'fw-bold' if loop.index <= 2 else '' }}">
+                                {{ row[col] }}
+                            </td>
+                        {% endif %}
                     {% endfor %}
                 </tr>
                 {% endfor %}
@@ -141,6 +218,78 @@
         </table>
     </div>
 </div>
-
 <div style="height: 50px;"></div>
 {% endif %}
+
+<script>
+    function copyTableToClipboard() {
+        const table = document.getElementById('exportTable');
+        if (!table) return;
+
+        // 1. Clone the table to modify it without affecting the display
+        const clone = table.cloneNode(true);
+
+        // 2. Identify and Remove "Source File" Column
+        const headers = clone.querySelectorAll('th');
+        let sourceIndex = -1;
+
+        // Find the index (Case Insensitive)
+        headers.forEach((th, index) => {
+            if (th.innerText && th.innerText.toLowerCase().trim() === 'source file') {
+                sourceIndex = index;
+            }
+        });
+
+        // If found, surgically remove it from every row
+        if (sourceIndex > -1) {
+            // Remove header cell
+            headers[sourceIndex].remove();
+            
+            // Remove data cells
+            const rows = clone.querySelectorAll('tr');
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > sourceIndex) {
+                    cells[sourceIndex].remove();
+                }
+            });
+        } 
+        else {
+            // FALLBACK: If header text check fails, blindly delete the LAST cell of every row
+            const rows = clone.querySelectorAll('tr');
+            rows.forEach(row => {
+                if (row.cells.length > 0) {
+                    row.deleteCell(-1); // -1 targets the last cell
+                }
+            });
+        }
+
+        // 3. Mount invisible container (Positions off-screen so layout doesn't break)
+        clone.style.position = 'fixed';
+        clone.style.left = '-9999px';
+        clone.style.top = '0';
+        document.body.appendChild(clone);
+
+        // 4. Copy Logic
+        const range = document.createRange();
+        range.selectNode(clone);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        
+        try {
+            document.execCommand('copy');
+            alert("Table copied! (Source filenames excluded)");
+        } catch (err) {
+            alert("Copy failed.");
+        }
+        
+        // 5. Cleanup
+        window.getSelection().removeAllRanges();
+        document.body.removeChild(clone);
+    }
+    
+    function downloadExcel() {
+        const form = document.getElementById('downloadForm');
+        if(form) form.submit();
+    }
+</script>

@@ -5,6 +5,7 @@ import re
 import glob
 import difflib
 import io  # Required for Excel Export
+from typing import cast
 
 # --- NLTK SETUP ---
 try:
@@ -283,7 +284,6 @@ def _analyze_risk(selected_entities, dimension):
     Only applicable if Dimension is 'Insurer'.
     """
     if UNIFIED_DF.empty or not selected_entities: return []
-    # If looking at States or Sectors, standard Insurer alerts (Solvency, etc.) don't apply directly
     if dimension != "Insurer": return []
     
     alerts = []
@@ -298,10 +298,11 @@ def _analyze_risk(selected_entities, dimension):
 
     # 1. GROUP BY INSURER & METRIC TO CHECK TRENDS
     for (entity, metric), group in df.groupby(['Entity', 'Metric']):
+        group = cast(pd.DataFrame, group)
         # We need at least 3 points to establish a "Trend"
         if len(group) < 3: 
             # Fallback to single latest value check
-            latest = group.iloc[-1] # type: ignore
+            latest = group.iloc[-1]
             val = latest['Value']
             
             # Simple threshold checks
@@ -314,7 +315,7 @@ def _analyze_risk(selected_entities, dimension):
             continue
 
         # Get last 3 values for trend
-        last_3 = group.tail(3) # type: ignore
+        last_3 = group.tail(3)
         vals = [float(str(v).replace(',','')) for v in last_3['Value'].tolist()]
         years = last_3['Financial_Year'].tolist()
 
@@ -351,13 +352,16 @@ def aggregate_submissions():
     Supports 'dimension' column. Defaults to 'Insurer' if not present.
     Automatically converts '-' quarters to 'Annual'.
     """
-    # --- UPDATED: Look for both .xlsx and .csv files ---
-    excel_files = glob.glob(os.path.join(RAW_SUBMISSIONS_FOLDER, "*.xlsx"))
-    csv_files = glob.glob(os.path.join(RAW_SUBMISSIONS_FOLDER, "*.csv"))
-    all_files = excel_files + csv_files
+    # --- UPDATED: Look for files in ALL subdirectories using os.walk ---
+    all_files = []
+    for root, dirs, files in os.walk(RAW_SUBMISSIONS_FOLDER):
+        for file in files:
+            if file.startswith("~$"): continue # Skip Excel temp files
+            if file.endswith(".xlsx") or file.endswith(".csv"):
+                all_files.append(os.path.join(root, file))
     
     if not all_files: 
-        return "[-] No new files found in 'raw_submissions' (checked .xlsx and .csv)."
+        return "[-] No new files found in 'raw_submissions' or subfolders."
 
     total_rows: int = 0
     total_files: int = 0
@@ -366,59 +370,85 @@ def aggregate_submissions():
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
         
-        # --- MIGRATION: Ensure 'dimension' column exists in DB ---
-        try:
-            c.execute("ALTER TABLE financial_metrics ADD COLUMN dimension TEXT DEFAULT 'Insurer'")
-        except sqlite3.OperationalError:
-            pass # Column likely exists or table doesn't exist yet (handled below)
+        # --- MIGRATION: Ensure columns exist in DB ---
+        try: c.execute("ALTER TABLE financial_metrics ADD COLUMN dimension TEXT DEFAULT 'Insurer'")
+        except sqlite3.OperationalError: pass 
+        try: c.execute("ALTER TABLE financial_metrics ADD COLUMN source_file TEXT")
+        except sqlite3.OperationalError: pass
 
-        for file in all_files:
-            if os.path.basename(file).startswith("~$"): continue
+        # --- CLEAN SLATE: Wipe table before import to prevent duplicates ---
+        c.execute("DELETE FROM financial_metrics")
+
+        for file_path in all_files:
+            filename = os.path.basename(file_path)
             
             try:
-                # --- UPDATED: READ BASED ON EXTENSION ---
-                if file.endswith('.csv'):
-                    df = pd.read_csv(file)
+                # --- READ BASED ON EXTENSION ---
+                if file_path.endswith('.csv'):
+                    df = pd.read_csv(file_path)
                 else:
-                    df = pd.read_excel(file)
+                    df = pd.read_excel(file_path)
+
+                if df.empty: continue
 
                 # Standardize columns to match SQL
-                df.columns = [col.strip().replace(" ", "_").lower() for col in df.columns]
+                df.columns = [str(col).strip().replace(" ", "_").lower() for col in df.columns]
                 
                 rows_to_insert = []
                 for _, row in df.iterrows():
-                    # Handle flexible headers: 'insurer' OR 'entity' OR 'state' etc.
-                    dim = row.get('dimension', 'Insurer')
-                    
-                    # Try to find the entity name
-                    entity_name = row.get('insurer') or row.get('entity') or row.get('state') or row.get('tpa') or "Unknown"
+                    # --- SMART ADAPTER LOGIC ---
+                    # 1. Detect Dimension
+                    dim_raw = row.get('dimension')
+                    if not dim_raw:
+                        # Infer based on available columns
+                        if 'insurer' in df.columns: dim_raw = 'Insurer'
+                        elif 'state' in df.columns: dim_raw = 'State'
+                        elif 'tpa' in df.columns: dim_raw = 'TPA'
+                        else: dim_raw = 'Insurer'
 
-                    # --- FIX: DEFAULT QUARTER TO ANNUAL ---
+                    # 2. Detect Entity Name
+                    entity_raw = (row.get('insurer') or 
+                                  row.get('entity') or 
+                                  row.get('state') or 
+                                  row.get('tpa') or 
+                                  "Unknown")
+
+                    # 3. Clean and Standardize (Strip Whitespace)
+                    dim = str(dim_raw).strip()
+                    entity_name = str(entity_raw).strip()
+                    metric_name = str(row.get('metric', '')).strip()
+                    
+                    # 4. Handle Quarter
                     quarter_val = str(row.get('quarter', 'Annual')).strip()
                     if quarter_val in ['-', 'nan', 'None', '', 'nan']: 
                         quarter_val = 'Annual'
 
+                    # Skip invalid rows
+                    if not metric_name or pd.isna(row.get('value')): continue
+
                     rows_to_insert.append((
                         entity_name, 
-                        str(row.get('financial_year')).replace('.0',''), 
+                        str(row.get('financial_year')).replace('.0','').strip(), 
                         quarter_val,
-                        row.get('metric'), 
+                        metric_name, 
                         row.get('value'), 
-                        row.get('line_of_business', 'General'), 
-                        row.get('class_of_business', 'General'),
-                        dim
+                        str(row.get('line_of_business', 'General')).strip(), 
+                        str(row.get('class_of_business', 'General')).strip(),
+                        dim,
+                        filename # Task 3: Store Source File
                     ))
                 
-                c.executemany('''
-                    INSERT INTO financial_metrics (insurer, financial_year, quarter, metric, value, line_of_business, class_of_business, dimension)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', rows_to_insert)
-                
-                total_files = total_files + 1 # type: ignore
-                total_rows = total_rows + len(rows_to_insert) # type: ignore
+                if rows_to_insert:
+                    c.executemany('''
+                        INSERT INTO financial_metrics (insurer, financial_year, quarter, metric, value, line_of_business, class_of_business, dimension, source_file)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', rows_to_insert)
+                    
+                    total_files += 1  # type: ignore
+                    total_rows += len(rows_to_insert)  # type: ignore
                 
             except Exception as e:
-                print(f"[!] Error processing {file}: {e}")
+                print(f"[!] Error processing {filename}: {e}")
 
         conn.commit()
         conn.close()
@@ -434,12 +464,12 @@ def load_master_data_engine():
     global UNIFIED_DF
     try:
         conn = sqlite3.connect(DB_NAME)
-        # Attempt to load with dimension
+        # Attempt to load with dimension and source_file
         try:
             UNIFIED_DF = pd.read_sql_query("SELECT * FROM financial_metrics", conn)
         except:
-            # Fallback if migration hasn't run yet on existing DB
-            UNIFIED_DF = pd.read_sql_query("SELECT *, 'Insurer' as dimension FROM financial_metrics", conn)
+            # Fallback for old schema
+            UNIFIED_DF = pd.read_sql_query("SELECT *, 'Insurer' as dimension, 'Unknown' as source_file FROM financial_metrics", conn)
         conn.close()
 
         if UNIFIED_DF.empty:
@@ -447,7 +477,6 @@ def load_master_data_engine():
             return
 
         # Map SQL columns (snake_case) to Application (PascalCase)
-        # We rename 'insurer' to generic 'Entity' because it might be a State or TPA now
         UNIFIED_DF = UNIFIED_DF.rename(columns={
             "insurer": "Entity",
             "dimension": "Dimension",
@@ -456,19 +485,21 @@ def load_master_data_engine():
             "metric": "Metric",
             "value": "Value",
             "line_of_business": "Line_of_Business",
-            "class_of_business": "Class_of_Business"
+            "class_of_business": "Class_of_Business",
+            "source_file": "Source_File"
         })
 
-        # Ensure correct types
+        # Ensure correct types and Clean Data in Memory
         UNIFIED_DF['Value'] = pd.to_numeric(UNIFIED_DF['Value'], errors='coerce')
-        for col in ['Entity', 'Dimension', 'Financial_Year', 'Quarter', 'Metric', 'Class_of_Business']:
-            UNIFIED_DF[col] = UNIFIED_DF[col].astype(str).str.strip()
+        for col in ['Entity', 'Dimension', 'Financial_Year', 'Quarter', 'Metric', 'Source_File']:
+            if col in UNIFIED_DF.columns:
+                UNIFIED_DF[col] = UNIFIED_DF[col].astype(str).str.strip()
             
-        # Fill Missing Dimensions with Default
+        # Fill Missing Dimensions
         if 'Dimension' in UNIFIED_DF.columns:
             UNIFIED_DF['Dimension'] = UNIFIED_DF['Dimension'].replace(['None', 'nan', ''], 'Insurer')
 
-        # --- KEY FIX: REPLACE DASHES WITH ANNUAL ---
+        # Fix Dashes in Quarter
         UNIFIED_DF['Quarter'] = UNIFIED_DF['Quarter'].replace(['-', 'nan', 'None', ''], 'Annual')
 
         print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
@@ -481,15 +512,12 @@ def get_filter_options():
     """
     Returns options structured by Dimension for the new UI.
     """
-    # --- UPDATED: AUTO LOAD IF EMPTY ---
     if UNIFIED_DF.empty: 
         load_master_data_engine()
 
     if UNIFIED_DF.empty: 
         return {"dimensions": [], "entities": {}, "metrics": [], "years": [], "quarters": [], "lobs": [], "classes": []}
 
-    # Group Entities by Dimension
-    # Result: {'Insurer': ['Star', ...], 'State': ['Telangana', ...]}
     entities_by_dim = {}
     unique_dims = sorted(UNIFIED_DF['Dimension'].unique().tolist())
 
@@ -499,7 +527,7 @@ def get_filter_options():
 
     return {
         "dimensions": unique_dims,
-        "entities": entities_by_dim, # Dictionary of lists
+        "entities": entities_by_dim,
         "metrics": sorted(UNIFIED_DF['Metric'].dropna().unique().tolist()) if 'Metric' in UNIFIED_DF else [],
         "years": sorted(UNIFIED_DF['Financial_Year'].dropna().unique().tolist()) if 'Financial_Year' in UNIFIED_DF else [],
         "quarters": sorted(UNIFIED_DF['Quarter'].dropna().unique().tolist()) if 'Quarter' in UNIFIED_DF else [],
@@ -513,16 +541,12 @@ def _create_pivoted_view(filters):
     
     df = UNIFIED_DF.copy()
     
-    # 1. Filter by Dimension First (Default to Insurer if missing)
+    # 1. Filter by Dimension
     target_dim = filters.get('dimension', 'Insurer')
     df = df[df['Dimension'] == target_dim]
 
-    # 2. Filter by Specific Entities (if selected)
-    # Note: frontend sends 'entities', mapped from db column 'Entity' (formerly insurer)
-    if filters.get('entities'): 
-        df = df[df['Entity'].isin(filters['entities'])]
-    
-    # 3. Other Filters
+    # 2. Apply Filters
+    if filters.get('entities'): df = df[df['Entity'].isin(filters['entities'])]
     if filters.get('years'): df = df[df['Financial_Year'].isin(filters['years'])]
     if filters.get('metrics'): df = df[df['Metric'].isin(filters['metrics'])]
     if filters.get('quarters'): df = df[df['Quarter'].isin(filters['quarters'])]
@@ -531,22 +555,24 @@ def _create_pivoted_view(filters):
     
     if df.empty: return pd.DataFrame(), ["No data found."], []
     
-    # 4. Risk Analysis (Pass Dimension to ensure we don't calculate Solvency for States)
+    # 3. Risk Analysis
     risk_alerts = []
     if filters.get('entities'): 
         risk_alerts = _analyze_risk(filters['entities'], target_dim)
 
     try:
+        # --- KEY UPDATE: Include Source_File in Index to separate duplicates ---
         index_cols = ['Entity', 'Financial_Year']
-        if 'Class_of_Business' in df.columns and (len(df['Class_of_Business'].unique()) > 1 or filters.get('classes')):
-             index_cols.append('Class_of_Business')
+        if 'Class_of_Business' in df.columns: index_cols.append('Class_of_Business')
         if 'Quarter' in df.columns: index_cols.append('Quarter')
+        if 'Source_File' in df.columns: index_cols.append('Source_File')
         
         pivot_df = df.pivot_table(index=index_cols, columns='Metric', values='Value', aggfunc='sum').reset_index()
         
-        # Rename 'Entity' column to the specific dimension name (e.g. "State") for display
+        # Rename 'Entity' to Dimension Name
         pivot_df = pivot_df.rename(columns={'Entity': target_dim})
         
+        # Add Units to Header
         new_cols = []
         for c in pivot_df.columns:
             if str(c) in UNIT_MAP: new_cols.append(f"{c} ({UNIT_MAP[str(c)]})")
@@ -559,26 +585,40 @@ def _create_pivoted_view(filters):
         print(f"Pivot Error: {e}")
         return pd.DataFrame(), ["Error processing table."], []
 
-# --- PUBLIC FUNCTIONS ---
+# --- PUBLIC FUNCTIONS (UPDATED FOR COLUMN ORDER & EXCEL CLEANUP) ---
 def filter_data(filters):
     pivot_df, missing_alerts, risk_alerts = _create_pivoted_view(filters)
     if pivot_df.empty: return {'columns': [], 'rows': [], 'missing': missing_alerts, 'risks': risk_alerts}
     
-    # Extract columns dynamically (Dimension Name is now dynamic)
-    # Find the dimension column (it will be the first one usually, matching the filter)
     target_dim = filters.get('dimension', 'Insurer')
     
+    # 1. Define Standard Left-Side Columns
     possible_headers = [target_dim, 'Financial_Year', 'Quarter', 'Class_of_Business']
-    base_cols = [c for c in possible_headers if c in pivot_df.columns]
-    metric_cols = [c for c in pivot_df.columns if c not in base_cols]
     
-    return {'columns': base_cols + metric_cols, 'rows': pivot_df.to_dict('records'), 'missing': missing_alerts, 'risks': risk_alerts}
+    # 2. Extract Base Columns that actually exist
+    base_cols = [c for c in possible_headers if c in pivot_df.columns]
+    
+    # 3. Extract Metric Columns (Excluding Source_File)
+    metric_cols = [c for c in pivot_df.columns if c not in base_cols and c != 'Source_File']
+    
+    # 4. Construct Final Order: Base -> Metrics -> Source_File (Last)
+    final_cols = base_cols + metric_cols
+    # Force Source_File to append at the end
+    if 'Source_File' in pivot_df.columns:
+        final_cols.append('Source_File')
+    
+    return {'columns': final_cols, 'rows': pivot_df.to_dict('records'), 'missing': missing_alerts, 'risks': risk_alerts}
 
 def generate_excel(filters):
     pivot_df, _, _ = _create_pivoted_view(filters)
     if pivot_df.empty: return None
+    
+    # --- CRITICAL FIX: DROP SOURCE FILE FOR EXCEL ---
+    if 'Source_File' in pivot_df.columns:
+        pivot_df = pivot_df.drop(columns=['Source_File'])
+        
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer: pivot_df.to_excel(writer, index=False, sheet_name='IRIS_Report')
+    with pd.ExcelWriter(output, engine='openpyxl') as writer: pivot_df.to_excel(writer, index=False, sheet_name='IRIS_Report')
     output.seek(0)
     return output
 
@@ -587,7 +627,6 @@ def generate_excel(filters):
 # ==========================================
 
 def get_compliance_years():
-    # FIX: Ensure data is loaded before trying to list years
     if UNIFIED_DF.empty: 
         load_master_data_engine()
 
@@ -600,7 +639,6 @@ def get_compliance_dashboard(target_year=None):
     Analyzes data against thresholds AND historical trends.
     Only runs for Dimension = 'Insurer'.
     """
-    # FIX: Use the Financial Data Engine (UNIFIED_DF), not the Text Loader
     load_master_data_engine()
     df = UNIFIED_DF
     
@@ -611,23 +649,20 @@ def get_compliance_dashboard(target_year=None):
         df = df[df['Dimension'] == 'Insurer']
 
     SAHI_INSURERS = ["Star", "Care", "Aditya Birla", "Niva Bupa", "Manipal", "Galaxy", "Narayana"]
-
     dashboard_data = []
-    # Note: 'Entity' column is used instead of 'Insurer' due to renaming
     insurers = df['Entity'].unique()
 
     for insurer in insurers:
         ins_df = df[df['Entity'] == insurer]
         if ins_df.empty: continue
 
-        # --- A. GET LATEST SNAPSHOT (for Card Display) ---
+        # --- A. GET LATEST SNAPSHOT ---
         snapshot_df = ins_df.copy()
         if target_year and target_year != "Latest":
             snapshot_df = ins_df[ins_df['Financial_Year'] == target_year]
         
-        if snapshot_df.empty: continue # Skip if no data for selected year
+        if snapshot_df.empty: continue
 
-        # Find latest available period in this snapshot
         try:
             latest_row = snapshot_df.sort_values(by=['Financial_Year', 'Quarter'], ascending=False).iloc[0]
             curr_year = latest_row['Financial_Year']
@@ -659,9 +694,7 @@ def get_compliance_dashboard(target_year=None):
         solvency = get_val(["Solvency Margin", "Solvency Ratio"])
         combined_ratio = get_val("Combined Ratio")
         claims_ratio = get_val(["Net Incurred Claims", "Incurred Claims"])
-        retention_ratio = get_val("Retention Ratio")
         expense_ratio = get_val(["Expense of Management to GDP Ratio", "Expense of Management", "EoM"])
-        repud_policies = get_val(["Repudiation Ratio", "Claims Repudiated"])
         
         status = "COMPLIANT"
         alerts = []
@@ -671,31 +704,12 @@ def get_compliance_dashboard(target_year=None):
         if solvency is not None and solvency < 1.5:
             status = "VIOLATION"
             alerts.append({"level": "critical", "msg": f"Solvency ({solvency}) < 1.5 minimum."})
-        elif solvency is not None and 1.5 <= solvency <= 1.55:
-            if status != "VIOLATION": status = "WATCHLIST"
-            alerts.append({"level": "warning", "msg": f"Solvency ({solvency}) near limit."})
 
         if expense_ratio is not None:
             limit = 35 if is_sahi else 30
             if expense_ratio > limit:
                 status = "VIOLATION"
                 alerts.append({"level": "critical", "msg": f"EoM ({expense_ratio}%) exceeds {limit}% limit."})
-
-        if combined_ratio and combined_ratio > 100:
-            if status != "VIOLATION": status = "WATCHLIST"
-            alerts.append({"level": "warning", "msg": f"Combined Ratio ({combined_ratio}%) > 100%."})
-
-        if claims_ratio and claims_ratio > 90:
-            if status != "VIOLATION": status = "WATCHLIST"
-            alerts.append({"level": "warning", "msg": f"Claims Ratio ({claims_ratio}%) > 90%."})
-
-        if retention_ratio and retention_ratio > 96:
-            status = "VIOLATION"
-            alerts.append({"level": "critical", "msg": f"Retention ({retention_ratio}%) violates 4% cession."})
-
-        if repud_policies and repud_policies > 10:
-            if status != "VIOLATION": status = "WATCHLIST"
-            alerts.append({"level": "warning", "msg": f"Repudiation Ratio ({repud_policies}%) is high."})
 
         # --- C. TREND CHECKS ---
         def check_trend_alert(metric_patterns, alert_type="rising"):
