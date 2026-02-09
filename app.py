@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify # type: ignore
+from typing import List
 import re
 import pandas as pd # type: ignore
 import io
@@ -7,6 +8,7 @@ import json
 import time
 import traceback
 import sqlite3
+import threading # Required for Background Sync
 from datetime import datetime
 import iris_brain as brain # type: ignore
 
@@ -18,7 +20,10 @@ app = Flask(__name__)
 # This ensures that as soon as you run python app.py, 
 # the system loads the data from SQL into memory.
 print("--- IRIS: Initializing Data Engine ---")
-brain.load_master_data_engine()
+try:
+    brain.load_master_data_engine()
+except Exception as e:
+    print(f"[!] Warning: Data Engine load failed on startup: {e}")
 
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
@@ -40,6 +45,10 @@ def log_interaction(status_code, error_msg=None):
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
+        
+        # Ensure table exists
+        c.execute('''CREATE TABLE IF NOT EXISTS system_logs 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, endpoint TEXT, method TEXT, ip TEXT, status INTEGER, error_msg TEXT)''')
         
         c.execute('''
             INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg)
@@ -230,14 +239,14 @@ def analytics_dashboard():
     # --- 2. CALCULATE BASIC STATS ---
     total_requests = len(valid_logs)
     unique_users = len(set(l['ip'] for l in valid_logs))
-    errors: list[dict] = [l for l in valid_logs if l['status'] >= 500]
+    errors = [l for l in valid_logs if l['status'] >= 500]
     error_count = len(errors)
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
     endpoints = {}
     
     # Define internal endpoints to hide from the pie chart
-    ignored_routes = ['/clear_logs', '/sync_data', '/download_data']
+    ignored_routes = ['/clear_logs', '/sync_data', '/download_data', '/check_sync_status']
     
     for l in valid_logs:
         ep = l['endpoint']
@@ -298,21 +307,51 @@ def analytics_dashboard():
     # Render template with all processed data
     return render_template("analytics.html", 
                            stats={"total": total_requests, "users": unique_users, "errors": error_count},
-                           logs=errors, # type: ignore 
+                           logs=errors,
                            chart={"labels": chart_labels, "data": chart_data},
                            monthly={"labels": monthly_labels, "data": monthly_data},
                            yearly=yearly_stats,
                            active_module="analytics")
 
-# --- ADMIN ROUTES ---
+# ==========================================
+# ASYNC SYNC LOGIC (NO TIMEOUTS)
+# ==========================================
+SYNC_STATUS = { "state": "IDLE", "message": "Ready to sync." }
+
+def run_sync_task():
+    global SYNC_STATUS
+    SYNC_STATUS["state"] = "RUNNING"
+    SYNC_STATUS["message"] = "Processing files... Please wait."
+    try:
+        # Run the heavy brain function
+        msg = brain.aggregate_submissions()
+        SYNC_STATUS["state"] = "COMPLETED"
+        SYNC_STATUS["message"] = msg
+    except Exception as e:
+        SYNC_STATUS["state"] = "ERROR"
+        SYNC_STATUS["message"] = f"Error: {str(e)}"
+
 @app.route("/admin", methods=["GET"])
-def admin_panel(): 
+def admin_panel():
     return render_template("admin.html")
 
 @app.route("/sync_data", methods=["POST"])
 def sync_data():
-    msg = brain.aggregate_submissions()
-    return render_template("admin.html", message=msg)
+    global SYNC_STATUS
+    
+    if SYNC_STATUS["state"] == "RUNNING":
+        return jsonify({"status": "busy", "message": "Sync already in progress."})
+
+    # Start the heavy task in a separate thread (Background)
+    thread = threading.Thread(target=run_sync_task)
+    thread.start()
+    
+    return jsonify({"status": "started", "message": "Sync started in background."})
+
+@app.route("/check_sync_status", methods=["GET"])
+def check_sync_status():
+    """Frontend polls this to update the UI"""
+    return jsonify(SYNC_STATUS)
 
 # ==========================================
 # CORE SEARCH LOGIC (TEXT ONLY)
@@ -468,15 +507,15 @@ def highlight_keywords(text, keywords):
     for kw in sorted(list(expanded), key=len, reverse=True):
         if len(kw) < 3: continue
         pattern = re.compile(rf"\b({re.escape(kw)})\b", re.IGNORECASE)
-        text = pattern.sub(r"<span class='iris-highlight'>\1</span>", text)
+        text = pattern.sub(r"<span style='background-color:#fff3cd; color:#856404; font-weight:bold;'>\1</span>", text)
     return text
 
 def convert_markdown_to_html(text):
     """Simple parser to handle basic Markdown tables and line breaks."""
     lines = text.splitlines()
-    new_lines: list[str] = []
+    new_lines: List[str] = []
     in_table = False
-    table_rows: list[str] = []
+    table_rows: List[str] = []
     
     def flush_table(rows):
         if not rows: return ""
@@ -510,8 +549,10 @@ def format_verbatim(raw_text, keywords):
     """Formats the raw text for display: converts markdown, highlights keywords."""
     if not raw_text: return ""
     text_with_tables = convert_markdown_to_html(raw_text)
+    
+    # We remove explicit bolding for table HTML lines to avoid breaking tags
     lines = text_with_tables.splitlines()
-    bolded_lines: list[str] = []
+    bolded_lines: List[str] = []
     for line in lines:
         if line.strip().startswith("<table"): bolded_lines.append(line)
         elif line.strip().endswith(":"): bolded_lines.append(f"<strong>{line}</strong>")
