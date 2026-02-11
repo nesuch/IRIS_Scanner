@@ -299,46 +299,56 @@ def _analyze_risk(selected_entities, dimension):
     # 1. GROUP BY INSURER & METRIC TO CHECK TRENDS
     for (entity, metric), group in df.groupby(['Entity', 'Metric']):
         group = cast(pd.DataFrame, group)
-        # We need at least 3 points to establish a "Trend"
-        if len(group) < 3: 
-            # Fallback to single latest value check
-            latest = group.iloc[-1]
-            val = latest['Value']
-            
-            # Simple threshold checks
-            if "Solvency" in metric and val < 1.5:
-                alerts.append({"level": "critical", "msg": f"{entity}: Solvency {val} < 1.5."})
-            elif "Expense" in metric:
-                limit = 35 if any(s in entity for s in SAHI_INSURERS) else 30
-                if val > limit:
-                    alerts.append({"level": "critical", "msg": f"{entity}: EoM {val}% exceeds limit."})
+        
+        # UNIVERSAL THRESHOLD CHECKS (Latest Value)
+        # Always check the most recent data point regardless of history length
+        latest = group.iloc[-1]
+        val = latest['Value']
+        
+        if "Solvency" in metric and val < 1.5:
+            alerts.append({"level": "critical", "msg": f"Regulatory Violation: {entity} - Solvency {val} < 1.5 limit"})
+        
+        elif "Expense" in metric:
+            limit = 35 if any(s in entity for s in SAHI_INSURERS) else 30
+            if val > limit:
+                alerts.append({"level": "critical", "msg": f"Regulatory Violation: {entity} - EoM {val}% exceeds {limit}% limit"})
+        
+        elif "Repudiation" in metric:
+            if val > 10:
+                alerts.append({"level": "warning", "msg": f"High Repudiation: {entity} - {metric} {val}% exceeds 10% limit"})
+
+        # --- SAFETY FIX: TREND ANALYSIS ---
+        # We need at least 3 points to compare v0, v1, and v2
+        if len(group) < 3:
             continue
 
-        # Get last 3 values for trend
+        # Get last 3 values specifically
         last_3 = group.tail(3)
-        vals = [float(str(v).replace(',','')) for v in last_3['Value'].tolist()]
+        vals = [float(str(v).replace(',','').replace('%','')) for v in last_3['Value'].tolist()]
         years = last_3['Financial_Year'].tolist()
+        
+        # Double check vals list length before indexing
+        if len(vals) < 3:
+            continue
 
-        # TREND 1: RISING "BAD" METRICS (Expenses, Claims, Repudiation)
+        # TREND 1: RISING "BAD" METRICS
         if any(x in metric for x in ["Repudiation", "Claims", "Expense", "Combined"]):
-            # Check for strictly increasing values: v1 < v2 < v3
             if vals[0] < vals[1] < vals[2]:
                 growth = vals[2] - vals[0]
-                # Only alert if the growth is noticeable (> 3% absolute change)
                 if growth >= 3:
                     alerts.append({
                         "level": "warning", 
-                        "msg": f"Rising Trend: {metric} rose from {vals[0]}% to {vals[2]}% ({years[0]}-{years[2]})."
+                        "msg": f"Rising Trend: {entity} - {metric} rose from {vals[0]}% to {vals[2]}% ({years[0]} to {years[2]})."
                     })
 
-        # TREND 2: FALLING "GOOD" METRICS (Solvency)
+        # TREND 2: FALLING "GOOD" METRICS
         if "Solvency" in metric:
             if vals[0] > vals[1] > vals[2]:
                 drop = vals[0] - vals[2]
-                if drop >= 0.2: # Significant solvency drop
+                if drop >= 0.2:
                     alerts.append({
                         "level": "warning", 
-                        "msg": f"Deteriorating Solvency: Dropped from {vals[0]} to {vals[2]} ({years[0]}-{years[2]})."
+                        "msg": f"Deteriorating Solvency: {entity} - Dropped from {vals[0]} to {vals[2]} ({years[0]} to {years[2]})."
                     })
 
     return alerts
@@ -695,26 +705,33 @@ def get_compliance_dashboard(target_year=None):
         combined_ratio = get_val("Combined Ratio")
         claims_ratio = get_val(["Net Incurred Claims", "Incurred Claims"])
         expense_ratio = get_val(["Expense of Management to GDP Ratio", "Expense of Management", "EoM"])
+        repudiation_val = get_val(["Repudiation Ratio", "Claims Repudiated"])
         
         status = "COMPLIANT"
         alerts = []
         is_sahi = any(s.lower() in insurer.lower() for s in SAHI_INSURERS)
 
-        # --- B. THRESHOLD CHECKS ---
+        # --- B. THRESHOLD CHECKS (Aligned with EWS Logic) ---
         if solvency is not None and solvency < 1.5:
             status = "VIOLATION"
-            alerts.append({"level": "critical", "msg": f"Solvency ({solvency}) < 1.5 minimum."})
+            alerts.append({"level": "critical", "msg": f"Regulatory Violation: {insurer} - Solvency {solvency} < 1.5 limit"})
 
         if expense_ratio is not None:
             limit = 35 if is_sahi else 30
             if expense_ratio > limit:
                 status = "VIOLATION"
-                alerts.append({"level": "critical", "msg": f"EoM ({expense_ratio}%) exceeds {limit}% limit."})
+                alerts.append({"level": "critical", "msg": f"Regulatory Violation: {insurer} - EoM {expense_ratio}% exceeds {limit}% limit"})
+        
+        if repudiation_val is not None and repudiation_val > 10:
+            # High Repudiation is a Warning/Watchlist, not necessarily a status change to VIOLATION
+            alerts.append({"level": "warning", "msg": f"High Repudiation: {insurer} - Repudiation Ratio {repudiation_val}% exceeds 10% limit"})
 
-        # --- C. TREND CHECKS ---
+        # --- C. TREND CHECKS (Safety Fixed) ---
         def check_trend_alert(metric_patterns, alert_type="rising"):
             pattern = '|'.join(metric_patterns)
             metric_rows = ins_df[ins_df['Metric'].str.contains(pattern, case=False, na=False)].copy()
+            
+            # SAFETY FIX: Ensure at least 3 points exist for trend analysis
             if len(metric_rows) < 3: return
 
             metric_rows['Sort_Y'] = metric_rows['Financial_Year'].astype(str).str.extract(r'(\d+)').astype(float)
@@ -723,6 +740,9 @@ def get_compliance_dashboard(target_year=None):
             last_3 = metric_rows.tail(3)
             vals = [float(str(v).replace(',','').replace('%','')) for v in last_3['Value'].tolist()]
             years = last_3['Financial_Year'].tolist()
+            
+            # Double check list length before indexing
+            if len(vals) < 3: return
 
             if alert_type == "rising":
                 if vals[0] < vals[1] < vals[2]:
@@ -730,7 +750,7 @@ def get_compliance_dashboard(target_year=None):
                     if growth >= 3:
                         alerts.append({
                             "level": "warning",
-                            "msg": f"Rising Trend: {metric_patterns[0]} rose from {vals[0]}% to {vals[2]}% ({years[0]}-{years[2]})."
+                            "msg": f"Rising Trend: {insurer} - {metric_patterns[0]} rose from {vals[0]}% to {vals[2]}% ({years[0]} to {years[2]})."
                         })
             elif alert_type == "falling":
                 if vals[0] > vals[1] > vals[2]:
@@ -738,7 +758,7 @@ def get_compliance_dashboard(target_year=None):
                     if drop >= 0.2: 
                         alerts.append({
                             "level": "warning",
-                            "msg": f"Deteriorating Trend: {metric_patterns[0]} dropped from {vals[0]} to {vals[2]} ({years[0]}-{years[2]})."
+                            "msg": f"Deteriorating Solvency: {insurer} - Dropped from {vals[0]} to {vals[2]} ({years[0]} to {years[2]})."
                         })
 
         check_trend_alert(["Repudiation Ratio", "Claims Repudiated"], "rising")
@@ -749,6 +769,12 @@ def get_compliance_dashboard(target_year=None):
         # --- D. Finalize Data ---
         has_critical = any(a['level'] == 'critical' for a in alerts)
         has_warning = any(a['level'] == 'warning' for a in alerts)
+
+        # Adjust overall status based on critical alerts
+        if has_critical:
+            status = "VIOLATION"
+        elif has_warning and status != "VIOLATION":
+            status = "WATCHLIST"
 
         dashboard_data.append({
             "name": insurer,

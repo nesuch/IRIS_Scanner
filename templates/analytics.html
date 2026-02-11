@@ -6,7 +6,6 @@
     <title>IRIS - System Analytics</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -170,29 +169,11 @@
             font-weight: 600;
         }
 
-        .yearly-table td {
-            padding: 10px;
-            border-bottom: 1px solid #f0f0f0;
-            color: #333;
-            font-weight: 600;
-        }
-
         /* Utility Classes */
-        .border-red {
-            border-bottom: 4px solid #d32f2f;
-        }
-
-        .border-green {
-            border-bottom: 4px solid #2e7d32;
-        }
-
-        .text-red {
-            color: #d32f2f;
-        }
-
-        .text-green {
-            color: #2e7d32;
-        }
+        .border-red { border-bottom: 4px solid #d32f2f; }
+        .border-green { border-bottom: 4px solid #2e7d32; }
+        .text-red { color: #d32f2f; }
+        .text-green { color: #2e7d32; }
     </style>
 </head>
 
@@ -207,7 +188,7 @@
         <div class="menu-label">Knowledge Base</div>
         <a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
         <a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
-        <a href="life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
+        <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
         <div class="menu-label">Data Intelligence</div>
         <a href="/data" class="nav-item"><i class="fas fa-chart-line"></i> Data Explorer</a>
         <a href="/compliance" class="nav-item"><i class="fas fa-gavel"></i> Compliance Cockpit</a>
@@ -236,8 +217,7 @@
                 <div class="stat-label">Total Requests</div>
             </div>
             <div class="stat-card {% if stats.errors > 0 %}border-red{% else %}border-green{% endif %}">
-                <div class="stat-val {% if stats.errors > 0 %}text-red{% else %}text-green{% endif %}">{{ stats.errors
-                    }}</div>
+                <div class="stat-val {% if stats.errors > 0 %}text-red{% else %}text-green{% endif %}">{{ stats.errors }}</div>
                 <div class="stat-label">System Crashes</div>
             </div>
         </div>
@@ -258,10 +238,8 @@
             </div>
         </div>
 
-        <div
-            style="margin: 0 20px 20px 20px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
-            <h4 style="margin-top:0; color:#333; margin-bottom:15px;"><i class="fas fa-calendar-alt"></i> Yearly
-                Overview</h4>
+        <div style="margin: 0 20px 20px 20px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+            <h4 style="margin-top:0; color:#333; margin-bottom:15px;"><i class="fas fa-calendar-alt"></i> Yearly Overview</h4>
             <table class="yearly-table">
                 <thead>
                     <tr>
@@ -271,17 +249,16 @@
                 </thead>
                 <tbody>
                     {% if yearly %}
-                    {% for year in yearly %}
-                    <tr>
-                        <td>{{ year.year }}</td>
-                        <td>{{ year.count }}</td>
-                    </tr>
-                    {% endfor %}
+                        {% for year in yearly %}
+                        <tr>
+                            <td>{{ year.year }}</td>
+                            <td>{{ year.count }}</td>
+                        </tr>
+                        {% endfor %}
                     {% else %}
-                    <tr>
-                        <td colspan="2" style="color:#999; font-weight:400; text-align:center;">No historical data
-                            available.</td>
-                    </tr>
+                        <tr>
+                            <td colspan="2" style="color:#999; font-weight:400; text-align:center;">No historical data available.</td>
+                        </tr>
                     {% endif %}
                 </tbody>
             </table>
@@ -327,7 +304,7 @@
     </div>
 
     <script>
-        // 2. REGISTER THE PLUGIN GLOBALLY
+        // REGISTER THE DATALABELS PLUGIN GLOBALLY
         Chart.register(ChartDataLabels);
 
         // ------------------------------------------
@@ -351,7 +328,6 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
-                        // --- PIE LABELS: Show Percentages ---
                         datalabels: {
                             color: '#fff',
                             font: { weight: 'bold', size: 12 },
@@ -370,7 +346,7 @@
         }
 
         // ------------------------------------------
-        // CHART 2: MONTHLY TRAFFIC (LINE)
+        // CHART 2: MONTHLY TRAFFIC (LINE) - FIXED
         // ------------------------------------------
         const monthlyData = JSON.parse('{{ monthly.data | tojson | safe }}');
         if (monthlyData && monthlyData.length > 0) {
@@ -395,20 +371,35 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    // --- FIX START: Add Padding to Layout ---
+                    layout: {
+                        padding: {
+                            top: 25,  // Adds 25px space at the top so labels don't get cut
+                            right: 10,
+                            left: 10,
+                            bottom: 0
+                        }
+                    },
+                    // --- FIX END ---
                     plugins: {
                         legend: { display: false },
-                        // --- LINE LABELS: Show Counts on Top ---
                         datalabels: {
                             display: true,
                             align: 'top',
+                            offset: 4, // Pushes label slightly higher up
                             color: '#1a237e',
                             font: { weight: 'bold' },
-                            formatter: (value) => value > 0 ? value : "" // Hide 0s for cleaner look
+                            formatter: (value) => value > 0 ? value : ""
                         }
                     },
                     scales: {
-                        // suggestedMax adds breathing room at the top for the labels
-                        y: { beginAtZero: true, grid: { color: '#f0f0f0' }, suggestedMax: Math.max(...monthlyData) + 2 },
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: '#f0f0f0' },
+                            // --- FIX START: Add Grace (Extra Headroom) ---
+                            grace: '10%' // Adds 10% extra space above the max value
+                            // --- FIX END ---
+                        },
                         x: { grid: { display: false } }
                     }
                 }
@@ -416,5 +407,4 @@
         }
     </script>
 </body>
-
 </html>
