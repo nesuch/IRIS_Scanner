@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify # type: ignore
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from typing import List
 import re
-import pandas as pd # type: ignore
+import pandas as pd
 import io
 import os
 import json
@@ -10,7 +10,7 @@ import traceback
 import sqlite3
 import threading # Required for Background Sync
 from datetime import datetime
-import iris_brain as brain # type: ignore
+import iris_brain as brain
 
 app = Flask(__name__)
 
@@ -18,9 +18,12 @@ app = Flask(__name__)
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
 # ==========================================
 # This ensures that as soon as you run python app.py, 
-# the system loads the data from SQL into memory.
+# the system loads the data from SQL/Files into memory.
 print("--- IRIS: Initializing Data Engine ---")
 try:
+    # 1. Load Knowledge Base (Text Search)
+    brain.load_knowledge_base()
+    # 2. Load Master Data Engine (Financial Data)
     brain.load_master_data_engine()
 except Exception as e:
     print(f"[!] Warning: Data Engine load failed on startup: {e}")
@@ -129,6 +132,73 @@ TYPE_STYLES = {
     "GUIDELINE": {"color": "#383d41", "bg": "#e2e3e5", "border": "#d6d8db", "label": "GUIDELINE"},
     "UNKNOWN": {"color": "#666", "bg": "#f2f2f2", "border": "#ddd", "label": "DOCUMENT"}
 }
+
+# ==========================================
+# ASYNC SYNC ENGINE (BACKGROUND THREADS)
+# ==========================================
+# Global state to track the background job.
+# The Admin UI polls this variable.
+SYNC_STATE = {
+    "status": "idle",       # idle, running, complete, error
+    "message": "System ready.",
+    "timestamp": None
+}
+
+def run_background_sync():
+    """Executes the heavy data aggregation logic in a separate thread."""
+    global SYNC_STATE
+    try:
+        print("--- BACKGROUND SYNC STARTED ---")
+        SYNC_STATE["status"] = "running"
+        SYNC_STATE["message"] = "Scanning /data folder for Excel files..."
+        
+        # 1. Run the heavy brain function (Data Normalization & Aggregation)
+        # This function scans files, normalizes headers, and updates the in-memory cache
+        # It MUST return a status string message.
+        result_msg = brain.aggregate_submissions() 
+        
+        # 2. Update status on success
+        SYNC_STATE["status"] = "complete"
+        SYNC_STATE["message"] = result_msg
+        SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
+        print("--- BACKGROUND SYNC FINISHED ---")
+        
+    except Exception as e:
+        print(f"--- SYNC ERROR: {e} ---")
+        SYNC_STATE["status"] = "error"
+        SYNC_STATE["message"] = f"Error: {str(e)}"
+
+# ==========================================
+# ADMIN ROUTES (SYNC CONTROL)
+# ==========================================
+
+@app.route("/admin", methods=["GET"])
+def admin_panel():
+    """Renders the Admin UI, passing initial sync state."""
+    return render_template("admin.html", sync_state=SYNC_STATE)
+
+@app.route("/admin/sync_start", methods=["POST"])
+def sync_start():
+    """Kicks off the background sync thread."""
+    global SYNC_STATE
+    
+    if SYNC_STATE["status"] == "running":
+        return jsonify({"status": "error", "message": "Sync already in progress."})
+
+    # Reset State & Start
+    SYNC_STATE["status"] = "starting"
+    SYNC_STATE["message"] = "Initializing background process..."
+    
+    thread = threading.Thread(target=run_background_sync)
+    thread.daemon = True # Ensures thread dies if app restarts
+    thread.start()
+    
+    return jsonify({"status": "started"})
+
+@app.route("/admin/sync_status", methods=["GET"])
+def sync_status():
+    """Frontend polls this to update progress bars."""
+    return jsonify(SYNC_STATE)
 
 # ==========================================
 # ROUTES (MODULES)
@@ -246,7 +316,7 @@ def analytics_dashboard():
     endpoints = {}
     
     # Define internal endpoints to hide from the pie chart
-    ignored_routes = ['/clear_logs', '/sync_data', '/download_data', '/check_sync_status']
+    ignored_routes = ['/clear_logs', '/sync_data', '/download_data', '/admin/sync_status', '/admin/sync_start']
     
     for l in valid_logs:
         ep = l['endpoint']
@@ -312,46 +382,6 @@ def analytics_dashboard():
                            monthly={"labels": monthly_labels, "data": monthly_data},
                            yearly=yearly_stats,
                            active_module="analytics")
-
-# ==========================================
-# ASYNC SYNC LOGIC (NO TIMEOUTS)
-# ==========================================
-SYNC_STATUS = { "state": "IDLE", "message": "Ready to sync." }
-
-def run_sync_task():
-    global SYNC_STATUS
-    SYNC_STATUS["state"] = "RUNNING"
-    SYNC_STATUS["message"] = "Processing files... Please wait."
-    try:
-        # Run the heavy brain function
-        msg = brain.aggregate_submissions()
-        SYNC_STATUS["state"] = "COMPLETED"
-        SYNC_STATUS["message"] = msg
-    except Exception as e:
-        SYNC_STATUS["state"] = "ERROR"
-        SYNC_STATUS["message"] = f"Error: {str(e)}"
-
-@app.route("/admin", methods=["GET"])
-def admin_panel():
-    return render_template("admin.html")
-
-@app.route("/sync_data", methods=["POST"])
-def sync_data():
-    global SYNC_STATUS
-    
-    if SYNC_STATUS["state"] == "RUNNING":
-        return jsonify({"status": "busy", "message": "Sync already in progress."})
-
-    # Start the heavy task in a separate thread (Background)
-    thread = threading.Thread(target=run_sync_task)
-    thread.start()
-    
-    return jsonify({"status": "started", "message": "Sync started in background."})
-
-@app.route("/check_sync_status", methods=["GET"])
-def check_sync_status():
-    """Frontend polls this to update the UI"""
-    return jsonify(SYNC_STATUS)
 
 # ==========================================
 # CORE SEARCH LOGIC (TEXT ONLY)
@@ -599,4 +629,4 @@ def build_results_html(matches, keywords):
     return html
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=True, port=8080)

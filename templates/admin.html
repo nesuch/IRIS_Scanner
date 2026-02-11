@@ -2,17 +2,126 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>IRIS Admin Panel</title>
+    <title>IRIS - Admin Panel</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-        /* --- LOGO STYLES --- */
-        .logo-text { 
+        /* --- ADMIN SPECIFIC STYLES --- */
+        .admin-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid #eee;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .status-idle { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
+        .status-running { background: #fff3e0; color: #ef6c00; border: 1px solid #ffe0b2; }
+        .status-complete { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .status-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+
+        .progress-container {
+            margin-top: 25px;
+            background: #f1f3f5;
+            border-radius: 4px;
+            height: 10px;
+            overflow: hidden;
+            display: none; /* Hidden by default */
+            border: 1px solid #dee2e6;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #2b58a6, #42a5f5);
+            width: 0%;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+        
+        /* Shimmer effect for active progress */
+        .progress-bar.active::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background-image: linear-gradient(
+                -45deg, 
+                rgba(255, 255, 255, .2) 25%, 
+                transparent 25%, 
+                transparent 50%, 
+                rgba(255, 255, 255, .2) 50%, 
+                rgba(255, 255, 255, .2) 75%, 
+                transparent 75%, 
+                transparent
+            );
+            background-size: 50px 50px;
+            animation: move 2s linear infinite;
+        }
+
+        @keyframes move {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 50px; }
+        }
+
+        .console-log {
+            background: #263238;
+            color: #eceff1;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            min-height: 80px;
+            max-height: 200px;
+            overflow-y: auto;
+            border-left: 4px solid #78909c;
+        }
+        
+        .console-line {
+            margin: 4px 0;
+            display: block;
+        }
+        .console-timestamp {
+            color: #90a4ae;
+            margin-right: 10px;
+        }
+
+        .btn-sync {
+            background: #2b58a6; 
+            color: white; 
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .btn-sync:hover { background: #1a237e; transform: translateY(-1px); }
+        .btn-sync:disabled { background: #b0bec5; cursor: not-allowed; transform: none; }
+
+        /* Sidebar Logo Override */
+        .logo-text {
             margin-top: 8px;
-            font-family: 'Montserrat', sans-serif; 
-            font-size: 30px; 
-            font-weight: 700; 
+            font-family: 'Montserrat', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
             background: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -21,34 +130,15 @@
             letter-spacing: 1.5px;
             line-height: 1;
             text-transform: uppercase;
-            padding-left: 1.5px; 
+            padding-left: 1.5px;
         }
-
-        /* --- PAGE SPECIFIC STYLES --- */
-        .admin-container { 
-            background: white; padding: 40px; border-radius: 12px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; max-width: 600px; width: 100%; 
-        }
-        .sync-btn {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; border: none;
-            padding: 15px 30px; border-radius: 8px; font-size: 16px; cursor: pointer; transition: 0.3s;
-            display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
-        }
-        .sync-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(30, 60, 114, 0.3); }
-        .sync-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
-        
-        .typing-indicator { display: flex; gap: 5px; justify-content: center; margin-bottom: 10px; }
-        .dot { width: 8px; height: 8px; background: #0d47a1; border-radius: 50%; animation: blink 1.4s infinite; }
-        .dot:nth-child(2) { animation-delay: 0.2s; }
-        .dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }
     </style>
 </head>
-<body style="background-color: #f4f7f6; margin: 0;">
+<body>
 
     <div class="sidebar">
         <div class="logo">
-            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo" style="height: 50px;">
+            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
             <div class="logo-text">IRIS</div>
         </div>
         <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
@@ -67,113 +157,186 @@
         <a href="/admin" class="nav-item active"><i class="fas fa-cog"></i> Admin Panel</a>
     </div>
 
-    <div class="main-content" style="display:flex; justify-content:center; align-items:center; height:100vh; margin-left: 260px;">
-        <div class="admin-container">
-            <h1 style="color:#333; margin-bottom:10px; font-size:24px;">Knowledge Base Sync</h1>
-            <p style="color:#666; margin-bottom:30px; line-height:1.5;">
-                <strong>Step 1:</strong> Place Excel files into: <br>
-                <code style="background:#eee; padding:2px 6px; border-radius:4px;">knowledge_base/raw_submissions/</code>
-                <br><br>
-                <strong>Step 2:</strong> Click below. The system will process files in the background.
-            </p>
-            
-            <button id="syncBtn" onclick="startSync()" class="sync-btn">
-                <i class="fas fa-sync-alt"></i> Start Aggregate & Sync
-            </button>
-
-            <div id="statusArea" style="margin-top:25px; padding:15px; border-radius:6px; display:none;">
-                <div id="loadingSpinner" class="typing-indicator" style="display:none;">
-                    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                </div>
-                <div id="statusText" style="font-weight:bold; text-align:center;"></div>
+    <div class="main-content">
+        <div class="header-area">
+            <div class="full-form-text">System Administration</div>
+            <div class="header-title-row">
+                <i class="fas fa-cog module-icon"></i>
+                <h2>Admin Console</h2>
             </div>
+            <p class="scope-indicator"><span class="scope-dot"></span> Manage Data & Configuration</p>
+        </div>
+
+        <div style="padding: 20px 40px;">
+            
+            <div class="admin-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 style="margin:0; color:#1a237e; display:flex; align-items:center; gap:10px;">
+                        <i class="fas fa-database"></i> Knowledge Base Sync
+                    </h3>
+                    <span id="statusBadge" class="status-indicator status-{{ sync_state.status }}">
+                        {{ sync_state.status }}
+                    </span>
+                </div>
+                
+                <p style="color:#546e7a; font-size:14px; line-height:1.6; margin-bottom:20px;">
+                    <strong>Instructions:</strong><br>
+                    1. Place new Excel files into <code style="background:#eceff1; padding:2px 6px; border-radius:4px; color:#37474f;">knowledge_base/raw_submissions/</code>.<br>
+                    2. Click "Start Data Sync". The system will normalize headers, aggregate data, and rebuild the cache in the background.
+                </p>
+
+                <div>
+                    <button id="syncBtn" class="btn-sync" onclick="startSync()">
+                        <i class="fas fa-sync-alt"></i> Start Data Sync
+                    </button>
+                </div>
+
+                <div class="progress-container" id="progressBarContainer">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+
+                <div class="console-log" id="consoleLog">
+                    <span class="console-line"><span class="console-timestamp">READY</span> System initialized. Waiting for command.</span>
+                    {% if sync_state.status != 'idle' %}
+                        <span class="console-line"><span class="console-timestamp">STATUS</span> {{ sync_state.message }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
         </div>
     </div>
 
     <script>
+        let pollInterval = null;
+
+        // Check if sync is already running on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const initialStatus = "{{ sync_state.status }}";
+            if (initialStatus === 'running' || initialStatus === 'starting') {
+                startPollingUI();
+            }
+        });
+
         function startSync() {
+            // 1. UI Updates
             const btn = document.getElementById('syncBtn');
-            const statusArea = document.getElementById('statusArea');
-            const statusText = document.getElementById('statusText');
-            const spinner = document.getElementById('loadingSpinner');
-
-            // 1. Disable Button & Show Loading UI
+            const progressContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            const badge = document.getElementById('statusBadge');
+            
             btn.disabled = true;
-            btn.style.opacity = "0.6";
-            statusArea.style.display = "block";
-            statusArea.style.background = "#e3f2fd"; // Light Blue
-            statusArea.style.color = "#0d47a1"; // Dark Blue
-            statusArea.style.border = "1px solid #bbdefb";
-            spinner.style.display = "flex";
-            statusText.innerText = "Initializing Sync Process...";
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Initializing...';
+            
+            progressContainer.style.display = 'block';
+            progressBar.className = 'progress-bar active';
+            progressBar.style.width = '10%'; // Jump start
+            
+            badge.className = 'status-indicator status-running';
+            badge.innerText = 'STARTING';
 
-            // 2. Send Start Command
-            fetch('/sync_data', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'started') {
-                    // 3. Start Polling for Updates
-                    pollStatus();
-                } else if(data.status === 'busy') {
-                    statusText.innerText = "System is busy. Sync already running.";
-                    spinner.style.display = "none";
-                } else {
-                    statusText.innerText = data.message;
-                    btn.disabled = false;
-                    spinner.style.display = "none";
-                }
-            })
-            .catch(err => {
-                statusText.innerText = "Server Error: Could not start sync.";
-                btn.disabled = false;
-                spinner.style.display = "none";
-            });
-        }
+            logMessage("Command sent: Start Sync");
 
-        function pollStatus() {
-            const timer = setInterval(() => {
-                fetch('/check_sync_status')
+            // 2. Call API
+            fetch('/admin/sync_start', { method: 'POST' })
                 .then(res => res.json())
                 .then(data => {
-                    document.getElementById('statusText').innerText = data.message;
-
-                    if (data.state === 'COMPLETED') {
-                        clearInterval(timer);
-                        finishSync(true, data.message);
-                    } else if (data.state === 'ERROR') {
-                        clearInterval(timer);
-                        finishSync(false, data.message);
+                    if (data.status === 'started') {
+                        logMessage("Background thread started successfully.");
+                        startPollingUI();
+                    } else {
+                        logMessage("Error: " + data.message);
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-sync-alt"></i> Start Data Sync';
                     }
-                    // If 'RUNNING', do nothing and keep polling
                 })
                 .catch(err => {
-                    // Stop polling on network error
-                    clearInterval(timer);
-                    finishSync(false, "Network Error: Connection lost.");
+                    logMessage("Connection Error: " + err);
+                    btn.disabled = false;
                 });
-            }, 1000); // Check every 1 second
         }
 
-        function finishSync(success, msg) {
-            const statusArea = document.getElementById('statusArea');
-            const spinner = document.getElementById('loadingSpinner');
+        function startPollingUI() {
             const btn = document.getElementById('syncBtn');
-            const statusText = document.getElementById('statusText');
-
-            spinner.style.display = "none";
-            btn.disabled = false;
-            btn.style.opacity = "1";
-            statusText.innerText = msg;
-
-            if (success) {
-                statusArea.style.background = "#e8f5e9"; // Light Green
-                statusArea.style.color = "#2e7d32"; // Dark Green
-                statusArea.style.border = "1px solid #c8e6c9";
-            } else {
-                statusArea.style.background = "#ffebee"; // Light Red
-                statusArea.style.color = "#c62828"; // Dark Red
-                statusArea.style.border = "1px solid #ffcdd2";
+            const progressContainer = document.getElementById('progressBarContainer');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Syncing...';
+            progressContainer.style.display = 'block';
+            
+            // Poll every 1.5 seconds
+            if (!pollInterval) {
+                pollInterval = setInterval(checkStatus, 1500);
             }
+        }
+
+        function checkStatus() {
+            fetch('/admin/sync_status')
+                .then(res => res.json())
+                .then(data => {
+                    const progressBar = document.getElementById('progressBar');
+                    const badge = document.getElementById('statusBadge');
+                    const btn = document.getElementById('syncBtn');
+
+                    // Update UI based on status
+                    badge.className = 'status-indicator status-' + data.status;
+                    badge.innerText = data.status.toUpperCase();
+                    
+                    // Only log if message changed to avoid spamming
+                    const lastLog = document.querySelector('.console-line:last-child');
+                    if (!lastLog || !lastLog.innerText.includes(data.message)) {
+                        logMessage(data.message);
+                    }
+
+                    if (data.status === 'running' || data.status === 'starting') {
+                        // Fake progress increment for visual feedback
+                        let currentWidth = parseInt(progressBar.style.width) || 10;
+                        if (currentWidth < 90) progressBar.style.width = (currentWidth + 5) + '%';
+                    
+                    } else if (data.status === 'complete') {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                        
+                        progressBar.style.width = '100%';
+                        progressBar.className = 'progress-bar'; // Remove active animation
+                        progressBar.style.background = '#2e7d32'; // Green
+                        
+                        btn.innerHTML = '<i class="fas fa-check"></i> Sync Complete';
+                        btn.disabled = false;
+                        
+                        logMessage("Job finished at " + (data.timestamp || "now"));
+
+                        // Reset button after 3 seconds
+                        setTimeout(() => {
+                             btn.innerHTML = '<i class="fas fa-sync-alt"></i> Start Data Sync';
+                        }, 3000);
+
+                    } else if (data.status === 'error') {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                        
+                        progressBar.style.width = '100%';
+                        progressBar.className = 'progress-bar';
+                        progressBar.style.background = '#c62828'; // Red
+                        
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Retry Sync';
+                    }
+                })
+                .catch(err => {
+                    console.log("Polling error", err);
+                });
+        }
+
+        function logMessage(msg) {
+            const consoleBox = document.getElementById('consoleLog');
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            
+            const line = document.createElement('span');
+            line.className = 'console-line';
+            line.innerHTML = `<span class="console-timestamp">[${time}]</span> ${msg}`;
+            
+            consoleBox.appendChild(line);
+            consoleBox.scrollTop = consoleBox.scrollHeight; // Auto-scroll to bottom
         }
     </script>
 </body>
