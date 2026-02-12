@@ -576,19 +576,30 @@ def convert_markdown_to_html(text):
     return "\n".join(new_lines)
 
 def format_verbatim(raw_text, keywords):
-    """Formats the raw text for display: converts markdown, highlights keywords."""
+    """Formats raw text for display while preserving heading style without highlights."""
     if not raw_text: return ""
     text_with_tables = convert_markdown_to_html(raw_text)
-    
-    # We remove explicit bolding for table HTML lines to avoid breaking tags
+
     lines = text_with_tables.splitlines()
-    bolded_lines: List[str] = []
+    formatted_lines: List[str] = []
+
     for line in lines:
-        if line.strip().startswith("<table"): bolded_lines.append(line)
-        elif line.strip().endswith(":"): bolded_lines.append(f"<strong>{line}</strong>")
-        else: bolded_lines.append(line)
-    
-    final_text = highlight_keywords("\n".join(bolded_lines), keywords)
+        stripped = line.strip()
+
+        # Keep table/html lines untouched
+        if stripped.startswith("<table") or stripped.startswith("<tr") or stripped.startswith("<th") or stripped.startswith("<td") or stripped.startswith("</"):
+            formatted_lines.append(line)
+            continue
+
+        # Headings keep original formatting (bold only), no keyword highlighting
+        if stripped.endswith(":"):
+            formatted_lines.append(f"<strong>{line}</strong>")
+            continue
+
+        # Regular lines get keyword highlighting
+        formatted_lines.append(highlight_keywords(line, keywords))
+
+    final_text = "\n".join(formatted_lines)
     return f'<div style="white-space: pre-wrap; font-family: inherit;">{final_text}</div>'
 
 def build_results_html(matches, keywords):
