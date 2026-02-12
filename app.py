@@ -121,7 +121,9 @@ def clear_logs():
 # ==========================================
 PDF_MAP = {
     "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
-    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf"
+    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf",
+    "PPHI REGULATIONS 2024": "documents/health/PPHI_REGS_2024.pdf",
+    "PPHI REGS 2024": "documents/health/PPHI_REGS_2024.pdf"
 }
 
 TYPE_STYLES = {
@@ -150,14 +152,12 @@ def run_background_sync():
     try:
         print("--- BACKGROUND SYNC STARTED ---")
         SYNC_STATE["status"] = "running"
-        SYNC_STATE["message"] = "Scanning /data folder for Excel files..."
-        
-        # 1. Run the heavy brain function (Data Normalization & Aggregation)
-        # This function scans files, normalizes headers, and updates the in-memory cache
-        # It MUST return a status string message.
-        result_msg = brain.aggregate_submissions() 
-        
-        # 2. Update status on success
+        SYNC_STATE["message"] = "Syncing financial + regulatory data from knowledge_base..."
+
+        financial_msg = brain.aggregate_submissions()
+        regulatory_msg = brain.aggregate_regulatory_documents()
+        result_msg = f"{financial_msg} | {regulatory_msg}"
+
         SYNC_STATE["status"] = "complete"
         SYNC_STATE["message"] = result_msg
         SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
