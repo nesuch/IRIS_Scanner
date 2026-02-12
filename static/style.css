@@ -94,7 +94,7 @@ body {
 .iris-bubble { background-color: white; border: 1px solid #e0e0e0; border-bottom-left-radius: 2px; width: 100%; box-sizing: border-box;}
 
 .chat-block.iris strong { color: #1a237e; font-weight: 700; display: inline; margin: 0; }
-.iris-highlight { background-color: #fff3cd; border-bottom: 1px solid #f3d98c; color: inherit; font-weight: 400; opacity: 1; padding: 0px 4px; border-radius: 2px; }
+.iris-highlight { background-color: #ffd86b !important; border-bottom: 1px solid #d6ad3f !important; color: #2f2f2f !important; font-weight: 700 !important; opacity: 1; padding: 0px 4px; border-radius: 2px; }
 
 /* =========================
    5. INPUT AREA (For Chat Modules)
