@@ -537,7 +537,7 @@ def highlight_keywords(text, keywords):
     for kw in sorted(list(expanded), key=len, reverse=True):
         if len(kw) < 3: continue
         pattern = re.compile(rf"\b({re.escape(kw)})\b", re.IGNORECASE)
-        text = pattern.sub(r"<span style='background-color:#fff3cd; color:#856404; font-weight:bold;'>\1</span>", text)
+        text = pattern.sub(r"<span class='iris-highlight'>\1</span>", text)
     return text
 
 def convert_markdown_to_html(text):
