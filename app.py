@@ -121,7 +121,9 @@ def clear_logs():
 # ==========================================
 PDF_MAP = {
     "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
-    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf"
+    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf",
+    "PPHI REGULATIONS 2024": "documents/health/PPHI_REGS_2024.pdf",
+    "PPHI REGS 2024": "documents/health/PPHI_REGS_2024.pdf"
 }
 
 TYPE_STYLES = {
