@@ -121,7 +121,14 @@ def clear_logs():
 # ==========================================
 PDF_MAP = {
     "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
-    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf"
+    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf",
+    "PRODUCT REGS 2024": "documents/health/PRODUCT_REGS_2024.pdf",
+    "PPHI REGULATIONS 2024": "documents/health/PPHI_REGS_2024.pdf",
+    "PPHI REGS 2024": "documents/health/PPHI_REGS_2024.pdf",
+    "PPHI MASTER CIRCULAR 2024": "documents/health/PPHI_MC_2024.pdf",
+    "PPHI MC 2024": "documents/health/PPHI_MC_2024.pdf",
+    "INSURANCE ACT 1938": "documents/health/INSURANCE_ACT_1938.pdf",
+    "IRDAI ACT 1999": "documents/health/IRDAI_ACT_1999.pdf"
 }
 
 TYPE_STYLES = {
@@ -150,14 +157,12 @@ def run_background_sync():
     try:
         print("--- BACKGROUND SYNC STARTED ---")
         SYNC_STATE["status"] = "running"
-        SYNC_STATE["message"] = "Scanning /data folder for Excel files..."
-        
-        # 1. Run the heavy brain function (Data Normalization & Aggregation)
-        # This function scans files, normalizes headers, and updates the in-memory cache
-        # It MUST return a status string message.
-        result_msg = brain.aggregate_submissions() 
-        
-        # 2. Update status on success
+        SYNC_STATE["message"] = "Syncing financial + regulatory data from knowledge_base..."
+
+        financial_msg = brain.aggregate_submissions()
+        regulatory_msg = brain.aggregate_regulatory_documents()
+        result_msg = f"{financial_msg} | {regulatory_msg}"
+
         SYNC_STATE["status"] = "complete"
         SYNC_STATE["message"] = result_msg
         SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
@@ -537,7 +542,7 @@ def highlight_keywords(text, keywords):
     for kw in sorted(list(expanded), key=len, reverse=True):
         if len(kw) < 3: continue
         pattern = re.compile(rf"\b({re.escape(kw)})\b", re.IGNORECASE)
-        text = pattern.sub(r"<span style='background-color:#fff3cd; color:#856404; font-weight:bold;'>\1</span>", text)
+        text = pattern.sub(r"<span class='iris-highlight'>\1</span>", text)
     return text
 
 def convert_markdown_to_html(text):
@@ -576,19 +581,30 @@ def convert_markdown_to_html(text):
     return "\n".join(new_lines)
 
 def format_verbatim(raw_text, keywords):
-    """Formats the raw text for display: converts markdown, highlights keywords."""
+    """Formats raw text for display while preserving heading style without highlights."""
     if not raw_text: return ""
     text_with_tables = convert_markdown_to_html(raw_text)
-    
-    # We remove explicit bolding for table HTML lines to avoid breaking tags
+
     lines = text_with_tables.splitlines()
-    bolded_lines: List[str] = []
+    formatted_lines: List[str] = []
+
     for line in lines:
-        if line.strip().startswith("<table"): bolded_lines.append(line)
-        elif line.strip().endswith(":"): bolded_lines.append(f"<strong>{line}</strong>")
-        else: bolded_lines.append(line)
-    
-    final_text = highlight_keywords("\n".join(bolded_lines), keywords)
+        stripped = line.strip()
+
+        # Keep table/html lines untouched
+        if stripped.startswith("<table") or stripped.startswith("<tr") or stripped.startswith("<th") or stripped.startswith("<td") or stripped.startswith("</"):
+            formatted_lines.append(line)
+            continue
+
+        # Headings keep original formatting (bold only), no keyword highlighting
+        if stripped.endswith(":"):
+            formatted_lines.append(f"<strong>{line}</strong>")
+            continue
+
+        # Regular lines get keyword highlighting
+        formatted_lines.append(highlight_keywords(line, keywords))
+
+    final_text = "\n".join(formatted_lines)
     return f'<div style="white-space: pre-wrap; font-family: inherit;">{final_text}</div>'
 
 def build_results_html(matches, keywords):
