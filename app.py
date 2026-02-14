@@ -122,8 +122,13 @@ def clear_logs():
 PDF_MAP = {
     "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
     "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf",
+    "PRODUCT REGS 2024": "documents/health/PRODUCT_REGS_2024.pdf",
     "PPHI REGULATIONS 2024": "documents/health/PPHI_REGS_2024.pdf",
-    "PPHI REGS 2024": "documents/health/PPHI_REGS_2024.pdf"
+    "PPHI REGS 2024": "documents/health/PPHI_REGS_2024.pdf",
+    "PPHI MASTER CIRCULAR 2024": "documents/health/PPHI_MC_2024.pdf",
+    "PPHI MC 2024": "documents/health/PPHI_MC_2024.pdf",
+    "INSURANCE ACT 1938": "documents/health/INSURANCE_ACT_1938.pdf",
+    "IRDAI ACT 1999": "documents/health/IRDAI_ACT_1999.pdf"
 }
 
 TYPE_STYLES = {
