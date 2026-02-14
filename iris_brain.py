@@ -5,6 +5,7 @@ import re
 import glob
 import difflib
 import io  # Required for Excel Export
+from pathlib import Path
 from typing import cast
 
 # --- NLTK SETUP ---
@@ -172,6 +173,19 @@ def check_greeting(query):
 
 def get_clean_keywords(query: str):
     query = query.lower().replace("_", " ")
+
+    # Strict mode: if user selects/types an exact known tag phrase,
+    # do not expand to ingredient-matched related tags.
+    normalized_query = " ".join(re.findall(r"\w+", query)).strip()
+    if normalized_query in ALL_UNIQUE_TAGS:
+        return [(normalized_query, normalized_query)]
+
+    # Handle minor punctuation/hyphen variations from selected suggestions
+    if len(normalized_query.split()) >= 4 and ALL_UNIQUE_TAGS:
+        close_tag = difflib.get_close_matches(normalized_query, list(ALL_UNIQUE_TAGS), n=1, cutoff=0.95)
+        if close_tag:
+            return [(close_tag[0], close_tag[0])]
+
     final_tuples = []
     raw_words = re.findall(r'\w+', query)
     soup_ingredients = set()
@@ -356,6 +370,101 @@ def _analyze_risk(selected_entities, dimension):
 # ==========================================
 # 6. DATA INTELLIGENCE ENGINE (DIMENSION AWARE + CSV SUPPORT)
 # ==========================================
+
+def _get_doc_category_from_path(file_path, clean_filename):
+    normalized_parts = {part.lower() for part in Path(file_path).parts}
+
+    if "health" in normalized_parts:
+        return "HEALTH"
+    if "life" in normalized_parts:
+        return "LIFE"
+
+    tokens = set(re.split(r"[^A-Z0-9]+", clean_filename.upper()))
+    health_hints = {"HEALTH", "PRODUCT", "PPHI", "HOSPITAL", "MEDICLAIM"}
+    life_hints = {"LIFE", "ULIP", "ANNUITY", "PENSION"}
+    if tokens & health_hints:
+        return "HEALTH"
+    if tokens & life_hints:
+        return "LIFE"
+    return "OTHER"
+
+
+def aggregate_regulatory_documents():
+    # Rebuilds regulatory_clauses from all Excel files under knowledge_base/.
+    # Enables Admin sync to refresh regulatory docs without manual migrate_raw.py runs.
+    all_files = glob.glob(os.path.join(KB_FOLDER, "**", "*.xlsx"), recursive=True)
+    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.xlxs"), recursive=True)
+
+    doc_files = []
+    for file_path in all_files:
+        if os.path.basename(file_path).startswith("~$"):
+            continue
+        if "raw_submissions" in file_path or "master_data" in file_path:
+            continue
+        doc_files.append(file_path)
+
+    if not doc_files:
+        return "[-] No regulatory Excel files found under knowledge_base/."
+
+    total_rows = 0
+    total_files = 0
+
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+
+    c.execute("DELETE FROM regulatory_clauses")
+
+    for file_path in doc_files:
+        filename = os.path.basename(file_path)
+        try:
+            df = pd.read_excel(file_path).fillna("")
+            if df.empty:
+                continue
+
+            source_doc = re.sub(r"\.(xlsx|xlxs)$", "", filename, flags=re.IGNORECASE).replace("_", " ").upper()
+            category = _get_doc_category_from_path(file_path, source_doc)
+            doc_type = get_doc_type(source_doc)
+            priority = DOC_HIERARCHY.get(doc_type, 99)
+
+            insert_rows = []
+            for _, row in df.iterrows():
+                clause_text = str(row.get("Clause_Text", "")).strip()
+                if not clause_text:
+                    continue
+
+                is_header = 0
+                if (clause_text.lower().startswith("chapter") or clause_text.lower().startswith("part")) and len(clause_text) < 120:
+                    is_header = 1
+
+                insert_rows.append((
+                    source_doc.title(),
+                    category,
+                    doc_type,
+                    str(row.get("Clause_ID", "")).strip(),
+                    clause_text,
+                    str(row.get("Context_Header", "General")),
+                    str(row.get("Regulatory_Tags", "")),
+                    priority,
+                    is_header
+                ))
+
+            if insert_rows:
+                c.executemany(
+                    "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, clause_text, context_header, regulatory_tags, priority, is_header) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    insert_rows,
+                )
+                total_files += 1
+                total_rows += len(insert_rows)
+
+        except Exception as e:
+            print(f"[!] Error processing regulatory file {filename}: {e}")
+
+    conn.commit()
+    conn.close()
+
+    load_knowledge_base(force_reload=True)
+    return f"[+] Regulatory sync complete: {total_files} files ({total_rows} clauses)."
+
 def aggregate_submissions():
     """
     Reads Excel AND CSV files from raw_submissions and INSERTs them into SQL DB.
