@@ -173,6 +173,19 @@ def check_greeting(query):
 
 def get_clean_keywords(query: str):
     query = query.lower().replace("_", " ")
+
+    # Strict mode: if user selects/types an exact known tag phrase,
+    # do not expand to ingredient-matched related tags.
+    normalized_query = " ".join(re.findall(r"\w+", query)).strip()
+    if normalized_query in ALL_UNIQUE_TAGS:
+        return [(normalized_query, normalized_query)]
+
+    # Handle minor punctuation/hyphen variations from selected suggestions
+    if len(normalized_query.split()) >= 4 and ALL_UNIQUE_TAGS:
+        close_tag = difflib.get_close_matches(normalized_query, list(ALL_UNIQUE_TAGS), n=1, cutoff=0.95)
+        if close_tag:
+            return [(close_tag[0], close_tag[0])]
+
     final_tuples = []
     raw_words = re.findall(r'\w+', query)
     soup_ingredients = set()
