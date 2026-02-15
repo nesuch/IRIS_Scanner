@@ -129,7 +129,11 @@
     .btn-excel:hover { background: #155d34; }
 
     /* --- ALERTS --- */
-    .alert-base { padding: 10px 15px; margin-bottom: 8px; border-radius: 4px; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+    .alert-base { padding: 10px 15px; margin-bottom: 8px; border-radius: 4px; font-size: 13px; display: flex; align-items: flex-start; gap: 10px; }
+    .alert-content { display: flex; flex-direction: column; gap: 3px; line-height: 1.35; }
+    .alert-title { font-weight: 700; }
+    .alert-entity { font-weight: 600; color: #263238; }
+    .alert-detail { color: inherit; }
     .alert-crit { background: #ffebee; color: #b71c1c; border-left: 4px solid #b71c1c; }
     .alert-warn { background: #fff3e0; color: #e65100; border-left: 4px solid #fb8c00; }
     
@@ -144,9 +148,19 @@
     </div>
     <div style="max-height: 150px; overflow-y: auto;">
         {% for alert in report.risks %}
+        {% set parts = alert.msg.split(' - ', 1) %}
+        {% set title = parts[0].rstrip(':') if parts|length > 0 else alert.msg %}
+        {% set rest = parts[1] if parts|length > 1 else '' %}
+        {% set metric_parts = rest.split(' - ', 1) if rest else [] %}
+        {% set entity = metric_parts[0] if metric_parts|length > 0 else '' %}
+        {% set detail = metric_parts[1] if metric_parts|length > 1 else rest %}
         <div class="alert-base {{ 'alert-crit' if alert.level == 'critical' else 'alert-warn' }}">
             <i class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-chart-line' }}"></i>
-            {{ alert.msg }}
+            <div class="alert-content">
+                <div class="alert-title">{{ title }}</div>
+                {% if entity %}<div class="alert-entity">{{ entity }}</div>{% endif %}
+                {% if detail %}<div class="alert-detail">{{ detail }}</div>{% endif %}
+            </div>
         </div>
         {% endfor %}
     </div>
