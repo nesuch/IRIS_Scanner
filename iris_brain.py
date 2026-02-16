@@ -150,10 +150,12 @@ def load_knowledge_base(force_reload=False):
 def get_autocomplete_data():
     vocab = {"CONCEPTS": []}
     concepts = set(ALL_UNIQUE_TAGS)
+
+    # Keep suggestion list anchored to real tags + curated synonym keys only.
+    # Do not include raw synonym value tokens (e.g. "claim") because they can
+    # appear as suggestions but not resolve to a meaningful tag result.
     concepts.update(SYNONYM_MAP.keys())
-    for synonym_list in SYNONYM_MAP.values():
-        for word in synonym_list:
-            if len(word) > 2: concepts.add(word)
+
     vocab["CONCEPTS"] = sorted(list(concepts))
     return vocab
 
