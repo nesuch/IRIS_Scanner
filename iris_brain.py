@@ -86,9 +86,13 @@ ALL_UNIQUE_TAGS = set()
 ALL_DOC_NAMES = set()
 TAG_INGREDIENTS = {} 
 KNOWN_VOCAB = set()
+NORMALIZED_TAG_LOOKUP = {}
+
+def normalize_tag_text(text: str) -> str:
+    return " ".join(re.findall(r"\w+", str(text).lower().replace("_", " "))).strip()
 
 def load_knowledge_base(force_reload=False):
-    global ALL_UNIQUE_TAGS, ALL_DOC_NAMES, TAG_INGREDIENTS, KNOWN_VOCAB
+    global ALL_UNIQUE_TAGS, ALL_DOC_NAMES, TAG_INGREDIENTS, KNOWN_VOCAB, NORMALIZED_TAG_LOOKUP
     
     # Pre-load financial data if needed
     if force_reload: load_master_data_engine()
@@ -120,7 +124,7 @@ def load_knowledge_base(force_reload=False):
 
     # 3. Build Vocab / Tags (Only if not already built)
     if not ALL_UNIQUE_TAGS or force_reload:
-        ALL_UNIQUE_TAGS.clear(); ALL_DOC_NAMES.clear(); TAG_INGREDIENTS.clear(); KNOWN_VOCAB.clear()
+        ALL_UNIQUE_TAGS.clear(); ALL_DOC_NAMES.clear(); TAG_INGREDIENTS.clear(); KNOWN_VOCAB.clear(); NORMALIZED_TAG_LOOKUP.clear()
         
         # Load Synonyms
         for k in SYNONYM_MAP.keys(): KNOWN_VOCAB.add(k)
@@ -138,8 +142,12 @@ def load_knowledge_base(force_reload=False):
                     if len(clean_tag) < 2: continue
                     ALL_UNIQUE_TAGS.add(clean_tag)
                     
+                    normalized = normalize_tag_text(clean_tag)
+                    if normalized:
+                        NORMALIZED_TAG_LOOKUP[normalized] = clean_tag
+
                     ingredients = set()
-                    for w in clean_tag.split():
+                    for w in re.findall(r"\w+", clean_tag):
                         if w in STOP_WORDS: continue
                         KNOWN_VOCAB.add(str(w)) 
                         ingredients.add(get_stem(w))
@@ -178,15 +186,17 @@ def get_clean_keywords(query: str):
 
     # Strict mode: if user selects/types an exact known tag phrase,
     # do not expand to ingredient-matched related tags.
-    normalized_query = " ".join(re.findall(r"\w+", query)).strip()
-    if normalized_query in ALL_UNIQUE_TAGS:
-        return [(normalized_query, normalized_query)]
+    normalized_query = normalize_tag_text(query)
+    if normalized_query in NORMALIZED_TAG_LOOKUP:
+        canonical = NORMALIZED_TAG_LOOKUP[normalized_query]
+        return [(canonical, canonical)]
 
     # Handle minor punctuation/hyphen variations from selected suggestions
-    if len(normalized_query.split()) >= 4 and ALL_UNIQUE_TAGS:
-        close_tag = difflib.get_close_matches(normalized_query, list(ALL_UNIQUE_TAGS), n=1, cutoff=0.95)
-        if close_tag:
-            return [(close_tag[0], close_tag[0])]
+    if len(normalized_query.split()) >= 4 and NORMALIZED_TAG_LOOKUP:
+        close_norm = difflib.get_close_matches(normalized_query, list(NORMALIZED_TAG_LOOKUP.keys()), n=1, cutoff=0.95)
+        if close_norm:
+            canonical = NORMALIZED_TAG_LOOKUP[close_norm[0]]
+            return [(canonical, canonical)]
 
     final_tuples = []
     raw_words = re.findall(r'\w+', query)
@@ -239,7 +249,8 @@ def search_tags_only(keyword_tuples, df, module="universal"):
         for target in detected_tags:
             target_stem = get_stem(target)
             for doc_tag in tag_list:
-                if doc_tag == target: found = True; break
+                if doc_tag == target or normalize_tag_text(doc_tag) == normalize_tag_text(target):
+                    found = True; break
                 if target_stem == get_stem(doc_tag) and len(target.split()) == 1 and len(doc_tag.split()) == 1:
                     found = True; break
             if found: break
