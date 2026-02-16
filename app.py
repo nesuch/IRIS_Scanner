@@ -120,16 +120,26 @@ def clear_logs():
 # CONFIGURATION
 # ==========================================
 PDF_MAP = {
-    "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
-    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf",
-    "PRODUCT REGS 2024": "documents/health/PRODUCT_REGS_2024.pdf",
-    "PPHI REGULATIONS 2024": "documents/health/PPHI_REGS_2024.pdf",
-    "PPHI REGS 2024": "documents/health/PPHI_REGS_2024.pdf",
-    "PPHI MASTER CIRCULAR 2024": "documents/health/PPHI_MC_2024.pdf",
-    "PPHI MC 2024": "documents/health/PPHI_MC_2024.pdf",
-    "INSURANCE ACT 1938": "documents/health/INSURANCE_ACT_1938.pdf",
-    "IRDAI ACT 1999": "documents/health/IRDAI_ACT_1999.pdf"
+    "HEALTH MASTER CIRCULAR 2024": ["documents/health/health_master_circular_2024.pdf", "documents/health/HEALTH_MC_2024.pdf"],
+    "HEALTH MC 2024": ["documents/health/HEALTH_MC_2024.pdf", "documents/health/health_master_circular_2024.pdf"],
+    "PRODUCT REGULATIONS 2024": ["documents/health/product_regulations_2024.pdf", "documents/health/PRODUCT_REGS_2024.pdf"],
+    "PRODUCT REGS 2024": ["documents/health/PRODUCT_REGS_2024.pdf", "documents/health/product_regulations_2024.pdf"],
+    "PPHI REGULATIONS 2024": ["documents/health/PPHI_REGS_2024.pdf"],
+    "PPHI REGS 2024": ["documents/health/PPHI_REGS_2024.pdf"],
+    "PPHI MASTER CIRCULAR 2024": ["documents/health/PPHI_MC_2024.pdf"],
+    "PPHI MC 2024": ["documents/health/PPHI_MC_2024.pdf"],
+    "INSURANCE ACT 1938": ["documents/health/INSURANCE_ACT_1938.pdf"],
+    "IRDAI ACT 1999": ["documents/health/IRDAI_ACT_1999.pdf"]
 }
+
+
+def resolve_pdf_path(doc_name_key):
+    candidates = PDF_MAP.get(doc_name_key, [])
+    for rel_path in candidates:
+        abs_path = os.path.join(app.static_folder, rel_path)
+        if os.path.exists(abs_path):
+            return rel_path
+    return None
 
 TYPE_STYLES = {
     "ACT": {"color": "#856404", "bg": "#fff3cd", "border": "#ffeeba", "label": "ACT (The Law)"},
@@ -629,10 +639,10 @@ def build_results_html(matches, keywords):
         
         # --- FIX: Case-Insensitive PDF Lookup ---
         doc_name_key = m['source'].strip().upper()
-        pdf_path = PDF_MAP.get(doc_name_key, "#")
-        
+        pdf_path = resolve_pdf_path(doc_name_key)
+
         pdf_btn = ""
-        if pdf_path != "#":
+        if pdf_path:
             pdf_btn = f"""<a href='/static/{pdf_path}' target='_blank' 
                         style='float:right; margin-left:8px; font-size:10px; font-weight:bold; text-decoration:none; color:#d32f2f; background:#fff; padding:2px 6px; border:1px solid #d32f2f; border-radius:3px;'>
                         <i class="fas fa-file-pdf"></i> PDF</a>"""
