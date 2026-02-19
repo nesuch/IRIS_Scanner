@@ -187,9 +187,28 @@
             margin-bottom: 6px;
             border-radius: 6px;
             display: flex;
-            align-items: start;
+            align-items: flex-start;
             gap: 8px;
-            line-height: 1.4;
+            line-height: 1.35;
+        }
+
+        .alert-inline {
+            display: inline;
+            color: #212121;
+        }
+
+        .alert-inline-title {
+            font-weight: 700;
+            margin-right: 6px;
+        }
+
+        .alert-inline-entity {
+            font-weight: 600;
+            margin-right: 6px;
+        }
+
+        .alert-inline-detail {
+            color: #263238;
         }
 
         .alert-critical {
@@ -443,11 +462,17 @@
                         <div class="alert-area">
                             {% if co.alerts %}
                             {% for alert in co.alerts %}
-                            <div
-                                class="alert-item {{ 'alert-critical' if alert.level == 'critical' else 'alert-warning' }}">
-                                <i
-                                    class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-exclamation-circle' }}"></i>
-                                <span>{{ alert.msg }}</span>
+                            {% set msg_parts = alert.msg.split(': ', 1) %}
+                            {% set title = msg_parts[0] if msg_parts|length > 0 else alert.msg %}
+                            {% set remaining = msg_parts[1] if msg_parts|length > 1 else '' %}
+                            {% set ed_parts = remaining.split(' - ', 1) if remaining else [] %}
+                            {% set entity = ed_parts[0] if ed_parts|length > 0 else '' %}
+                            {% set detail = ed_parts[1] if ed_parts|length > 1 else '' %}
+                            <div class="alert-item {{ 'alert-critical' if alert.level == 'critical' else 'alert-warning' }}">
+                                <i class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-exclamation-circle' }}"></i>
+                                <span class="alert-inline">
+                                    <span class="alert-inline-title">{{ title }}:</span>{% if entity %}<span class="alert-inline-entity">{{ entity }}</span>{% endif %}{% if detail %}<span class="alert-inline-detail">- {{ detail }}</span>{% endif %}
+                                </span>
                             </div>
                             {% endfor %}
                             {% else %}
