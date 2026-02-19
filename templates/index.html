@@ -609,6 +609,11 @@
 
         function scrollToBottom() { chatWindow.scrollTop = chatWindow.scrollHeight; }
 
+        function toSuggestionLabel(value) {
+            if (!value) return value;
+            return value.charAt(0).toUpperCase() + value.slice(1);
+        }
+
         function scrollToLatestContent() {
             const userBlocks = document.querySelectorAll('.chat-block.user');
             if (userBlocks.length > 0) {
@@ -630,7 +635,7 @@
                 if (!sourceList) return;
                 sourceList.forEach(item => {
                     if (item.toLowerCase().includes(lastWord) && !text.includes(item.toLowerCase())) {
-                        allMatches.push({ text: item, cat: category, badge: badgeClass, priority: 0 });
+                        allMatches.push({ text: toSuggestionLabel(item), cat: category, badge: badgeClass, priority: 0 });
                     }
                 });
             }
