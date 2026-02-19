@@ -10,6 +10,7 @@ import traceback
 import sqlite3
 import threading # Required for Background Sync
 from datetime import datetime
+from werkzeug.exceptions import HTTPException
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -84,6 +85,10 @@ def handle_crash(e):
     Catches CRASHES (500 errors), logs them with the traceback, 
     and keeps IRIS alive instead of crashing the server.
     """
+    # Let Flask handle standard HTTP errors (404/405/etc.) normally.
+    if isinstance(e, HTTPException):
+        return e
+
     # 1. Capture the full traceback to know EXACTLY where it failed
     error_trace = str(traceback.format_exc())
     print(f"🔥 IRIS CRASHED: {error_trace}") # Print to terminal for debugging
