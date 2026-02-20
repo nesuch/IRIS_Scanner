@@ -653,7 +653,9 @@ def build_results_html(matches, keywords):
                         <i class="fas fa-file-pdf"></i> PDF</a>"""
         
         # Copy Button Logic
-        content_id = f"clause_text_{i}"
+        safe_source = re.sub(r"[^a-zA-Z0-9_-]", "_", str(m.get('source', 'doc')))[:24]
+        safe_clause = re.sub(r"[^a-zA-Z0-9_-]", "_", str(m.get('id', i)))[:24]
+        content_id = f"clause_text_{safe_source}_{safe_clause}_{i}_{time.time_ns()}"
         copy_btn = f"""<button onclick="copyToClipboard('{content_id}')" title="Copy Clause" style="float:right; margin-right: 8px; background:none; border:none; color:#666; cursor:pointer; font-size:14px;"><i class="far fa-copy"></i></button>"""
         
         html += f"""<div style="margin-bottom:6px; font-size:11px; color:#555;"><span style="font-weight:800; color:#333;">{m['source']}</span> | <span style="color:#0056b3;">{m['header']}</span> | Clause: {m['id']} {pdf_btn} {copy_btn}</div><div id="{content_id}" style="line-height:1.5; color:#222; font-size:14px;">{formatted_body}</div>"""
