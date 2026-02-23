@@ -206,8 +206,11 @@ def get_clean_keywords(query: str):
         if w in STOP_WORDS: continue
         valid_word = w
         if w not in KNOWN_VOCAB:
-            matches = difflib.get_close_matches(w, list(KNOWN_VOCAB), n=1, cutoff=0.8)
-            if matches: valid_word = matches[0]
+            # Avoid aggressive autocorrect on short terms (e.g. sign -> design).
+            # Fuzzy correction is only for longer tokens where typo risk is higher.
+            if len(w) >= 5:
+                matches = difflib.get_close_matches(w, list(KNOWN_VOCAB), n=1, cutoff=0.85)
+                if matches: valid_word = matches[0]
         
         stem = get_stem(valid_word)
         if len(stem) >= MIN_KEYWORD_LENGTH: final_tuples.append((valid_word, stem)); soup_ingredients.add(stem)
