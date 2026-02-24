@@ -205,16 +205,25 @@ def get_clean_keywords(query: str):
     for w in raw_words:
         if w in STOP_WORDS: continue
         valid_word = w
+        corrected_word = None
+
         if w not in KNOWN_VOCAB:
-            # Avoid aggressive autocorrect on short terms (e.g. sign -> design).
-            # Fuzzy correction is only for longer tokens where typo risk is higher.
-            if len(w) >= 5:
-                matches = difflib.get_close_matches(w, list(KNOWN_VOCAB), n=1, cutoff=0.85)
-                if matches: valid_word = matches[0]
-        
-        stem = get_stem(valid_word)
-        if len(stem) >= MIN_KEYWORD_LENGTH: final_tuples.append((valid_word, stem)); soup_ingredients.add(stem)
-        
+            matches = difflib.get_close_matches(w, list(KNOWN_VOCAB), n=1, cutoff=0.8)
+            if matches:
+                valid_word = matches[0]
+                corrected_word = valid_word
+
+        # Always keep user-entered token so deep scan can offer exact-user intent.
+        raw_stem = get_stem(w)
+        if len(raw_stem) >= MIN_KEYWORD_LENGTH:
+            final_tuples.append((w, raw_stem)); soup_ingredients.add(raw_stem)
+
+        # Also keep smart corrected token (if any) for better typo recovery.
+        if corrected_word:
+            corr_stem = get_stem(corrected_word)
+            if len(corr_stem) >= MIN_KEYWORD_LENGTH:
+                final_tuples.append((corrected_word, corr_stem)); soup_ingredients.add(corr_stem)
+
         if valid_word in SYNONYM_MAP:
             for s in SYNONYM_MAP[valid_word]: soup_ingredients.add(get_stem(s))
 
