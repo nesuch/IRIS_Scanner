@@ -530,7 +530,8 @@ def build_chips_html(kw_tuples, original_query):
     clean_original = " ".join(original_query.split()).strip()
     phrase_label = f'Search Phrase "{clean_original}"'
     
-    if len(clean_original.split()) > 1 and phrase_label not in shown_labels:
+    has_special_compound = bool(re.search(r"[-/]", clean_original))
+    if (len(clean_original.split()) > 1 or has_special_compound) and phrase_label not in shown_labels:
         html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
                 <button type="submit" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:6px 12px; border-radius:16px; font-weight:700; font-size:11px; cursor:pointer;">
                 {phrase_label}</button></form>"""
