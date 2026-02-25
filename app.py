@@ -10,6 +10,7 @@ import traceback
 import sqlite3
 import threading # Required for Background Sync
 from datetime import datetime
+from werkzeug.exceptions import HTTPException
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -84,6 +85,10 @@ def handle_crash(e):
     Catches CRASHES (500 errors), logs them with the traceback, 
     and keeps IRIS alive instead of crashing the server.
     """
+    # Let Flask handle standard HTTP errors (404/405/etc.) normally.
+    if isinstance(e, HTTPException):
+        return e
+
     # 1. Capture the full traceback to know EXACTLY where it failed
     error_trace = str(traceback.format_exc())
     print(f"🔥 IRIS CRASHED: {error_trace}") # Print to terminal for debugging
@@ -120,9 +125,26 @@ def clear_logs():
 # CONFIGURATION
 # ==========================================
 PDF_MAP = {
-    "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
-    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf"
+    "HEALTH MASTER CIRCULAR 2024": ["documents/health/health_master_circular_2024.pdf", "documents/health/HEALTH_MC_2024.pdf"],
+    "HEALTH MC 2024": ["documents/health/HEALTH_MC_2024.pdf", "documents/health/health_master_circular_2024.pdf"],
+    "PRODUCT REGULATIONS 2024": ["documents/health/product_regulations_2024.pdf", "documents/health/PRODUCT_REGS_2024.pdf"],
+    "PRODUCT REGS 2024": ["documents/health/PRODUCT_REGS_2024.pdf", "documents/health/product_regulations_2024.pdf"],
+    "PPHI REGULATIONS 2024": ["documents/health/PPHI_REGS_2024.pdf"],
+    "PPHI REGS 2024": ["documents/health/PPHI_REGS_2024.pdf"],
+    "PPHI MASTER CIRCULAR 2024": ["documents/health/PPHI_MC_2024.pdf"],
+    "PPHI MC 2024": ["documents/health/PPHI_MC_2024.pdf"],
+    "INSURANCE ACT 1938": ["documents/health/INSURANCE_ACT_1938.pdf"],
+    "IRDAI ACT 1999": ["documents/health/IRDAI_ACT_1999.pdf"]
 }
+
+
+def resolve_pdf_path(doc_name_key):
+    candidates = PDF_MAP.get(doc_name_key, [])
+    for rel_path in candidates:
+        abs_path = os.path.join(app.static_folder, rel_path)
+        if os.path.exists(abs_path):
+            return rel_path
+    return None
 
 TYPE_STYLES = {
     "ACT": {"color": "#856404", "bg": "#fff3cd", "border": "#ffeeba", "label": "ACT (The Law)"},
@@ -150,14 +172,12 @@ def run_background_sync():
     try:
         print("--- BACKGROUND SYNC STARTED ---")
         SYNC_STATE["status"] = "running"
-        SYNC_STATE["message"] = "Scanning /data folder for Excel files..."
-        
-        # 1. Run the heavy brain function (Data Normalization & Aggregation)
-        # This function scans files, normalizes headers, and updates the in-memory cache
-        # It MUST return a status string message.
-        result_msg = brain.aggregate_submissions() 
-        
-        # 2. Update status on success
+        SYNC_STATE["message"] = "Syncing financial + regulatory data from knowledge_base..."
+
+        financial_msg = brain.aggregate_submissions()
+        regulatory_msg = brain.aggregate_regulatory_documents()
+        result_msg = f"{financial_msg} | {regulatory_msg}"
+
         SYNC_STATE["status"] = "complete"
         SYNC_STATE["message"] = result_msg
         SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
@@ -510,7 +530,8 @@ def build_chips_html(kw_tuples, original_query):
     clean_original = " ".join(original_query.split()).strip()
     phrase_label = f'Search Phrase "{clean_original}"'
     
-    if len(clean_original.split()) > 1 and phrase_label not in shown_labels:
+    has_special_compound = bool(re.search(r"[-/]", clean_original))
+    if (len(clean_original.split()) > 1 or has_special_compound) and phrase_label not in shown_labels:
         html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
                 <button type="submit" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:6px 12px; border-radius:16px; font-weight:700; font-size:11px; cursor:pointer;">
                 {phrase_label}</button></form>"""
@@ -537,7 +558,7 @@ def highlight_keywords(text, keywords):
     for kw in sorted(list(expanded), key=len, reverse=True):
         if len(kw) < 3: continue
         pattern = re.compile(rf"\b({re.escape(kw)})\b", re.IGNORECASE)
-        text = pattern.sub(r"<span style='background-color:#fff3cd; color:#856404; font-weight:bold;'>\1</span>", text)
+        text = pattern.sub(r"<span class='iris-highlight'>\1</span>", text)
     return text
 
 def convert_markdown_to_html(text):
@@ -576,19 +597,30 @@ def convert_markdown_to_html(text):
     return "\n".join(new_lines)
 
 def format_verbatim(raw_text, keywords):
-    """Formats the raw text for display: converts markdown, highlights keywords."""
+    """Formats raw text for display while preserving heading style without highlights."""
     if not raw_text: return ""
     text_with_tables = convert_markdown_to_html(raw_text)
-    
-    # We remove explicit bolding for table HTML lines to avoid breaking tags
+
     lines = text_with_tables.splitlines()
-    bolded_lines: List[str] = []
+    formatted_lines: List[str] = []
+
     for line in lines:
-        if line.strip().startswith("<table"): bolded_lines.append(line)
-        elif line.strip().endswith(":"): bolded_lines.append(f"<strong>{line}</strong>")
-        else: bolded_lines.append(line)
-    
-    final_text = highlight_keywords("\n".join(bolded_lines), keywords)
+        stripped = line.strip()
+
+        # Keep table/html lines untouched
+        if stripped.startswith("<table") or stripped.startswith("<tr") or stripped.startswith("<th") or stripped.startswith("<td") or stripped.startswith("</"):
+            formatted_lines.append(line)
+            continue
+
+        # Headings keep original formatting (bold only), no keyword highlighting
+        if stripped.endswith(":"):
+            formatted_lines.append(f"<strong>{line}</strong>")
+            continue
+
+        # Regular lines get keyword highlighting
+        formatted_lines.append(highlight_keywords(line, keywords))
+
+    final_text = "\n".join(formatted_lines)
     return f'<div style="white-space: pre-wrap; font-family: inherit;">{final_text}</div>'
 
 def build_results_html(matches, keywords):
@@ -613,16 +645,18 @@ def build_results_html(matches, keywords):
         
         # --- FIX: Case-Insensitive PDF Lookup ---
         doc_name_key = m['source'].strip().upper()
-        pdf_path = PDF_MAP.get(doc_name_key, "#")
-        
+        pdf_path = resolve_pdf_path(doc_name_key)
+
         pdf_btn = ""
-        if pdf_path != "#":
+        if pdf_path:
             pdf_btn = f"""<a href='/static/{pdf_path}' target='_blank' 
                         style='float:right; margin-left:8px; font-size:10px; font-weight:bold; text-decoration:none; color:#d32f2f; background:#fff; padding:2px 6px; border:1px solid #d32f2f; border-radius:3px;'>
                         <i class="fas fa-file-pdf"></i> PDF</a>"""
         
         # Copy Button Logic
-        content_id = f"clause_text_{i}"
+        safe_source = re.sub(r"[^a-zA-Z0-9_-]", "_", str(m.get('source', 'doc')))[:24]
+        safe_clause = re.sub(r"[^a-zA-Z0-9_-]", "_", str(m.get('id', i)))[:24]
+        content_id = f"clause_text_{safe_source}_{safe_clause}_{i}_{time.time_ns()}"
         copy_btn = f"""<button onclick="copyToClipboard('{content_id}')" title="Copy Clause" style="float:right; margin-right: 8px; background:none; border:none; color:#666; cursor:pointer; font-size:14px;"><i class="far fa-copy"></i></button>"""
         
         html += f"""<div style="margin-bottom:6px; font-size:11px; color:#555;"><span style="font-weight:800; color:#333;">{m['source']}</span> | <span style="color:#0056b3;">{m['header']}</span> | Clause: {m['id']} {pdf_btn} {copy_btn}</div><div id="{content_id}" style="line-height:1.5; color:#222; font-size:14px;">{formatted_body}</div>"""
