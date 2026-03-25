@@ -727,6 +727,11 @@
                     requestAnimationFrame(jumpToLatestAnswerStart);
                 });
             }
+
+            requestAnimationFrame(() => {
+                jumpToLatestContent();
+                requestAnimationFrame(jumpToLatestContent);
+            });
         }
 
         input.addEventListener('input', function () {
