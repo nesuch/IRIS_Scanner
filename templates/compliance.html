@@ -328,6 +328,65 @@
         .text-dark {
             color: #333;
         }
+        @media (max-width: 900px) {
+            .app-container {
+                flex-direction: column;
+                height: 100dvh;
+                width: 100%;
+                overflow-x: hidden;
+            }
+
+            .sidebar {
+                width: 100%;
+                min-height: 56px;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                flex-direction: row;
+                align-items: center;
+                overflow-x: auto;
+                overflow-y: hidden;
+                padding: 8px;
+                gap: 6px;
+            }
+
+            .logo,
+            .sidebar-tagline,
+            .menu-label {
+                display: none;
+            }
+
+            .nav-item {
+                flex: 0 0 auto;
+                white-space: nowrap;
+                border-radius: 8px;
+                border-right: none;
+                padding: 10px 12px;
+            }
+
+            .main-content {
+                padding: 12px;
+                overflow-x: hidden;
+            }
+
+            .controls-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .filter-group {
+                overflow-x: auto;
+                white-space: nowrap;
+                padding-bottom: 4px;
+            }
+
+            .compliance-grid {
+                grid-template-columns: 1fr;
+                gap: 14px;
+                margin-top: 12px;
+            }
+        }
+
     </style>
 </head>
 

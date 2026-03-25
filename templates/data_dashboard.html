@@ -223,6 +223,28 @@
             /* Ensure this block allows its children (the table container) to handle scroll */
             display: block; 
         }
+        @media (max-width: 900px) {
+            .chat-window {
+                padding: 12px;
+                overflow-x: hidden;
+            }
+
+            .filter-actions-bar {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .active-filters-text {
+                order: 3;
+                width: 100%;
+                white-space: normal;
+            }
+
+            .reset-link {
+                margin-left: auto;
+            }
+        }
+
     </style>
 </head>
 
