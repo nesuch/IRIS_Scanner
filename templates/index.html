@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IRIS - Regulatory Intelligence</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -196,6 +197,11 @@
             padding: 20px 40px;
             display: flex;
             flex-direction: column;
+        }
+
+        .chat-window.is-empty {
+            overflow-y: hidden;
+            justify-content: center;
         }
 
         .chat-block {
@@ -447,6 +453,126 @@
                 opacity: 0;
             }
         }
+
+        @media (max-width: 900px) {
+            body {
+                height: 100dvh;
+                overflow: hidden;
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                min-height: 92px;
+                height: auto;
+                padding: 8px;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+                flex-direction: row;
+                align-items: center;
+                gap: 6px;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+
+            .sidebar-tagline,
+            .menu-label {
+                display: none;
+            }
+
+
+            .logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 72px;
+                padding: 4px 8px;
+                margin: 0;
+                border-right: 1px solid #e6e6e6;
+            }
+
+            .logo img {
+                width: 56px;
+                max-height: 56px;
+            }
+
+            .logo-text {
+                margin-top: 4px;
+                font-size: 20px;
+                line-height: 1;
+                letter-spacing: 1.6px;
+            }
+
+            .nav-item {
+                white-space: nowrap;
+                padding: 10px 12px;
+                font-size: 13px;
+                border-radius: 8px;
+                border-right: none;
+                gap: 8px;
+            }
+
+            .nav-item.active {
+                border-right: none;
+            }
+
+            .main-content {
+                height: calc(100dvh - 62px);
+                min-height: 0;
+            }
+
+            .header-area {
+                padding: 14px 16px;
+            }
+
+            .header-area h2 {
+                font-size: 20px;
+            }
+
+            .chat-window {
+                padding: 12px 16px;
+            }
+
+            .chat-window.is-empty {
+                justify-content: center;
+            }
+
+            .chat-block {
+                max-width: 100%;
+            }
+
+            .input-area {
+                padding: 10px 12px 14px;
+            }
+
+            .input-container-inner {
+                padding: 10px 12px;
+                border-radius: 10px;
+            }
+
+            .search-wrapper {
+                align-items: stretch;
+                gap: 8px;
+            }
+
+            textarea {
+                min-height: 44px;
+                height: 44px;
+                padding: 8px;
+                font-size: 15px;
+            }
+
+            button[type="submit"] {
+                margin-left: 0;
+                min-height: 44px;
+                padding: 10px 16px;
+            }
+
+            .scope-indicator {
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 
@@ -524,12 +650,11 @@
             </p>
         </div>
 
-        <div class="chat-window" id="chatWindow">
+        <div class="chat-window {{ 'is-empty' if not history else '' }}" id="chatWindow">
             {% if not history %}
             <div class="empty-state" style="text-align: center; padding: 40px; color: #888;">
                 <i class="fas fa-lightbulb" style="font-size: 24px; margin-bottom: 10px; color: #bbb;"></i>
-                <p><strong>Ready to assist.</strong><br>Try searching for "Solvency Margin", "Claims Procedure", or
-                    "Rural Obligations".</p>
+                <p><strong>Ready to assist.</strong><br>Try searching for "Migration", "No Claim Bonus", or "Free Look Period".</p>
             </div>
             {% endif %}
 
@@ -586,6 +711,7 @@
             chatWindow.appendChild(thinkingContainer);
 
             scrollToBottom();
+            sessionStorage.setItem('iris_pending_response', '1');
             form.submit();
         }
 
@@ -609,14 +735,33 @@
 
         function scrollToBottom() { chatWindow.scrollTop = chatWindow.scrollHeight; }
 
-        function scrollToLatestContent() {
-            const userBlocks = document.querySelectorAll('.chat-block.user');
+        function toSuggestionLabel(value) {
+            if (!value) return value;
+            return value.charAt(0).toUpperCase() + value.slice(1);
+        }
+
+        function jumpToLatestQuestionStart() {
+            if (!chatWindow) return;
+            const userBlocks = chatWindow.querySelectorAll('.chat-block.user');
             if (userBlocks.length > 0) {
-                const lastBlock = userBlocks[userBlocks.length - 1];
-                lastBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+                const latestQuestion = userBlocks[userBlocks.length - 1];
+                const topOffset = window.innerWidth <= 900 ? 72 : 150;
+                chatWindow.scrollTop = Math.max(latestQuestion.offsetTop - topOffset, 0);
+                return;
+            }
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        if (chatWindow) {
+            const hadPendingResponse = sessionStorage.getItem('iris_pending_response') === '1';
+            if (hadPendingResponse) {
+                sessionStorage.removeItem('iris_pending_response');
+                requestAnimationFrame(() => {
+                    jumpToLatestQuestionStart();
+                    requestAnimationFrame(jumpToLatestQuestionStart);
+                });
             }
         }
-        if (chatWindow) setTimeout(scrollToLatestContent, 300);
 
         input.addEventListener('input', function () {
             const text = this.value.toLowerCase();
@@ -630,7 +775,7 @@
                 if (!sourceList) return;
                 sourceList.forEach(item => {
                     if (item.toLowerCase().includes(lastWord) && !text.includes(item.toLowerCase())) {
-                        allMatches.push({ text: item, cat: category, badge: badgeClass, priority: 0 });
+                        allMatches.push({ text: toSuggestionLabel(item), cat: category, badge: badgeClass, priority: 0 });
                     }
                 });
             }
