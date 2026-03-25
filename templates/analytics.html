@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IRIS - System Analytics</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -174,6 +175,63 @@
         .border-green { border-bottom: 4px solid #2e7d32; }
         .text-red { color: #d32f2f; }
         .text-green { color: #2e7d32; }
+        @media (max-width: 900px) {
+            
+            .logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 72px;
+                padding: 4px 8px;
+                margin: 0;
+                border-right: 1px solid #e6e6e6;
+            }
+
+            .logo img {
+                width: 56px;
+                max-height: 56px;
+            }
+
+            .logo-text {
+                margin-top: 4px;
+                font-size: 20px;
+                line-height: 1;
+                letter-spacing: 1.6px;
+            }
+
+            .main-content {
+                height: calc(100dvh - 56px);
+                overflow-x: hidden;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+                padding: 12px;
+            }
+
+            .charts-row {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 12px;
+                padding: 0 12px;
+            }
+
+            .chart-wrapper {
+                min-width: 0;
+                min-height: 260px;
+                padding: 14px;
+            }
+
+            .error-log,
+            .table-scroll-container,
+            .main-content > div {
+                max-width: 100%;
+                box-sizing: border-box;
+            }
+        }
+
     </style>
 </head>
 
