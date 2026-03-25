@@ -266,3 +266,55 @@ button[type="submit"]:hover { background-color: #000051; }
 #copy-toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 1.5s; }
 @keyframes fadein { from {bottom: 80px; opacity: 0;} to {bottom: 100px; opacity: 1;} }
 @keyframes fadeout { from {bottom: 100px; opacity: 1;} to {bottom: 80px; opacity: 0;} }
+
+@media (max-width: 900px) {
+    body {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px;
+        gap: 6px;
+    }
+
+    .logo, .sidebar-tagline, .menu-label {
+        display: none;
+    }
+
+    .nav-item {
+        white-space: nowrap;
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+
+    .nav-item.active {
+        border-right: none;
+    }
+
+    .header-area, .chat-window, .input-area {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+    .main-content {
+        height: calc(100dvh - 62px);
+        min-height: 0;
+    }
+
+    .search-wrapper {
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    button[type="submit"] {
+        margin-left: 0;
+    }
+}
