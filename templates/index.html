@@ -707,8 +707,14 @@
             return value.charAt(0).toUpperCase() + value.slice(1);
         }
 
-        function jumpToLatestContent() {
+        function jumpToLatestAnswerStart() {
             if (!chatWindow) return;
+            const answerBlocks = chatWindow.querySelectorAll('.chat-block.iris');
+            if (answerBlocks.length > 0) {
+                const latestAnswer = answerBlocks[answerBlocks.length - 1];
+                chatWindow.scrollTop = Math.max(latestAnswer.offsetTop - 8, 0);
+                return;
+            }
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
@@ -716,6 +722,10 @@
             const hadPendingResponse = sessionStorage.getItem('iris_pending_response') === '1';
             if (hadPendingResponse) {
                 sessionStorage.removeItem('iris_pending_response');
+                requestAnimationFrame(() => {
+                    jumpToLatestAnswerStart();
+                    requestAnimationFrame(jumpToLatestAnswerStart);
+                });
             }
 
             requestAnimationFrame(() => {
