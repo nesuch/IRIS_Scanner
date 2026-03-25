@@ -707,12 +707,12 @@
             return value.charAt(0).toUpperCase() + value.slice(1);
         }
 
-        function jumpToLatestAnswerStart() {
+        function jumpToLatestQuestionStart() {
             if (!chatWindow) return;
-            const answerBlocks = chatWindow.querySelectorAll('.chat-block.iris');
-            if (answerBlocks.length > 0) {
-                const latestAnswer = answerBlocks[answerBlocks.length - 1];
-                chatWindow.scrollTop = Math.max(latestAnswer.offsetTop - 8, 0);
+            const userBlocks = chatWindow.querySelectorAll('.chat-block.user');
+            if (userBlocks.length > 0) {
+                const latestQuestion = userBlocks[userBlocks.length - 1];
+                chatWindow.scrollTop = Math.max(latestQuestion.offsetTop - 8, 0);
                 return;
             }
             chatWindow.scrollTop = chatWindow.scrollHeight;
@@ -723,8 +723,8 @@
             if (hadPendingResponse) {
                 sessionStorage.removeItem('iris_pending_response');
                 requestAnimationFrame(() => {
-                    jumpToLatestAnswerStart();
-                    requestAnimationFrame(jumpToLatestAnswerStart);
+                    jumpToLatestQuestionStart();
+                    requestAnimationFrame(jumpToLatestQuestionStart);
                 });
             }
 
