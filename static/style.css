@@ -327,4 +327,25 @@ button[type="submit"]:hover { background-color: #000051; }
     button[type="submit"] {
         margin-left: 0;
     }
+
+    .header-area {
+        position: relative;
+        padding-right: 52px;
+    }
+
+    .header-area::after {
+        content: "";
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        width: 24px;
+        height: 24px;
+        background-image: url('/static/iris_logo.png');
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        opacity: 0.25;
+        pointer-events: none;
+        filter: saturate(0.85);
+    }
 }
