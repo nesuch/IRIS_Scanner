@@ -289,8 +289,32 @@ button[type="submit"]:hover { background-color: #000051; }
         gap: 6px;
     }
 
-    .logo, .sidebar-tagline, .menu-label {
+    .sidebar-tagline, .menu-label {
         display: none;
+    }
+
+
+    .logo {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-width: 72px;
+        padding: 4px 8px;
+        margin: 0;
+        border-right: 1px solid #e6e6e6;
+    }
+
+    .logo img {
+        width: 56px;
+        max-height: 56px;
+    }
+
+    .logo-text {
+        margin-top: 4px;
+        font-size: 20px;
+        line-height: 1;
+        letter-spacing: 1.6px;
     }
 
     .nav-item {
@@ -328,24 +352,4 @@ button[type="submit"]:hover { background-color: #000051; }
         margin-left: 0;
     }
 
-    .header-area {
-        position: relative;
-        padding-right: 52px;
-    }
-
-    .header-area::after {
-        content: "";
-        position: absolute;
-        top: 10px;
-        right: 12px;
-        width: 24px;
-        height: 24px;
-        background-image: url('/static/iris_logo.png');
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: contain;
-        opacity: 0.25;
-        pointer-events: none;
-        filter: saturate(0.85);
-    }
 }

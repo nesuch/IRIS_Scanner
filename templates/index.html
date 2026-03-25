@@ -474,10 +474,33 @@
                 overflow-y: hidden;
             }
 
-            .logo,
             .sidebar-tagline,
             .menu-label {
                 display: none;
+            }
+
+
+            .logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 72px;
+                padding: 4px 8px;
+                margin: 0;
+                border-right: 1px solid #e6e6e6;
+            }
+
+            .logo img {
+                width: 56px;
+                max-height: 56px;
+            }
+
+            .logo-text {
+                margin-top: 4px;
+                font-size: 20px;
+                line-height: 1;
+                letter-spacing: 1.6px;
             }
 
             .nav-item {
@@ -721,8 +744,21 @@
             const userBlocks = chatWindow.querySelectorAll('.chat-block.user');
             if (userBlocks.length > 0) {
                 const latestQuestion = userBlocks[userBlocks.length - 1];
-                chatWindow.scrollTop = Math.max(latestQuestion.offsetTop - 72, 0);
+                const topOffset = window.innerWidth <= 900 ? 72 : 150;
+                chatWindow.scrollTop = Math.max(latestQuestion.offsetTop - topOffset, 0);
                 return;
+            }
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        if (chatWindow) {
+            const hadPendingResponse = sessionStorage.getItem('iris_pending_response') === '1';
+            if (hadPendingResponse) {
+                sessionStorage.removeItem('iris_pending_response');
+                requestAnimationFrame(() => {
+                    jumpToLatestQuestionStart();
+                    requestAnimationFrame(jumpToLatestQuestionStart);
+                });
             }
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
