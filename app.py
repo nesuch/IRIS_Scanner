@@ -37,6 +37,26 @@ DB_NAME = "iris.db"
 # 0. SYSTEM ANALYTICS (MIDDLEWARE)
 # ==========================================
 
+def get_client_ip():
+    """
+    Extracts the real client IP when app is behind reverse proxies/load balancers.
+    Falls back to Flask's remote_addr for local/dev usage.
+    """
+    # X-Forwarded-For may contain a chain of IPs: client, proxy1, proxy2
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        first_ip = forwarded_for.split(",")[0].strip()
+        if first_ip:
+            return first_ip
+
+    # Common alternative header used by some proxies/CDNs
+    real_ip = request.headers.get("X-Real-IP", "").strip()
+    if real_ip:
+        return real_ip
+
+    return request.remote_addr
+
+
 def log_interaction(status_code, error_msg=None):
     """
     Records every request to the SQLite database (system_logs table).
@@ -61,7 +81,7 @@ def log_interaction(status_code, error_msg=None):
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             request.path,
             request.method,
-            request.remote_addr,
+            get_client_ip(),
             status_code,
             error_msg
         ))
