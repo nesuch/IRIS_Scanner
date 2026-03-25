@@ -760,6 +760,23 @@
                     requestAnimationFrame(jumpToLatestQuestionStart);
                 });
             }
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        if (chatWindow) {
+            const hadPendingResponse = sessionStorage.getItem('iris_pending_response') === '1';
+            if (hadPendingResponse) {
+                sessionStorage.removeItem('iris_pending_response');
+                requestAnimationFrame(() => {
+                    jumpToLatestQuestionStart();
+                    requestAnimationFrame(jumpToLatestQuestionStart);
+                });
+            }
+
+            requestAnimationFrame(() => {
+                jumpToLatestContent();
+                requestAnimationFrame(jumpToLatestContent);
+            });
         }
 
         input.addEventListener('input', function () {
