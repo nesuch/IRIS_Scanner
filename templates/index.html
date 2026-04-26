@@ -745,10 +745,8 @@
             if (!chatWindow) return;
             const userBlocks = chatWindow.querySelectorAll('.chat-block.user');
             if (userBlocks.length > 0) {
-                const latestQuestion = userBlocks[userBlocks.length - 1];
-                const topOffset = window.innerWidth <= 900 ? 72 : 150;
-                chatWindow.scrollTop = Math.max(latestQuestion.offsetTop - topOffset, 0);
-                return;
+                const lastBlock = userBlocks[userBlocks.length - 1];
+                lastBlock.scrollIntoView({ behavior: "smooth", block: "center" });
             }
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
@@ -763,6 +761,7 @@
                 });
             }
         }
+        if (chatWindow) setTimeout(scrollToLatestContent, 300);
 
         input.addEventListener('input', function () {
             const text = this.value.toLowerCase();
