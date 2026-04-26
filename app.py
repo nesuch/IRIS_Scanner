@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
 from typing import List
 import re
 import pandas as pd
@@ -11,9 +11,11 @@ import sqlite3
 import threading # Required for Background Sync
 from datetime import datetime
 from werkzeug.exceptions import HTTPException
+from werkzeug.security import generate_password_hash, check_password_hash
 import iris_brain as brain
 
 app = Flask(__name__)
+app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
@@ -245,6 +247,104 @@ def sync_status():
 def authentication_page():
     """Renders Authentication UI that integrates with the auth-system backend."""
     return render_template("authentication.html")
+
+
+# ==========================================
+# AUTH FALLBACK API (WORKS WITHOUT MONGODB)
+# ==========================================
+
+def _ensure_auth_users_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS auth_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_auth_register():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or "@" not in email:
+        return jsonify({"message": "Valid email is required"}), 400
+    if len(password) < 8:
+        return jsonify({"message": "Password must be at least 8 characters long"}), 400
+
+    _ensure_auth_users_table()
+    owner_email = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+    role = "admin" if owner_email and email == owner_email else "viewer"
+
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            (email, generate_password_hash(password), role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        conn.commit()
+        user_id = c.lastrowid
+        c.execute("SELECT id, email, role, created_at FROM auth_users WHERE id = ?", (user_id,))
+        row = c.fetchone()
+        return jsonify({
+            "message": "User registered successfully",
+            "user": {"id": row[0], "email": row[1], "role": row[2], "createdAt": row[3]}
+        }), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"message": "Email already registered"}), 409
+    finally:
+        conn.close()
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    _ensure_auth_users_table()
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT id, email, password_hash, role, created_at FROM auth_users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+
+    if not row or not check_password_hash(row[2], password):
+        return jsonify({"message": "Invalid credentials"}), 401
+
+    session["auth_user"] = {"id": row[0], "email": row[1], "role": row[3], "createdAt": row[4]}
+    return jsonify({"message": "Login successful", "user": session["auth_user"]}), 200
+
+
+@app.route("/api/auth/refresh-token", methods=["POST"])
+def api_auth_refresh_token():
+    user = session.get("auth_user")
+    if not user:
+        return jsonify({"message": "Unauthorized"}), 401
+    return jsonify({"message": "Token refreshed", "user": user}), 200
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    session.pop("auth_user", None)
+    return jsonify({"message": "Logged out successfully"}), 200
+
+
+@app.route("/api/dashboard", methods=["GET"])
+def api_dashboard():
+    user = session.get("auth_user")
+    if not user:
+        return jsonify({"message": "Unauthorized"}), 401
+    return jsonify({"message": "Authenticated dashboard", "user": user}), 200
 
 # ==========================================
 # ROUTES (MODULES)
