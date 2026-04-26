@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IRIS - Compliance Cockpit</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -187,9 +188,31 @@
             margin-bottom: 6px;
             border-radius: 6px;
             display: flex;
-            align-items: start;
+            align-items: flex-start;
             gap: 8px;
-            line-height: 1.4;
+            line-height: 1.35;
+        }
+
+        .alert-inline {
+            display: inline;
+            color: inherit;
+        }
+
+        .alert-inline-title {
+            font-weight: 700;
+            margin-right: 6px;
+            color: inherit;
+        }
+
+        .alert-inline-entity {
+            font-weight: 500;
+            margin-right: 6px;
+            color: #212121;
+        }
+
+        .alert-inline-detail {
+            color: #263238;
+            font-weight: 400;
         }
 
         .alert-critical {
@@ -305,6 +328,108 @@
         .text-dark {
             color: #333;
         }
+        @media (max-width: 900px) {
+
+            .header-area h2 {
+                font-size: 20px;
+            }
+
+            .module-icon {
+                font-size: 22px;
+            }
+
+            .full-form-text {
+                font-size: 12px;
+            }
+
+            .scope-indicator {
+                font-size: 12px;
+            }
+
+            .main-content {
+                font-size: 15px;
+            }
+
+            .app-container {
+                flex-direction: column;
+                height: 100dvh;
+                width: 100%;
+                overflow-x: hidden;
+            }
+
+            .sidebar {
+                width: 100%;
+                min-height: 92px;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                flex-direction: row;
+                align-items: center;
+                overflow-x: auto;
+                overflow-y: hidden;
+                padding: 8px;
+                gap: 6px;
+            }
+
+            .sidebar-tagline,
+            .menu-label {
+                display: none;
+            }
+
+            .logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 72px;
+                padding: 4px 8px;
+                margin: 0;
+                border-right: 1px solid #e6e6e6;
+            }
+
+            .logo img {
+                width: 56px;
+                max-height: 56px;
+            }
+
+            .logo-text {
+                margin-top: 4px;
+                font-size: 20px;
+                line-height: 1;
+                letter-spacing: 1.6px;
+            }
+
+            .nav-item {
+                flex: 0 0 auto;
+                white-space: nowrap;
+                border-radius: 8px;
+                border-right: none;
+                padding: 10px 12px;
+            }
+
+            .main-content {
+                padding: 12px;
+                overflow-x: hidden;
+            }
+
+            .controls-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .filter-group {
+                overflow-x: auto;
+                white-space: nowrap;
+                padding-bottom: 4px;
+            }
+
+            .compliance-grid {
+                grid-template-columns: 1fr;
+                gap: 14px;
+                margin-top: 12px;
+            }
+        }
+
     </style>
 </head>
 
@@ -328,6 +453,7 @@
             <div class="menu-label">System</div>
             <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
             <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
+        <a href="/authentication" class="nav-item"><i class="fas fa-user-shield"></i> Authentication</a>
         </div>
 
         <div class="main-content">
@@ -443,11 +569,17 @@
                         <div class="alert-area">
                             {% if co.alerts %}
                             {% for alert in co.alerts %}
-                            <div
-                                class="alert-item {{ 'alert-critical' if alert.level == 'critical' else 'alert-warning' }}">
-                                <i
-                                    class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-exclamation-circle' }}"></i>
-                                <span>{{ alert.msg }}</span>
+                            {% set msg_parts = alert.msg.split(': ', 1) %}
+                            {% set title = msg_parts[0] if msg_parts|length > 0 else alert.msg %}
+                            {% set remaining = msg_parts[1] if msg_parts|length > 1 else '' %}
+                            {% set ed_parts = remaining.split(' - ', 1) if remaining else [] %}
+                            {% set entity = ed_parts[0] if ed_parts|length > 0 else '' %}
+                            {% set detail = ed_parts[1] if ed_parts|length > 1 else '' %}
+                            <div class="alert-item {{ 'alert-critical' if alert.level == 'critical' else 'alert-warning' }}">
+                                <i class="fas {{ 'fa-times-circle' if alert.level == 'critical' else 'fa-exclamation-circle' }}"></i>
+                                <span class="alert-inline">
+                                    <span class="alert-inline-title">{{ title }}:</span>{% if entity %}<span class="alert-inline-entity">{{ entity }}</span>{% endif %}{% if detail %}<span class="alert-inline-detail">- {{ detail }}</span>{% endif %}
+                                </span>
                             </div>
                             {% endfor %}
                             {% else %}
@@ -531,6 +663,7 @@
         }
     </script>
 
+    <script src="{{ url_for('static', filename='mobile_nav.js') }}"></script>
 </body>
 
 </html>
