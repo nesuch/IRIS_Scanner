@@ -179,3 +179,8 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+generate_dummy_data.py
+.DS_Store
+**/node_modules/
+*.db-shm
+*.db-wal

@@ -1,0 +1,2 @@
+gcloud run deploy iris --source . --region asia-south1 --allow-unauthenticated
+
