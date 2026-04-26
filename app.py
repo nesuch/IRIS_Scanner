@@ -1,632 +1,373 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
-from typing import List
-import re
-import pandas as pd
-import io
-import os
-import json
-import time
-import traceback
-import sqlite3
-import threading # Required for Background Sync
-from datetime import datetime
-import iris_brain as brain
+"""
+Minimal secure authentication foundation for IRIS.
 
+This single-file Flask app includes:
+- Flask-Login setup
+- SQLAlchemy User model
+- secure login/logout
+- protected home route
+"""
+
+import os
+import secrets
+import hashlib
+import time
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse, urljoin
+
+from flask import Flask, request, redirect, url_for, render_template_string
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    login_user,
+    logout_user,
+    login_required,
+    current_user,
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# ---------------------------------
+# App and database configuration
+# ---------------------------------
 app = Flask(__name__)
 
-# ==========================================
-# CRITICAL FIX: FORCE DATA LOAD ON STARTUP
-# ==========================================
-# This ensures that as soon as you run python app.py, 
-# the system loads the data from SQL/Files into memory.
-print("--- IRIS: Initializing Data Engine ---")
-try:
-    # 1. Load Knowledge Base (Text Search)
-    brain.load_knowledge_base()
-    # 2. Load Master Data Engine (Financial Data)
-    brain.load_master_data_engine()
-except Exception as e:
-    print(f"[!] Warning: Data Engine load failed on startup: {e}")
+# SECRET_KEY is required to cryptographically sign session cookies.
+# Without this, session integrity cannot be trusted.
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 
-CHAT_HISTORY = []
-JUST_REDIRECTED = False
-DB_NAME = "iris.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///iris_auth.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# ==========================================
-# 0. SYSTEM ANALYTICS (MIDDLEWARE)
-# ==========================================
+# SQLAlchemy must be initialized only once per Flask app.
+db = SQLAlchemy(app)
 
-def log_interaction(status_code, error_msg=None):
-    """
-    Records every request to the SQLite database (system_logs table).
-    Filters out static assets and favicons to keep analytics clean.
-    """
-    # --- FILTER: Ignore static files AND favicon ---
-    if request.path.startswith('/static') or request.path == '/favicon.ico': 
-        return
-    
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        
-        # Ensure table exists
-        c.execute('''CREATE TABLE IF NOT EXISTS system_logs 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, endpoint TEXT, method TEXT, ip TEXT, status INTEGER, error_msg TEXT)''')
-        
-        c.execute('''
-            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            request.path,
-            request.method,
-            request.remote_addr,
-            status_code,
-            error_msg
-        ))
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"Logging Failed: {e}") 
+# ---------------------------------
+# Flask-Login setup
+# ---------------------------------
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Please log in to access this page"
+login_manager.session_protection = "strong"
 
-@app.after_request
-def record_success(response):
-    """Logs successful requests (200, 302, 404, etc.)"""
-    # We only log here if it's NOT a 500 (500s are handled by handle_crash)
-    if response.status_code < 500:
-        log_interaction(response.status_code)
-    return response
 
-@app.errorhandler(Exception)
-def handle_crash(e):
-    """
-    Catches CRASHES (500 errors), logs them with the traceback, 
-    and keeps IRIS alive instead of crashing the server.
-    """
-    # 1. Capture the full traceback to know EXACTLY where it failed
-    error_trace = str(traceback.format_exc())
-    print(f"🔥 IRIS CRASHED: {error_trace}") # Print to terminal for debugging
-    
-    # 2. Extract the specific error line for the UI log (last non-empty line)
-    detailed_error = error_trace.strip().split('\n')[-1]
-    
-    log_interaction(500, error_msg=detailed_error) # Log detailed error
-    return "<h3>IRIS System Error</h3><p>The system encountered an error. It has been logged for the admin.</p>", 500
+# ---------------------------------
+# User model compatible with Flask-Login
+# ---------------------------------
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    reset_token = db.Column(db.String(255), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
 
-# --- CLEAR LOGS ROUTE ---
-@app.route("/clear_logs", methods=["POST"])
-def clear_logs():
-    """
-    Wipes ONLY crashes and favicon noise from the database.
-    Keeps legitimate user traffic stats intact.
-    """
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        
-        # Delete logs where status is 500+ OR endpoint is favicon
-        c.execute("DELETE FROM system_logs WHERE status >= 500 OR endpoint = '/favicon.ico'")
-        
-        conn.commit()
-        conn.close()
-            
-    except Exception as e:
-        print(f"Error clearing logs: {e}")
-        
-    return redirect(url_for('analytics_dashboard'))
 
-# ==========================================
-# CONFIGURATION
-# ==========================================
-PDF_MAP = {
-    "HEALTH MASTER CIRCULAR 2024": "documents/health/health_master_circular_2024.pdf",
-    "PRODUCT REGULATIONS 2024": "documents/health/product_regulations_2024.pdf"
-}
+@login_manager.user_loader
+def load_user(user_id):
+    """Load a user from SQLAlchemy by ID for Flask-Login session handling."""
+    return db.session.get(User, int(user_id))
 
-TYPE_STYLES = {
-    "ACT": {"color": "#856404", "bg": "#fff3cd", "border": "#ffeeba", "label": "ACT (The Law)"},
-    "REGULATION": {"color": "#004085", "bg": "#cce5ff", "border": "#b8daff", "label": "REGULATION"},
-    "MASTER": {"color": "#155724", "bg": "#d4edda", "border": "#c3e6cb", "label": "MASTER CIRCULAR"},
-    "CIRCULAR": {"color": "#0c5460", "bg": "#d1ecf1", "border": "#bee5eb", "label": "CIRCULAR"},
-    "GUIDELINE": {"color": "#383d41", "bg": "#e2e3e5", "border": "#d6d8db", "label": "GUIDELINE"},
-    "UNKNOWN": {"color": "#666", "bg": "#f2f2f2", "border": "#ddd", "label": "DOCUMENT"}
-}
 
-# ==========================================
-# ASYNC SYNC ENGINE (BACKGROUND THREADS)
-# ==========================================
-# Global state to track the background job.
-# The Admin UI polls this variable.
-SYNC_STATE = {
-    "status": "idle",       # idle, running, complete, error
-    "message": "System ready.",
-    "timestamp": None
-}
+def is_safe_url(target: str) -> bool:
+    """Prevent open redirects by only allowing same-host URLs."""
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
 
-def run_background_sync():
-    """Executes the heavy data aggregation logic in a separate thread."""
-    global SYNC_STATE
-    try:
-        print("--- BACKGROUND SYNC STARTED ---")
-        SYNC_STATE["status"] = "running"
-        SYNC_STATE["message"] = "Scanning /data folder for Excel files..."
-        
-        # 1. Run the heavy brain function (Data Normalization & Aggregation)
-        # This function scans files, normalizes headers, and updates the in-memory cache
-        # It MUST return a status string message.
-        result_msg = brain.aggregate_submissions() 
-        
-        # 2. Update status on success
-        SYNC_STATE["status"] = "complete"
-        SYNC_STATE["message"] = result_msg
-        SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
-        print("--- BACKGROUND SYNC FINISHED ---")
-        
-    except Exception as e:
-        print(f"--- SYNC ERROR: {e} ---")
-        SYNC_STATE["status"] = "error"
-        SYNC_STATE["message"] = f"Error: {str(e)}"
 
-# ==========================================
-# ADMIN ROUTES (SYNC CONTROL)
-# ==========================================
+with app.app_context():
+    # Ensure DB tables exist automatically at startup.
+    db.create_all()
+    # Backfill new reset columns for existing SQLite DBs created before this change.
+    cols = [c[1] for c in db.session.execute(db.text("PRAGMA table_info(user)")).fetchall()]
+    if "reset_token" not in cols:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN reset_token VARCHAR(255)"))
+    if "reset_token_expiry" not in cols:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN reset_token_expiry DATETIME"))
+    db.session.commit()
 
-@app.route("/admin", methods=["GET"])
-def admin_panel():
-    """Renders the Admin UI, passing initial sync state."""
-    return render_template("admin.html", sync_state=SYNC_STATE)
-
-@app.route("/admin/sync_start", methods=["POST"])
-def sync_start():
-    """Kicks off the background sync thread."""
-    global SYNC_STATE
-    
-    if SYNC_STATE["status"] == "running":
-        return jsonify({"status": "error", "message": "Sync already in progress."})
-
-    # Reset State & Start
-    SYNC_STATE["status"] = "starting"
-    SYNC_STATE["message"] = "Initializing background process..."
-    
-    thread = threading.Thread(target=run_background_sync)
-    thread.daemon = True # Ensures thread dies if app restarts
-    thread.start()
-    
-    return jsonify({"status": "started"})
-
-@app.route("/admin/sync_status", methods=["GET"])
-def sync_status():
-    """Frontend polls this to update progress bars."""
-    return jsonify(SYNC_STATE)
-
-# ==========================================
-# ROUTES (MODULES)
-# ==========================================
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    return handle_search("universal")
-
-@app.route("/health", methods=["GET", "POST"])
-def health_module():
-    return handle_search("health")
-
-@app.route("/life", methods=["GET", "POST"])
-def life_module():
-    return handle_search("life")
-
-# --- DATA MODULE (UPDATED) ---
-@app.route("/data", methods=["GET", "POST"])
-def data_module():
-    filter_options = brain.get_filter_options()
-    
-    if request.method == "POST":
-        # Capture all filters from the form
-        filters = {
-            "dimension": request.form.get("dimension", "Insurer"),
-            "entities": request.form.getlist("entities"),
-            "metrics": request.form.getlist("metrics"),
-            "years": request.form.getlist("years"),
-            "quarters": request.form.getlist("quarters"),
-            "lobs": request.form.getlist("lobs"),
-            "classes": request.form.getlist("classes")
-        }
-        
-        # Process filters through the brain
-        report_data = brain.filter_data(filters)
-        
-        # Return only the table fragment (HTMX-style update)
-        return render_template("components/data_table.html", report=report_data)
-        
-    # GET Request: Render the full dashboard
-    return render_template("data_dashboard.html", options=filter_options, active_module="data")
-
-@app.route("/download_data", methods=["POST"])
-def download_data():
-    """Generates and downloads the Excel report based on active filters."""
-    filters = {
-        "dimension": request.form.get("dimension", "Insurer"),
-        "entities": request.form.getlist("entities"),
-        "metrics": request.form.getlist("metrics"),
-        "years": request.form.getlist("years"),
-        "quarters": request.form.getlist("quarters"),
-        "lobs": request.form.getlist("lobs"),
-        "classes": request.form.getlist("classes")
-    }
-    
-    excel_file = brain.generate_excel(filters)
-    
-    if excel_file:
-        return send_file(
-            excel_file,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name='IRIS_Financial_Report.xlsx'
+    # Seed one local admin-style test account for first run.
+    # Email domain is restricted to @irdai.gov.in.
+    if not User.query.filter_by(email="admin@irdai.gov.in").first():
+        db.session.add(
+            User(
+                email="admin@irdai.gov.in",
+                password_hash=generate_password_hash("Admin@12345"),
+                is_active=True,
+                is_admin=True,
+            )
         )
-    return "No data found for these filters.", 400
+        db.session.commit()
 
-# --- COMPLIANCE ROUTE (UPDATED FOR YEAR FILTER) ---
-@app.route("/compliance", methods=["GET"])
-def compliance_dashboard():
-    # 1. Get available years for the dropdown
-    available_years = brain.get_compliance_years()
-    
-    # 2. Get selected year from URL (e.g. ?year=2023-24)
-    selected_year = request.args.get("year")
-    
-    # 3. Get Dashboard Data based on selection
-    compliance_data = brain.get_compliance_dashboard(target_year=selected_year)
-    
-    return render_template("compliance.html", 
-                           companies=compliance_data, 
-                           years=available_years,
-                           active_year=selected_year if selected_year else "Latest",
-                           active_module="compliance")
 
-# --- ANALYTICS ROUTE (SQL INTEGRATED) ---
-@app.route("/analytics")
-def analytics_dashboard():
-    logs = []
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row # This enables column access by name
-        c = conn.cursor()
-        c.execute("SELECT * FROM system_logs ORDER BY id DESC")
-        rows = c.fetchall()
-        
-        # Convert sqlite3.Row objects to dicts for easy processing
-        logs = [dict(row) for row in rows]
-        conn.close()
-    except Exception as e:
-        print(f"DB Error in Analytics: {e}")
-        logs = []
+@app.route("/create-user", methods=["POST"])
+@login_required
+def create_user():
+    """
+    Admin-only user creation route.
+    Security controls:
+    - Requires authenticated admin user
+    - Accepts email/password from POST form data only
+    - Validates domain and non-empty password
+    - Stores hashed password only
+    """
+    if not current_user.is_admin:
+        return "Unauthorized", 403
 
-    # --- 1. PRE-PROCESS LOGS ---
-    # Filter out favicon.ico
-    valid_logs = [l for l in logs if l.get('endpoint') != '/favicon.ico']
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    client_ip = request.remote_addr
 
-    # --- 2. CALCULATE BASIC STATS ---
-    total_requests = len(valid_logs)
-    unique_users = len(set(l['ip'] for l in valid_logs))
-    errors = [l for l in valid_logs if l['status'] >= 500]
-    error_count = len(errors)
-    
-    # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
-    endpoints = {}
-    
-    # Define internal endpoints to hide from the pie chart
-    ignored_routes = ['/clear_logs', '/sync_data', '/download_data', '/admin/sync_status', '/admin/sync_start']
-    
-    for l in valid_logs:
-        ep = l['endpoint']
-        
-        # Skip hidden routes
-        if ep in ignored_routes: 
-            continue
-        
-        # Clean Labels (Remove slash & Format)
-        if ep == "/": label = "Home"
-        elif ep == "/data": label = "Data Explorer"
-        elif ep == "/compliance": label = "Compliance Cockpit"
-        elif ep == "/analytics": label = "Analytics"
-        elif ep == "/health": label = "Health Dept"
-        elif ep == "/life": label = "Life Dept"
-        elif ep == "/admin": label = "Admin Panel"
-        else:
-            # Fallback: remove slash and title case (e.g., "/some_page" -> "Some Page")
-            label = ep.lstrip("/").replace("_", " ").title()
-        
-        endpoints[label] = endpoints.get(label, 0) + 1
-        
-    chart_labels = list(endpoints.keys())
-    chart_data = list(endpoints.values())
+    # Use WARNING for user-input/authorization issues (not system faults).
+    if not email:
+        app.logger.warning(f"{current_user.email} create-user validation failed (missing email) from {client_ip}")
+        return "Request could not be completed.", 400
+    if "@" not in email or not email.endswith("@irdai.gov.in"):
+        app.logger.warning(f"{current_user.email} create-user validation failed (invalid email) from {client_ip}")
+        return "Request could not be completed.", 400
+    if email == current_user.email:
+        app.logger.warning(f"{current_user.email} create-user blocked (self-creation) from {client_ip}")
+        return "Request could not be completed.", 400
+    if not password.strip():
+        app.logger.warning(f"{current_user.email} create-user validation failed (missing password) from {client_ip}")
+        return "Request could not be completed.", 400
+    if len(password) < 6:
+        app.logger.warning(f"{current_user.email} create-user validation failed (short password) from {client_ip}")
+        return "Request could not be completed.", 400
 
-    # --- 4. CALCULATE MONTHLY & YEARLY TRENDS ---
-    current_year = datetime.now().year
-    
-    # Initialize the buckets for Jan-Dec
-    monthly_labels = [datetime(current_year, m, 1).strftime('%b %Y') for m in range(1, 13)]
-    monthly_data = [0] * 12
-    yearly_stats = []
+    # Prevent duplicate users.
+    existing = User.query.filter_by(email=email).first()
+    if existing:
+        app.logger.warning(f"{current_user.email} create-user blocked (duplicate) from {client_ip}")
+        return "Request could not be completed.", 409
 
     try:
-        if valid_logs:
-            df = pd.DataFrame(valid_logs)
-            df['dt'] = pd.to_datetime(df['timestamp'])
-            
-            # -- MONTHLY LOGIC --
-            # Filter for CURRENT YEAR ONLY
-            df_this_year = df[df['dt'].dt.year == current_year]
-            
-            # Group by Month Number (1-12)
-            counts = df_this_year['dt'].dt.month.value_counts()
-            
-            # Populate array (index 0 is Jan)
-            for month_num, count in counts.items():
-                if 1 <= month_num <= 12:
-                    monthly_data[month_num - 1] = int(count)
+        db.session.add(
+            User(
+                email=email,
+                password_hash=generate_password_hash(password),
+                is_active=True,
+                # Security decision: this endpoint can only create standard users.
+                # Admin creation should use a separate, more tightly controlled flow.
+                is_admin=False,
+            )
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        # Use ERROR only for server-side/system failures.
+        app.logger.error(f"{current_user.email} create-user system error for {email} from {client_ip}: {exc}")
+        return "Internal error.", 500
 
-            # -- YEARLY LOGIC --
-            yearly_counts = df['dt'].dt.year.value_counts().sort_index()
-            yearly_stats = [{"year": y, "count": c} for y, c in yearly_counts.items()]
+    app.logger.info(f"{current_user.email} created user {email} from {client_ip}")
+    return "User created successfully.", 201
 
-    except Exception as e:
-        print(f"Analytics Data Processing Error: {e}")
 
-    # Render template with all processed data
-    return render_template("analytics.html", 
-                           stats={"total": total_requests, "users": unique_users, "errors": error_count},
-                           logs=errors,
-                           chart={"labels": chart_labels, "data": chart_data},
-                           monthly={"labels": monthly_labels, "data": monthly_data},
-                           yearly=yearly_stats,
-                           active_module="analytics")
+# ---------------------------------
+# Protected home route
+# ---------------------------------
+@app.route("/")
+@login_required
+def home():
+    return render_template_string(
+        """
+        <h2>IRIS Home</h2>
+        <p>Welcome, {{ user.email }}</p>
+        <p><a href="{{ url_for('logout') }}">Logout</a></p>
+        """,
+        user=current_user,
+    )
 
-# ==========================================
-# CORE SEARCH LOGIC (TEXT ONLY)
-# ==========================================
 
-def handle_search(active_module):
-    """
-    Central handler for Universal, Health, and Life search logic.
-    Manages Keywords, Deep Scans, and Rendering Results.
-    """
-    global CHAT_HISTORY, JUST_REDIRECTED
+# ---------------------------------
+# Login route (GET + POST)
+# ---------------------------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    # Better UX: authenticated users should not see the login form again.
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
 
-    # Brain now handles SQL retrieval internally
-    KB_DF = brain.load_knowledge_base()
-    vocab = brain.get_autocomplete_data()
-
-    # GET Request: Just show the search page (with history if applicable)
     if request.method == "GET":
-        if not JUST_REDIRECTED: CHAT_HISTORY = []
-        JUST_REDIRECTED = False
-        return render_template("index.html", history=CHAT_HISTORY, vocab=vocab, active_module=active_module)
+        return render_template_string(
+            """
+            <!doctype html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>IRIS Login</title>
+              <style>
+                body{margin:0;font-family:Inter,Arial,sans-serif;background:linear-gradient(135deg,#0d1b5e,#3046b6);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+                .card{width:min(440px,100%);background:#fff;border-radius:18px;padding:28px;box-shadow:0 18px 40px rgba(0,0,0,.25)}
+                .brand{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+                .brand img{width:42px;height:42px}
+                h2{margin:0 0 6px;color:#1f2d80}
+                p{margin:0 0 14px;color:#667}
+                label{font-weight:600;color:#334}
+                input{width:100%;box-sizing:border-box;padding:11px 12px;margin:6px 0 12px;border:1px solid #d5dcef;border-radius:10px}
+                button{width:100%;padding:11px 12px;border:none;border-radius:10px;background:#1f2d80;color:#fff;font-weight:700;cursor:pointer}
+                .links{margin-top:12px;text-align:center}
+                .links a{color:#1f2d80;text-decoration:none;font-weight:600}
+                .hint{margin-top:14px;font-size:12px;color:#6c7897;background:#f2f5ff;padding:10px;border-radius:8px}
+              </style>
+            </head>
+            <body>
+              <form class="card" method="post">
+                <div class="brand">
+                  <img src="/static/iris_logo.png" alt="IRIS logo">
+                  <strong>IRIS Gatekeeper</strong>
+                </div>
+                <h2>Welcome back</h2>
+                <p>Sign in to continue.</p>
+                <label>Email</label>
+                <input type="email" name="email" required>
+                <label>Password</label>
+                <input type="password" name="password" required>
+                <button type="submit">Login</button>
+                <div class="links"><a href="{{ url_for('forgot_password') }}">Forgot password?</a></div>
+                <div class="hint">Dev default credentials: admin@irdai.gov.in / Admin@12345</div>
+              </form>
+            </body>
+            </html>
+            """
+        )
 
-    # POST Request: Process the query
-    query = request.form.get("query", "").strip()
-    
-    if not query: 
-        if active_module == "universal": return redirect(url_for("index"))
-        return redirect(url_for(f"{active_module}_module"))
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
 
-    # --- 1. DEEP SCAN HANDLER (Triggered by Chips) ---
-    if query.startswith("__DEEP_SCAN__:"):
-        raw_payload = query.replace("__DEEP_SCAN__:", "")
-        pairs = raw_payload.split("||")
-        # Reconstruct the tuple list: [('hospital', 'hospit'), ('cashless', 'cashless')]
-        keyword_tuples = [(p.split("|")[0], p.split("|")[1]) for p in pairs if len(p.split("|"))==2]
-        
-        display_kws = [t[0] for t in keyword_tuples]
-        
-        # First, check tags again to get context IDs
-        tag_matches = brain.search_tags_only(keyword_tuples, KB_DF, module=active_module)
-        exclude_ids = [m['id'] for m in tag_matches]
-        
-        # Then, perform the expensive full-text scan
-        matches = brain.deep_scan_brain(keyword_tuples, KB_DF, exclude_ids=exclude_ids, module=active_module)
-        
-        response = ""
-        if matches:
-            response = f"<div class='analysis-text'>Deep Scan results in <strong>{active_module.upper()}</strong>: <strong>{', '.join(display_kws)}</strong></div>"
-            response += build_results_html(matches, display_kws)
-        else:
-            response = f"No additional matches found in <strong>{active_module.capitalize()}</strong> module."
-            
-        CHAT_HISTORY.append({"query": "Deep Scan", "response": response})
-        JUST_REDIRECTED = True
-        
-        if active_module == "universal": return redirect(url_for("index"))
-        return redirect(url_for(f"{active_module}_module"))
+    if not email.endswith("@irdai.gov.in"):
+        return "Only @irdai.gov.in email addresses are allowed.", 403
 
-    # --- 2. GREETING CHECK ---
-    if brain.check_greeting(query):
-        response = "<strong>Hello!</strong> I am <strong>IRIS</strong>. Ask me anything related to IRDAI Acts, Regulations, Circulars, or Guidelines."
-    
-    else:
-        # --- 3. STANDARD SEARCH ---
-        # Step A: NLP Processing (Cleaning & Stemming)
-        kw_tuples = brain.get_clean_keywords(query)
-        display_kws = [t[0] for t in kw_tuples]
-        
-        if not kw_tuples:
-            response = "Query rejected. Please use regulatory terms."
-        else:
-            # Step B: Tag-Based Search (Fast & Precise)
-            tag_matches = brain.search_tags_only(kw_tuples, KB_DF, module=active_module)
-            highlight_kws = [raw for (raw, clean) in kw_tuples if clean in brain.ALL_UNIQUE_TAGS]
+    user = User.query.filter_by(email=email).first()
+    if not user or not check_password_hash(user.password_hash, password):
+        return "Invalid credentials.", 401
 
-            if tag_matches:
-                response = f"<div style='font-size:12px; color:#888; margin-bottom:10px;'>Found via <strong>Tags</strong>: {', '.join(display_kws)}</div>"
-                response += build_results_html(tag_matches, highlight_kws)
-            else:
-                if active_module == "life":
-                    response = "<div><strong>Life Department:</strong> No documents currently loaded.</div>"
-                elif active_module == "data":
-                    response = "<div><strong>Data Module:</strong> Text search is disabled here.</div>"
-                else:
-                    response = f"<div>No matches found in {active_module.capitalize()} for: <strong>{', '.join(display_kws)}</strong></div>"
+    if not user.is_active:
+        return "Account is inactive.", 403
 
-            # Step C: Offer Deep Scan Chips
-            response += build_chips_html(kw_tuples, query)
+    # Keep users signed in across browser restarts for dev convenience.
+    login_user(user, remember=True)
+    next_page = request.args.get("next")
+    if next_page and is_safe_url(next_page):
+        return redirect(next_page)
+    return redirect(url_for("home"))
 
-    CHAT_HISTORY.append({"query": query, "response": response})
-    JUST_REDIRECTED = True
-    
-    if active_module == "universal": return redirect(url_for("index"))
-    return redirect(url_for(f"{active_module}_module"))
 
-# =========================================================
-# UTILS (Rendering Helpers)
-# =========================================================
+# ---------------------------------
+# Logout route
+# ---------------------------------
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
 
-def build_chips_html(kw_tuples, original_query):
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
     """
-    Generates the 'Deep Scan' buttons.
-    FIX: Removes redundant 'Phrase Search' if it matches a single keyword.
+    Security behavior:
+    - Always return generic response, never reveal if user exists.
+    - If user exists, create short-lived single-use reset token.
+    - Print reset link to console (no email integration yet).
     """
-    if not kw_tuples: return ""
+    if request.method == "GET":
+        return render_template_string(
+            """
+            <h2>Forgot Password</h2>
+            <form method="post">
+              <label>Email</label><br>
+              <input type="email" name="email" required><br><br>
+              <button type="submit">Request reset</button>
+            </form>
+            """
+        )
 
-    html = """<hr><div style="font-size:12px; color:#666; margin-bottom:8px;">
-            Not finding what you need? <strong>Deep Scan specific terms:</strong></div>
-            <div style="display: flex; flex-wrap: wrap; gap: 6px;">"""
-    
-    # Track what we have shown to avoid duplicates
-    shown_labels = set()
+    email = (request.form.get("email") or "").strip().lower()
+    client_ip = request.remote_addr
+    user = User.query.filter_by(email=email).first()
 
-    # 1. Chips for individual keywords
-    for raw, clean in kw_tuples:
-        label = f'Search "{raw}"'
-        if label in shown_labels: continue
-        
-        payload = f"{raw}|{clean}"
-        html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{payload}">
-                <button type="submit" style="background:#e8eaf6; border:1px solid #3f51b5; color:#1a237e; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
-                {label}</button></form>"""
-        shown_labels.add(label)
-    
-    # 2. Chip for the Exact Phrase (ONLY if multi-word AND not already shown)
-    clean_original = " ".join(original_query.split()).strip()
-    phrase_label = f'Search Phrase "{clean_original}"'
-    
-    if len(clean_original.split()) > 1 and phrase_label not in shown_labels:
-        html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
-                <button type="submit" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:6px 12px; border-radius:16px; font-weight:700; font-size:11px; cursor:pointer;">
-                {phrase_label}</button></form>"""
-    
-    # 3. Chip for 'Search All' (combined) - Only if we have multiple distinct keywords
-    if len(kw_tuples) > 1:
-        all_payload = "||".join([f"{t[0]}|{t[1]}" for t in kw_tuples])
-        html += f"""<form method="POST" style="margin:0;"><input type="hidden" name="query" value="__DEEP_SCAN__:{all_payload}">
-                <button type="submit" style="background:#fff; border:1px solid #999; color:#666; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
-                Search All</button></form>"""
-                
-    html += "</div>"
-    return html
+    app.logger.info(f"[RESET_REQUEST] email={email} ip={client_ip}")
+    if user:
+        token = secrets.token_urlsafe(32)
+        # Store only a hashed reset token (never raw token) to reduce impact
+        # if DB contents are exposed.
+        hashed_token = hashlib.sha256(token.encode()).hexdigest()
+        # Invalidate any previous token first so only one token is valid at a time.
+        user.reset_token = None
+        user.reset_token_expiry = None
+        user.reset_token = hashed_token
+        user.reset_token_expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+        try:
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.error(f"[RESET_ERROR] email={email} ip={client_ip} stage=token_save error={exc}")
+            return "Internal error.", 500
+        # Development-only behavior: print link locally.
+        # In production, replace this with a proper email/SMS delivery service.
+        print(f"http://127.0.0.1:5000/reset-password/{token}")
 
-def highlight_keywords(text, keywords):
-    """Wraps found keywords in a highlighting span."""
-    if not keywords: return text
-    expanded = set(keywords)
-    # Simple stemming for highlight matching (e.g., 'insurer' -> 'insurers')
-    for k in keywords:
-        k = k.lower()
-        expanded.add(k + "s"); expanded.add(k + "ed"); expanded.add(k + "ing")
-    
-    for kw in sorted(list(expanded), key=len, reverse=True):
-        if len(kw) < 3: continue
-        pattern = re.compile(rf"\b({re.escape(kw)})\b", re.IGNORECASE)
-        text = pattern.sub(r"<span style='background-color:#fff3cd; color:#856404; font-weight:bold;'>\1</span>", text)
-    return text
+    return "If the account exists, a reset link has been generated.", 200
 
-def convert_markdown_to_html(text):
-    """Simple parser to handle basic Markdown tables and line breaks."""
-    lines = text.splitlines()
-    new_lines: List[str] = []
-    in_table = False
-    table_rows: List[str] = []
-    
-    def flush_table(rows):
-        if not rows: return ""
-        html = '<table border="1" style="border-collapse: collapse; width: 100%; border-color: #ddd; font-size: 11px; margin-top:5px; margin-bottom:5px;">'
-        for i, row in enumerate(rows):
-            # Skip separator lines like |---|---|
-            if re.match(r"^\|[\s\-:\|]+\|$", row): continue
-            tag = "th" if i == 0 else "td"
-            bg = 'style="background-color: #f2f2f2; padding: 5px;"' if i == 0 else 'style="padding: 5px;"'
-            cells = [c.strip() for c in row.strip("|").split("|")]
-            html += "<tr>"
-            for c in cells: html += f"<{tag} {bg}>{c}</{tag}>"
-            html += "</tr>"
-        html += "</table>"
-        return html
 
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("|") and stripped.endswith("|"):
-            in_table = True; table_rows.append(stripped)
-        else:
-            if in_table: 
-                new_lines.append(flush_table(table_rows))
-                table_rows = []; in_table = False
-            new_lines.append(line)
-            
-    if in_table: new_lines.append(flush_table(table_rows))
-    return "\n".join(new_lines)
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    hashed_token = hashlib.sha256(token.encode()).hexdigest()
+    hashed_token_prefix = hashed_token[:8]
+    DELAY = 0.5
+    log_context = f"token_prefix={hashed_token_prefix} ip={request.remote_addr}"
+    user = User.query.filter_by(reset_token=hashed_token).first()
+    current_time = datetime.now(timezone.utc)
 
-def format_verbatim(raw_text, keywords):
-    """Formats the raw text for display: converts markdown, highlights keywords."""
-    if not raw_text: return ""
-    text_with_tables = convert_markdown_to_html(raw_text)
-    
-    # We remove explicit bolding for table HTML lines to avoid breaking tags
-    lines = text_with_tables.splitlines()
-    bolded_lines: List[str] = []
-    for line in lines:
-        if line.strip().startswith("<table"): bolded_lines.append(line)
-        elif line.strip().endswith(":"): bolded_lines.append(f"<strong>{line}</strong>")
-        else: bolded_lines.append(line)
-    
-    final_text = highlight_keywords("\n".join(bolded_lines), keywords)
-    return f'<div style="white-space: pre-wrap; font-family: inherit;">{final_text}</div>'
+    # A) Token + user validation: verify existence, expiry, and active status.
+    if (
+        not user
+        or not user.reset_token_expiry
+        or user.reset_token_expiry < current_time
+        or not user.is_active
+    ):
+        app.logger.warning(f"[RESET_INVALID] {log_context} reason=invalid_or_expired_token")
+        time.sleep(DELAY)
+        return "Invalid or expired reset token.", 400
 
-def build_results_html(matches, keywords):
-    """
-    Constructs the HTML card for each search result.
-    FIX: Makes PDF lookup case-insensitive.
-    """
-    html = ""
-    current_doc_type = None
-    
-    for i, m in enumerate(matches):
-        doc_type = m['type']
-        # Header for new document types
-        if doc_type != current_doc_type:
-            style = TYPE_STYLES.get(doc_type, TYPE_STYLES["UNKNOWN"])
-            html += f"""<div style="margin-top:15px;margin-bottom:10px;background-color:{style['bg']};border-left:5px solid {style['color']};padding:8px 12px;font-family:'Segoe UI';color:{style['color']};font-weight:bold;font-size:13px;text-transform:uppercase;border-radius:4px;">{style['label']}</div>"""
-            current_doc_type = doc_type
-        else: 
-            html += "<hr style='border: 0; border-top: 1px dashed #999; margin: 15px 0;'>"
-            
-        formatted_body = format_verbatim(m['raw_text'], keywords)
-        
-        # --- FIX: Case-Insensitive PDF Lookup ---
-        doc_name_key = m['source'].strip().upper()
-        pdf_path = PDF_MAP.get(doc_name_key, "#")
-        
-        pdf_btn = ""
-        if pdf_path != "#":
-            pdf_btn = f"""<a href='/static/{pdf_path}' target='_blank' 
-                        style='float:right; margin-left:8px; font-size:10px; font-weight:bold; text-decoration:none; color:#d32f2f; background:#fff; padding:2px 6px; border:1px solid #d32f2f; border-radius:3px;'>
-                        <i class="fas fa-file-pdf"></i> PDF</a>"""
-        
-        # Copy Button Logic
-        content_id = f"clause_text_{i}"
-        copy_btn = f"""<button onclick="copyToClipboard('{content_id}')" title="Copy Clause" style="float:right; margin-right: 8px; background:none; border:none; color:#666; cursor:pointer; font-size:14px;"><i class="far fa-copy"></i></button>"""
-        
-        html += f"""<div style="margin-bottom:6px; font-size:11px; color:#555;"><span style="font-weight:800; color:#333;">{m['source']}</span> | <span style="color:#0056b3;">{m['header']}</span> | Clause: {m['id']} {pdf_btn} {copy_btn}</div><div id="{content_id}" style="line-height:1.5; color:#222; font-size:14px;">{formatted_body}</div>"""
-    return html
+    if request.method == "GET":
+        return render_template_string(
+            """
+            <h2>Reset Password</h2>
+            <form method="post">
+              <label>New Password</label><br>
+              <input type="password" name="password" required><br><br>
+              <button type="submit">Set new password</button>
+            </form>
+            """
+        )
+
+    # B) Password validation: normalize input and reject weak passwords.
+    new_password = (request.form.get("password") or "").strip()
+    # Password is already stripped above; warn and delay on weak attempts.
+    if not new_password or len(new_password) < 8:
+        app.logger.warning(f"[RESET_INVALID] {log_context} reason=weak_password")
+        time.sleep(DELAY)
+        return "Password must be at least 8 characters.", 400
+
+    user.password_hash = generate_password_hash(new_password)
+    # Single-use token: clear immediately after successful reset.
+    user.reset_token = None
+    user.reset_token_expiry = None
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.error(f"[RESET_ERROR] email={user.email} ip={request.remote_addr} stage=password_commit error={exc}")
+        return "Internal error.", 500
+
+    app.logger.info(f"[RESET_SUCCESS] email={user.email} ip={request.remote_addr}")
+    return redirect(url_for("login"))
+
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True, port=8080)
+    app.run(debug=True, port=8080)
