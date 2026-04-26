@@ -11,7 +11,10 @@ import sqlite3
 import threading # Required for Background Sync
 from datetime import datetime
 from werkzeug.exceptions import HTTPException
+<<<<<<< HEAD
 from werkzeug.security import generate_password_hash, check_password_hash
+=======
+>>>>>>> main
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -248,6 +251,7 @@ def authentication_page():
     """Renders Authentication UI that integrates with the auth-system backend."""
     return render_template("authentication.html")
 
+<<<<<<< HEAD
 
 # ==========================================
 # AUTH FALLBACK API (WORKS WITHOUT MONGODB)
@@ -346,6 +350,8 @@ def api_dashboard():
         return jsonify({"message": "Unauthorized"}), 401
     return jsonify({"message": "Authenticated dashboard", "user": user}), 200
 
+=======
+>>>>>>> main
 # ==========================================
 # ROUTES (MODULES)
 # ==========================================
