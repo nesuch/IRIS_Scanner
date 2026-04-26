@@ -20,6 +20,13 @@ import iris_brain as brain
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 
+# Compatibility guard for macOS/Python builds without hashlib.scrypt.
+# This prevents Werkzeug's default hash path from crashing older local setups.
+if not hasattr(hashlib, "scrypt"):
+    def _scrypt_compat(password, *, salt, n, r, p, maxmem=0, dklen=64):
+        return hashlib.pbkdf2_hmac("sha256", password, salt, 200_000, dklen)
+    hashlib.scrypt = _scrypt_compat  # type: ignore[attr-defined]
+
 
 def _hash_password(password: str) -> str:
     """
