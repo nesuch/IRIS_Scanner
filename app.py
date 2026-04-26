@@ -66,6 +66,7 @@ CHAT_HISTORY = []
 JUST_REDIRECTED = False
 DB_NAME = "iris.db"
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
+PUBLIC_AUTH_PATHS = {"/login", "/logout", "/register", "/forgot-password"}
 
 
 def _ensure_auth_users_table():
@@ -116,7 +117,7 @@ def iris_auth_gatekeeper():
     if request.path.startswith("/static") or request.path == "/favicon.ico":
         return None
 
-    if request.path == "/login":
+    if request.path in PUBLIC_AUTH_PATHS:
         return None
 
     user = session.get("auth_user")
@@ -261,6 +262,81 @@ def login():
         error = "Invalid email or password."
 
     return render_template("login.html", error=error, next_url=next_url)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    error = None
+    success = None
+
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm_password") or ""
+
+        if not email or "@" not in email:
+            error = "Please enter a valid email."
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters."
+        elif password != confirm:
+            error = "Password and confirm password do not match."
+        else:
+            try:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                c.execute(
+                    "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+                    (
+                        email,
+                        iris_hash_password(password),
+                        "viewer",
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    )
+                )
+                conn.commit()
+                conn.close()
+                success = "Account created successfully. You can now sign in."
+            except sqlite3.IntegrityError:
+                error = "This email is already registered."
+            except Exception as e:
+                error = f"Registration failed: {str(e)}"
+
+    return render_template("register.html", error=error, success=success)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    error = None
+    success = None
+
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        new_password = request.form.get("new_password") or ""
+        confirm = request.form.get("confirm_password") or ""
+
+        if not email or "@" not in email:
+            error = "Please enter a valid email."
+        elif len(new_password) < 8:
+            error = "New password must be at least 8 characters."
+        elif new_password != confirm:
+            error = "New password and confirm password do not match."
+        else:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT id FROM auth_users WHERE email = ?", (email,))
+            row = c.fetchone()
+            if not row:
+                error = "No account found with this email."
+            else:
+                c.execute(
+                    "UPDATE auth_users SET password_hash = ? WHERE email = ?",
+                    (iris_hash_password(new_password), email)
+                )
+                conn.commit()
+                success = "Password reset successful. Please login with your new password."
+            conn.close()
+
+    return render_template("forgot_password.html", error=error, success=success)
 
 
 @app.route("/logout", methods=["POST", "GET"])
