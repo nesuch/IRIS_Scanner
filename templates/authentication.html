@@ -118,6 +118,9 @@
                 const res = await fetch(`${getApiBase()}${path}`, opts);
                 clearTimeout(timeout);
                 const data = await res.json().catch(() => ({}));
+                if (!data.message && !res.ok) {
+                    data.message = `Request failed (HTTP ${res.status})`;
+                }
                 return { ok: res.ok, status: res.status, data };
             } catch (err) {
                 return {
@@ -141,13 +144,23 @@
 
         (function initApiBase() {
             const stored = localStorage.getItem('iris_auth_api_base');
-            if (stored && document.getElementById('api-base')) {
-                document.getElementById('api-base').value = stored;
+            const input = document.getElementById('api-base');
+            if (!input) return;
+            if (stored) {
+                input.value = stored;
+            } else {
+                input.value = DEFAULT_API_BASE;
             }
         })();
         async function registerUser() {
             const email = document.getElementById('reg-email').value.trim();
             const password = document.getElementById('reg-password').value;
+            if (!email || !email.includes('@')) {
+                return show('reg-result', '❌ Please enter a valid email.', false);
+            }
+            if (!password || password.length < 8) {
+                return show('reg-result', '❌ Password must be at least 8 characters.', false);
+            }
             show('reg-result', '⏳ Registering...', true);
             const r = await callApi('/auth/register', 'POST', { email, password });
             show('reg-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Registration failed'}`, r.ok);
@@ -156,6 +169,9 @@
         async function loginUser() {
             const email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value;
+            if (!email || !password) {
+                return show('login-result', '❌ Enter email and password.', false);
+            }
             show('login-result', '⏳ Logging in...', true);
             const r = await callApi('/auth/login', 'POST', { email, password });
             show('login-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Login failed'}`, r.ok);
@@ -170,7 +186,10 @@
         async function checkDashboard() {
             show('util-result', '⏳ Checking dashboard access...', true);
             const r = await callApi('/dashboard', 'GET');
-            show('util-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Unauthorized'}`, r.ok);
+            if (!r.ok && r.status === 401) {
+                return show('util-result', '❌ Unauthorized. Please login first.', false);
+            }
+            show('util-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Request failed'}`, r.ok);
         }
 
         async function logoutUser() {
