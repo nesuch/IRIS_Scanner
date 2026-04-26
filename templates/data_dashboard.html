@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IRIS - Data Explorer</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -222,6 +223,72 @@
             /* Ensure this block allows its children (the table container) to handle scroll */
             display: block; 
         }
+        @media (max-width: 900px) {
+
+            .header-area h2 {
+                font-size: 20px;
+            }
+
+            .module-icon {
+                font-size: 22px;
+            }
+
+            .full-form-text {
+                font-size: 12px;
+            }
+
+            .scope-indicator {
+                font-size: 12px;
+            }
+
+            .main-content {
+                font-size: 15px;
+            }
+
+            .chat-window {
+                padding: 12px;
+                overflow-x: hidden;
+            }
+            .logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 72px;
+                padding: 4px 8px;
+                margin: 0;
+                border-right: 1px solid #e6e6e6;
+            }
+
+            .logo img {
+                width: 56px;
+                max-height: 56px;
+            }
+
+            .logo-text {
+                margin-top: 4px;
+                font-size: 20px;
+                line-height: 1;
+                letter-spacing: 1.6px;
+            }
+
+
+            .filter-actions-bar {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .active-filters-text {
+                order: 3;
+                width: 100%;
+                white-space: normal;
+            }
+
+            .reset-link {
+                margin-left: auto;
+            }
+        }
+
     </style>
 </head>
 
@@ -243,6 +310,7 @@
         <div class="menu-label">System</div>
         <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
         <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
+        <a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
 
     <div class="main-content">
@@ -593,6 +661,7 @@
 
         document.addEventListener('DOMContentLoaded', init);
     </script>
+    <script src="{{ url_for('static', filename='mobile_nav.js') }}"></script>
 </body>
 
 </html>
