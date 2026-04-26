@@ -69,6 +69,24 @@ ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear
 PUBLIC_AUTH_PATHS = {"/login", "/logout", "/register", "/forgot-password"}
 
 
+def _route_exists(path: str) -> bool:
+    try:
+        app.url_map.bind("").match(path, method=request.method)
+        return True
+    except Exception:
+        return False
+
+
+def _safe_next_url(next_url: str) -> str:
+    if not next_url or not next_url.startswith("/"):
+        return "/"
+    if next_url in PUBLIC_AUTH_PATHS:
+        return "/"
+    if not _route_exists(next_url):
+        return "/"
+    return next_url
+
+
 def _ensure_auth_users_table():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -118,6 +136,9 @@ def iris_auth_gatekeeper():
         return None
 
     if request.path in PUBLIC_AUTH_PATHS:
+        return None
+
+    if not _route_exists(request.path):
         return None
 
     user = session.get("auth_user")
@@ -243,7 +264,7 @@ def clear_logs():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
-    next_url = request.args.get("next") or request.form.get("next") or "/"
+    next_url = _safe_next_url(request.args.get("next") or request.form.get("next") or "/")
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
@@ -257,7 +278,7 @@ def login():
 
         if row and iris_verify_password(password, row[2]):
             session["auth_user"] = {"id": row[0], "email": row[1], "role": row[3]}
-            return redirect(next_url)
+            return redirect(_safe_next_url(next_url))
 
         error = "Invalid email or password."
 
