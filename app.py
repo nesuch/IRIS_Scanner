@@ -248,6 +248,89 @@ with app.app_context():
         )
         db.session.commit()
 
+# SECRET_KEY is required to cryptographically sign session cookies.
+# Without this, session integrity cannot be trusted.
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///iris_auth.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Avoid double-registration errors if app module is re-imported in the same process.
+_existing_sqla = app.extensions.get("sqlalchemy")
+if _existing_sqla is None:
+    db = SQLAlchemy()
+    try:
+        db.init_app(app)
+    except RuntimeError as exc:
+        # Defensive fallback for environments that preload/register SQLAlchemy
+        # before this module executes.
+        if "already been registered" in str(exc):
+            db = app.extensions["sqlalchemy"]
+        else:
+            raise
+else:
+    db = _existing_sqla
+
+# ---------------------------------
+# Flask-Login setup
+# ---------------------------------
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Please log in to access this page"
+login_manager.session_protection = "strong"
+
+
+# ---------------------------------
+# User model compatible with Flask-Login
+# ---------------------------------
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    reset_token = db.Column(db.String(255), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Load a user from SQLAlchemy by ID for Flask-Login session handling."""
+    return db.session.get(User, int(user_id))
+
+
+def is_safe_url(target: str) -> bool:
+    """Prevent open redirects by only allowing same-host URLs."""
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
+
+
+with app.app_context():
+    # Ensure DB tables exist automatically at startup.
+    db.create_all()
+    # Backfill new reset columns for existing SQLite DBs created before this change.
+    cols = [c[1] for c in db.session.execute(db.text("PRAGMA table_info(user)")).fetchall()]
+    if "reset_token" not in cols:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN reset_token VARCHAR(255)"))
+    if "reset_token_expiry" not in cols:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN reset_token_expiry DATETIME"))
+    db.session.commit()
+
+    # Seed one local admin-style test account for first run.
+    # Email domain is restricted to @irdai.gov.in.
+    if not User.query.filter_by(email="admin@irdai.gov.in").first():
+        db.session.add(
+            User(
+                email="admin@irdai.gov.in",
+                password_hash=generate_password_hash("Admin@12345"),
+                is_active=True,
+                is_admin=True,
+            )
+        )
+        db.session.commit()
+
 
 @app.route("/create-user", methods=["POST"])
 @login_required
