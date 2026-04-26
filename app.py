@@ -31,6 +31,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # App and database configuration
 # ---------------------------------
 app = Flask(__name__)
+app.config["SECRET_KEY"] = "change-this-in-production"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///iris_auth.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # SECRET_KEY is required to cryptographically sign session cookies.
 # Without this, session integrity cannot be trusted.
