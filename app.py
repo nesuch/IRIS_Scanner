@@ -8,56 +8,45 @@ import json
 import time
 import traceback
 import sqlite3
-import base64
+import binascii
 import hashlib
 import hmac
 import threading # Required for Background Sync
 from datetime import datetime
 from werkzeug.exceptions import HTTPException
-from werkzeug.security import check_password_hash
 import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 
-# Compatibility guard for macOS/Python builds without hashlib.scrypt.
-# This prevents Werkzeug's default hash path from crashing older local setups.
-if not hasattr(hashlib, "scrypt"):
-    def _scrypt_compat(password, *, salt, n, r, p, maxmem=0, dklen=64):
-        return hashlib.pbkdf2_hmac("sha256", password, salt, 200_000, dklen)
-    hashlib.scrypt = _scrypt_compat  # type: ignore[attr-defined]
 
-
-def _hash_password(password: str) -> str:
+def iris_hash_password(password: str) -> str:
     """
     Portable PBKDF2 password hash (no scrypt dependency).
-    Stored format: pbkdf2_sha256$iterations$salt_b64$hash_b64
+    Stored format: pbkdf2_sha256$iterations$salt_hex$hash_hex
     """
-    iterations = 200_000
+    iterations = 260_000
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return (
         f"pbkdf2_sha256${iterations}$"
-        f"{base64.b64encode(salt).decode('utf-8')}$"
-        f"{base64.b64encode(digest).decode('utf-8')}"
+        f"{binascii.hexlify(salt).decode('utf-8')}$"
+        f"{binascii.hexlify(digest).decode('utf-8')}"
     )
 
 
-def _verify_password(password: str, stored_hash: str) -> bool:
+def iris_verify_password(password: str, stored_hash: str) -> bool:
     try:
-        algo, iter_s, salt_b64, hash_b64 = stored_hash.split("$", 3)
+        algo, iter_s, salt_hex, hash_hex = stored_hash.split("$", 3)
         if algo != "pbkdf2_sha256":
-            return check_password_hash(stored_hash, password)
+            return False
         iterations = int(iter_s)
-        salt = base64.b64decode(salt_b64.encode("utf-8"))
-        expected = base64.b64decode(hash_b64.encode("utf-8"))
+        salt = binascii.unhexlify(salt_hex.encode("utf-8"))
+        expected = binascii.unhexlify(hash_hex.encode("utf-8"))
         actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
         return hmac.compare_digest(actual, expected)
     except Exception:
-        try:
-            return check_password_hash(stored_hash, password)
-        except Exception:
-            return False
+        return False
 
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
