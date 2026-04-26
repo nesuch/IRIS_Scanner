@@ -255,21 +255,8 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///iris_auth.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Avoid double-registration errors if app module is re-imported in the same process.
-_existing_sqla = app.extensions.get("sqlalchemy")
-if _existing_sqla is None:
-    db = SQLAlchemy()
-    try:
-        db.init_app(app)
-    except RuntimeError as exc:
-        # Defensive fallback for environments that preload/register SQLAlchemy
-        # before this module executes.
-        if "already been registered" in str(exc):
-            db = app.extensions["sqlalchemy"]
-        else:
-            raise
-else:
-    db = _existing_sqla
+# SQLAlchemy must be initialized only once per Flask app.
+db = SQLAlchemy(app)
 
 # ---------------------------------
 # Flask-Login setup
