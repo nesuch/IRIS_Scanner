@@ -81,21 +81,55 @@
                 <div id="util-result" class="auth-result"></div>
                 <div class="auth-note">
                     This page uses the standalone auth backend (`auth-system/backend`) and sends credentials with cookies.
-                    Default API base: <code>http://localhost:5000/api</code>.
+                </div>
+                <div class="auth-note" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <label for="api-base"><strong>API Base:</strong></label>
+                    <input id="api-base" class="auth-input" style="max-width:360px; margin:0;" value="http://127.0.0.1:5000/api" />
+                    <button class="auth-btn" style="background:#37474f;" onclick="saveApiBase()">Save API Base</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:5000/api';
+        const DEFAULT_API_BASE = 'http://127.0.0.1:5000/api';
+
+        function getApiBase() {
+            const fromInput = document.getElementById('api-base')?.value?.trim();
+            if (fromInput) return fromInput.replace(/\/$/, '');
+            return (localStorage.getItem('iris_auth_api_base') || DEFAULT_API_BASE).replace(/\/$/, '');
+        }
+
+        function saveApiBase() {
+            const base = getApiBase();
+            localStorage.setItem('iris_auth_api_base', base);
+            show('util-result', `✅ API base saved: ${base}`, true);
+        }
 
         async function callApi(path, method='GET', body=null) {
             const opts = { method, credentials: 'include', headers: { 'Content-Type': 'application/json' } };
             if (body) opts.body = JSON.stringify(body);
-            const res = await fetch(`${API_BASE}${path}`, opts);
-            const data = await res.json().catch(() => ({}));
-            return { ok: res.ok, status: res.status, data };
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 12000);
+                opts.signal = controller.signal;
+
+                const res = await fetch(`${getApiBase()}${path}`, opts);
+                clearTimeout(timeout);
+                const data = await res.json().catch(() => ({}));
+                return { ok: res.ok, status: res.status, data };
+            } catch (err) {
+                return {
+                    ok: false,
+                    status: 0,
+                    data: {
+                        message: err.name === 'AbortError'
+                            ? 'Request timed out. Check backend availability.'
+                            : 'Network/CORS error. Ensure auth backend is running and CORS allows this origin.'
+                    }
+                };
+            }
         }
 
         function show(id, msg, ok=true) {
@@ -104,9 +138,17 @@
             el.textContent = msg;
         }
 
+
+        (function initApiBase() {
+            const stored = localStorage.getItem('iris_auth_api_base');
+            if (stored && document.getElementById('api-base')) {
+                document.getElementById('api-base').value = stored;
+            }
+        })();
         async function registerUser() {
             const email = document.getElementById('reg-email').value.trim();
             const password = document.getElementById('reg-password').value;
+            show('reg-result', '⏳ Registering...', true);
             const r = await callApi('/auth/register', 'POST', { email, password });
             show('reg-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Registration failed'}`, r.ok);
         }
@@ -114,21 +156,25 @@
         async function loginUser() {
             const email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value;
+            show('login-result', '⏳ Logging in...', true);
             const r = await callApi('/auth/login', 'POST', { email, password });
             show('login-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Login failed'}`, r.ok);
         }
 
         async function refreshToken() {
+            show('util-result', '⏳ Refreshing token...', true);
             const r = await callApi('/auth/refresh-token', 'POST');
             show('util-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Refresh failed'}`, r.ok);
         }
 
         async function checkDashboard() {
+            show('util-result', '⏳ Checking dashboard access...', true);
             const r = await callApi('/dashboard', 'GET');
             show('util-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Unauthorized'}`, r.ok);
         }
 
         async function logoutUser() {
+            show('login-result', '⏳ Logging out...', true);
             const r = await callApi('/auth/logout', 'POST');
             show('login-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Logout failed'}`, r.ok);
         }
