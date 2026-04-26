@@ -253,6 +253,14 @@ def authentication_page():
 # AUTH FALLBACK API (WORKS WITHOUT MONGODB)
 # ==========================================
 
+def _hash_password(password: str) -> str:
+    """
+    Uses a portable hashing method for macOS/Python builds where hashlib.scrypt
+    may be unavailable.
+    """
+    return generate_password_hash(password, method="pbkdf2:sha256")
+
+
 def _ensure_auth_users_table():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -308,7 +316,7 @@ def api_auth_register():
             "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
             (
                 email,
-                generate_password_hash(password, method="pbkdf2:sha256"),
+                _hash_password(password),
                 role,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
