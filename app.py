@@ -8,23 +8,49 @@ import json
 import time
 import traceback
 import sqlite3
+import base64
+import hashlib
+import hmac
 import threading # Required for Background Sync
 from datetime import datetime
 from werkzeug.exceptions import HTTPException
-from werkzeug.security import generate_password_hash as _wz_generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash
 import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 
 
-def generate_password_hash(password: str, method: str = "pbkdf2:sha256", salt_length: int = 16) -> str:
+def _hash_password(password: str) -> str:
     """
-    Compatibility wrapper:
-    Werkzeug defaults can use scrypt on newer versions, which crashes on
-    some Python/OpenSSL builds where hashlib.scrypt is unavailable.
+    Portable PBKDF2 password hash (no scrypt dependency).
+    Stored format: pbkdf2_sha256$iterations$salt_b64$hash_b64
     """
-    return _wz_generate_password_hash(password, method=method, salt_length=salt_length)
+    iterations = 200_000
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return (
+        f"pbkdf2_sha256${iterations}$"
+        f"{base64.b64encode(salt).decode('utf-8')}$"
+        f"{base64.b64encode(digest).decode('utf-8')}"
+    )
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algo, iter_s, salt_b64, hash_b64 = stored_hash.split("$", 3)
+        if algo != "pbkdf2_sha256":
+            return check_password_hash(stored_hash, password)
+        iterations = int(iter_s)
+        salt = base64.b64decode(salt_b64.encode("utf-8"))
+        expected = base64.b64decode(hash_b64.encode("utf-8"))
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        try:
+            return check_password_hash(stored_hash, password)
+        except Exception:
+            return False
 
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
@@ -262,13 +288,6 @@ def authentication_page():
 # AUTH FALLBACK API (WORKS WITHOUT MONGODB)
 # ==========================================
 
-def _hash_password(password: str) -> str:
-    """
-    Uses a portable hashing method for macOS/Python builds where hashlib.scrypt
-    may be unavailable.
-    """
-    return generate_password_hash(password, method="pbkdf2:sha256")
-
 
 def _ensure_auth_users_table():
     conn = sqlite3.connect(DB_NAME)
@@ -363,7 +382,7 @@ def api_auth_login():
     except Exception as e:
         return jsonify({"message": f"Login error: {str(e)}"}), 500
 
-    if not row or not check_password_hash(row[2], password):
+    if not row or not _verify_password(password, row[2]):
         return jsonify({"message": "Invalid credentials"}), 401
 
     session["auth_user"] = {"id": row[0], "email": row[1], "role": row[3], "createdAt": row[4]}
