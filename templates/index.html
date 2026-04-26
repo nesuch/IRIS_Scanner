@@ -612,6 +612,7 @@
         <a href="/admin" class="nav-item {{ 'active' if active_module == 'admin' else '' }}">
             <i class="fas fa-cog"></i> Admin Panel
         </a>
+        <a href="/authentication" class="nav-item {{ 'active' if active_module == 'authentication' else '' }}"><i class="fas fa-user-shield"></i> Authentication</a>
     </div>
 
     <div class="main-content">
@@ -744,41 +745,11 @@
             if (!chatWindow) return;
             const userBlocks = chatWindow.querySelectorAll('.chat-block.user');
             if (userBlocks.length > 0) {
-                const latestQuestion = userBlocks[userBlocks.length - 1];
-                const topOffset = window.innerWidth <= 900 ? 72 : 150;
-                chatWindow.scrollTop = Math.max(latestQuestion.offsetTop - topOffset, 0);
-                return;
+                const lastBlock = userBlocks[userBlocks.length - 1];
+                lastBlock.scrollIntoView({ behavior: "smooth", block: "center" });
             }
-            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
-
-        if (chatWindow) {
-            const hadPendingResponse = sessionStorage.getItem('iris_pending_response') === '1';
-            if (hadPendingResponse) {
-                sessionStorage.removeItem('iris_pending_response');
-                requestAnimationFrame(() => {
-                    jumpToLatestQuestionStart();
-                    requestAnimationFrame(jumpToLatestQuestionStart);
-                });
-            }
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-
-        if (chatWindow) {
-            const hadPendingResponse = sessionStorage.getItem('iris_pending_response') === '1';
-            if (hadPendingResponse) {
-                sessionStorage.removeItem('iris_pending_response');
-                requestAnimationFrame(() => {
-                    jumpToLatestQuestionStart();
-                    requestAnimationFrame(jumpToLatestQuestionStart);
-                });
-            }
-
-            requestAnimationFrame(() => {
-                jumpToLatestContent();
-                requestAnimationFrame(jumpToLatestContent);
-            });
-        }
+        if (chatWindow) setTimeout(scrollToLatestContent, 300);
 
         input.addEventListener('input', function () {
             const text = this.value.toLowerCase();

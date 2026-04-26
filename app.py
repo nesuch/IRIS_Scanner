@@ -240,6 +240,12 @@ def sync_status():
     """Frontend polls this to update progress bars."""
     return jsonify(SYNC_STATE)
 
+
+@app.route("/authentication", methods=["GET"])
+def authentication_page():
+    """Renders Authentication UI that integrates with the auth-system backend."""
+    return render_template("authentication.html")
+
 # ==========================================
 # ROUTES (MODULES)
 # ==========================================
