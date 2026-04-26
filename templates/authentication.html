@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRIS - Authentication</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .auth-wrap { padding: 20px 40px; overflow-y: auto; }
+        .auth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .auth-card { background: #fff; border: 1px solid #e4e6eb; border-radius: 10px; padding: 18px; }
+        .auth-card h3 { margin-top: 0; color: #1a237e; }
+        .auth-input { width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+        .auth-btn { background:#1a237e; color:#fff; border:none; border-radius:8px; padding:10px 14px; cursor:pointer; }
+        .auth-note { margin-top: 14px; color: #555; font-size: 13px; }
+        .auth-result { margin-top: 10px; font-size: 13px; min-height: 20px; }
+        @media (max-width: 900px) {
+            .auth-wrap { padding: 12px; }
+            .auth-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo">
+            <div class="logo-text">IRIS</div>
+        </div>
+        <div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
+
+        <div class="menu-label">Knowledge Base</div>
+        <a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
+        <a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
+        <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
+
+        <div class="menu-label">Data Intelligence</div>
+        <a href="/data" class="nav-item"><i class="fas fa-chart-line"></i> Data Explorer</a>
+        <a href="/compliance" class="nav-item"><i class="fas fa-gavel"></i> Compliance Cockpit</a>
+
+        <div class="menu-label">System</div>
+        <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+        <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
+        <a href="/authentication" class="nav-item active"><i class="fas fa-user-shield"></i> Authentication</a>
+    </div>
+
+    <div class="main-content">
+        <div class="header-area">
+            <div class="full-form-text">Identity & Access</div>
+            <div class="header-title-row">
+                <i class="fas fa-user-lock module-icon"></i>
+                <h2>Authentication</h2>
+            </div>
+            <p class="scope-indicator"><span class="scope-dot"></span> Login, token refresh and logout</p>
+        </div>
+
+        <div class="auth-wrap">
+            <div class="auth-grid">
+                <div class="auth-card">
+                    <h3>Register</h3>
+                    <input id="reg-email" class="auth-input" type="email" placeholder="Email" />
+                    <input id="reg-password" class="auth-input" type="password" placeholder="Password (min 8 chars)" />
+                    <button class="auth-btn" onclick="registerUser()">Register</button>
+                    <div id="reg-result" class="auth-result"></div>
+                </div>
+
+                <div class="auth-card">
+                    <h3>Login</h3>
+                    <input id="login-email" class="auth-input" type="email" placeholder="Email" />
+                    <input id="login-password" class="auth-input" type="password" placeholder="Password" />
+                    <button class="auth-btn" onclick="loginUser()">Login</button>
+                    <button class="auth-btn" style="margin-left:8px; background:#455a64;" onclick="logoutUser()">Logout</button>
+                    <div id="login-result" class="auth-result"></div>
+                </div>
+            </div>
+
+            <div class="auth-card" style="margin-top: 16px;">
+                <h3>Session Utilities</h3>
+                <button class="auth-btn" onclick="refreshToken()">Refresh Token</button>
+                <button class="auth-btn" style="margin-left:8px; background:#00695c;" onclick="checkDashboard()">Check /dashboard</button>
+                <div id="util-result" class="auth-result"></div>
+                <div class="auth-note">
+                    This page works out-of-box with built-in IRIS auth endpoints (`/api/*`) and does not require MongoDB/Node setup.
+                </div>
+                <div class="auth-note" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <label for="api-base"><strong>API Base:</strong></label>
+                    <input id="api-base" class="auth-input" style="max-width:360px; margin:0;" value="" />
+                    <button class="auth-btn" style="background:#37474f;" onclick="saveApiBase()">Save API Base</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_API_BASE = `${window.location.origin}/api`;
+
+        function getApiBase() {
+            const fromInput = document.getElementById('api-base')?.value?.trim();
+            if (fromInput) return fromInput.replace(/\/$/, '');
+            return (localStorage.getItem('iris_auth_api_base') || DEFAULT_API_BASE).replace(/\/$/, '');
+        }
+
+        function saveApiBase() {
+            const base = getApiBase();
+            localStorage.setItem('iris_auth_api_base', base);
+            show('util-result', `✅ API base saved: ${base}`, true);
+        }
+
+        async function callApi(path, method='GET', body=null) {
+            const opts = { method, credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 12000);
+                opts.signal = controller.signal;
+
+                const res = await fetch(`${getApiBase()}${path}`, opts);
+                clearTimeout(timeout);
+                const data = await res.json().catch(() => ({}));
+                return { ok: res.ok, status: res.status, data };
+            } catch (err) {
+                return {
+                    ok: false,
+                    status: 0,
+                    data: {
+                        message: err.name === 'AbortError'
+                            ? 'Request timed out. Check backend availability.'
+                            : 'Network/CORS error. Ensure auth backend is running and CORS allows this origin.'
+                    }
+                };
+            }
+        }
+
+        function show(id, msg, ok=true) {
+            const el = document.getElementById(id);
+            el.style.color = ok ? '#1b5e20' : '#b71c1c';
+            el.textContent = msg;
+        }
+
+
+        (function initApiBase() {
+            const stored = localStorage.getItem('iris_auth_api_base');
+            if (stored && document.getElementById('api-base')) {
+                document.getElementById('api-base').value = stored;
+            }
+        })();
+        async function registerUser() {
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value;
+            show('reg-result', '⏳ Registering...', true);
+            const r = await callApi('/auth/register', 'POST', { email, password });
+            show('reg-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Registration failed'}`, r.ok);
+        }
+
+        async function loginUser() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            show('login-result', '⏳ Logging in...', true);
+            const r = await callApi('/auth/login', 'POST', { email, password });
+            show('login-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Login failed'}`, r.ok);
+        }
+
+        async function refreshToken() {
+            show('util-result', '⏳ Refreshing token...', true);
+            const r = await callApi('/auth/refresh-token', 'POST');
+            show('util-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Refresh failed'}`, r.ok);
+        }
+
+        async function checkDashboard() {
+            show('util-result', '⏳ Checking dashboard access...', true);
+            const r = await callApi('/dashboard', 'GET');
+            show('util-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Unauthorized'}`, r.ok);
+        }
+
+        async function logoutUser() {
+            show('login-result', '⏳ Logging out...', true);
+            const r = await callApi('/auth/logout', 'POST');
+            show('login-result', r.ok ? `✅ ${r.data.message}` : `❌ ${r.data.message || 'Logout failed'}`, r.ok);
+        }
+    </script>
+    <script src="{{ url_for('static', filename='mobile_nav.js') }}"></script>
+</body>
+</html>
