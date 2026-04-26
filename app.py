@@ -265,6 +265,22 @@ def _ensure_auth_users_table():
             created_at TEXT NOT NULL
         )
     """)
+    c.execute("PRAGMA table_info(auth_users)")
+    existing_cols = {row[1] for row in c.fetchall()}
+
+    # Self-heal older schemas from earlier iterations.
+    if "password_hash" not in existing_cols:
+        c.execute("ALTER TABLE auth_users ADD COLUMN password_hash TEXT")
+    if "role" not in existing_cols:
+        c.execute("ALTER TABLE auth_users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'")
+    if "created_at" not in existing_cols:
+        c.execute("ALTER TABLE auth_users ADD COLUMN created_at TEXT")
+
+    c.execute("UPDATE auth_users SET role = COALESCE(role, 'viewer') WHERE role IS NULL OR role = ''")
+    c.execute(
+        "UPDATE auth_users SET created_at = COALESCE(created_at, ?) WHERE created_at IS NULL OR created_at = ''",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),)
+    )
     conn.commit()
     conn.close()
 
@@ -301,6 +317,8 @@ def api_auth_register():
         }), 201
     except sqlite3.IntegrityError:
         return jsonify({"message": "Email already registered"}), 409
+    except Exception as e:
+        return jsonify({"message": f"Registration error: {str(e)}"}), 500
     finally:
         conn.close()
 
