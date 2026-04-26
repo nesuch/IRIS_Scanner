@@ -65,6 +65,70 @@ except Exception as e:
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
 DB_NAME = "iris.db"
+ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
+
+
+def _ensure_auth_users_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS auth_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _seed_admin_user():
+    _ensure_auth_users_table()
+    admin_email = (os.getenv("ADMIN_EMAIL") or "admin@iris.local").strip().lower()
+    admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
+
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT id FROM auth_users WHERE email = ?", (admin_email,))
+    existing = c.fetchone()
+    if not existing:
+        c.execute(
+            "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            (
+                admin_email,
+                iris_hash_password(admin_password),
+                "admin",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
+        )
+        conn.commit()
+        print(f"[+] Default admin user created: {admin_email}")
+    conn.close()
+
+
+_seed_admin_user()
+
+
+@app.before_request
+def iris_auth_gatekeeper():
+    if request.path.startswith("/static") or request.path == "/favicon.ico":
+        return None
+
+    if request.path == "/login":
+        return None
+
+    user = session.get("auth_user")
+    if not user:
+        return redirect(url_for("login", next=request.path))
+
+    if request.path in ADMIN_ONLY_PATHS and user.get("role") != "admin":
+        if request.path.startswith("/admin"):
+            return jsonify({"message": "Admin access required"}), 403
+        return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
+
+    return None
 
 # ==========================================
 # 0. SYSTEM ANALYTICS (MIDDLEWARE)
@@ -173,6 +237,36 @@ def clear_logs():
         print(f"Error clearing logs: {e}")
         
     return redirect(url_for('analytics_dashboard'))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    next_url = request.args.get("next") or request.form.get("next") or "/"
+
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, email, password_hash, role FROM auth_users WHERE email = ?", (email,))
+        row = c.fetchone()
+        conn.close()
+
+        if row and iris_verify_password(password, row[2]):
+            session["auth_user"] = {"id": row[0], "email": row[1], "role": row[3]}
+            return redirect(next_url)
+
+        error = "Invalid email or password."
+
+    return render_template("login.html", error=error, next_url=next_url)
+
+
+@app.route("/logout", methods=["POST", "GET"])
+def logout():
+    session.pop("auth_user", None)
+    return redirect(url_for("login"))
 
 # ==========================================
 # CONFIGURATION
