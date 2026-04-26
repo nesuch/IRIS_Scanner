@@ -80,19 +80,11 @@
                 <button class="auth-btn" style="margin-left:8px; background:#00695c;" onclick="checkDashboard()">Check /dashboard</button>
                 <div id="util-result" class="auth-result"></div>
                 <div class="auth-note">
-<<<<<<< HEAD
                     This page works out-of-box with built-in IRIS auth endpoints (`/api/*`) and does not require MongoDB/Node setup.
                 </div>
                 <div class="auth-note" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <label for="api-base"><strong>API Base:</strong></label>
                     <input id="api-base" class="auth-input" style="max-width:360px; margin:0;" value="" />
-=======
-                    This page uses the standalone auth backend (`auth-system/backend`) and sends credentials with cookies.
-                </div>
-                <div class="auth-note" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <label for="api-base"><strong>API Base:</strong></label>
-                    <input id="api-base" class="auth-input" style="max-width:360px; margin:0;" value="http://127.0.0.1:5000/api" />
->>>>>>> main
                     <button class="auth-btn" style="background:#37474f;" onclick="saveApiBase()">Save API Base</button>
                 </div>
             </div>
@@ -100,11 +92,7 @@
     </div>
 
     <script>
-<<<<<<< HEAD
         const DEFAULT_API_BASE = `${window.location.origin}/api`;
-=======
-        const DEFAULT_API_BASE = 'http://127.0.0.1:5000/api';
->>>>>>> main
 
         function getApiBase() {
             const fromInput = document.getElementById('api-base')?.value?.trim();
