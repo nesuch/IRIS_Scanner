@@ -11,11 +11,20 @@ import sqlite3
 import threading # Required for Background Sync
 from datetime import datetime
 from werkzeug.exceptions import HTTPException
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash as _wz_generate_password_hash, check_password_hash
 import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
+
+
+def generate_password_hash(password: str, method: str = "pbkdf2:sha256", salt_length: int = 16) -> str:
+    """
+    Compatibility wrapper:
+    Werkzeug defaults can use scrypt on newer versions, which crashes on
+    some Python/OpenSSL builds where hashlib.scrypt is unavailable.
+    """
+    return _wz_generate_password_hash(password, method=method, salt_length=salt_length)
 
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
