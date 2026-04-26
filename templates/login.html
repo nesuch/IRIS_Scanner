@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRIS Gatekeeper Login</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #f0f2f5; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+        .card { width: 100%; max-width: 420px; background: #fff; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.08); padding: 28px; }
+        h1 { margin: 0 0 8px; color:#1f2d80; font-size: 28px; }
+        .subtitle { color:#666; margin-bottom: 20px; }
+        .input { width:100%; padding:12px; margin-bottom:12px; border:1px solid #cfd8dc; border-radius:10px; font-size:16px; box-sizing:border-box; }
+        .btn { width:100%; background:#1f2d80; color:#fff; border:none; border-radius:10px; padding:12px; font-size:16px; cursor:pointer; }
+        .err { background:#fdecea; color:#b71c1c; padding:10px 12px; border-radius:8px; margin-bottom:12px; }
+        .note { margin-top: 14px; color:#677; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <form class="card" method="POST" action="/login">
+        <h1><i class="fa-solid fa-shield-halved"></i> IRIS Gatekeeper</h1>
+        <div class="subtitle">Login required to access IRIS modules.</div>
+
+        {% if error %}
+            <div class="err">{{ error }}</div>
+        {% endif %}
+
+        <input type="hidden" name="next" value="{{ next_url }}" />
+        <input class="input" type="email" name="email" placeholder="Email" required />
+        <input class="input" type="password" name="password" placeholder="Password" required />
+        <button class="btn" type="submit">Sign In</button>
+
+        <div class="note">Admin panel access is restricted to users with role <b>admin</b>.</div>
+        <div class="note"><a href="/register">Create new account</a> · <a href="/forgot-password">Forgot password?</a></div>
+    </form>
+</body>
+</html>

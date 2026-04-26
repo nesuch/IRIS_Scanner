@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IRIS - Admin Panel</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -116,6 +117,18 @@
         .btn-sync:hover { background: #1a237e; transform: translateY(-1px); }
         .btn-sync:disabled { background: #b0bec5; cursor: not-allowed; transform: none; }
 
+
+        .admin-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 40px;
+        }
+
+        .admin-scroll-area::-webkit-scrollbar { width: 10px; }
+        .admin-scroll-area::-webkit-scrollbar-track { background: #eef2f7; border-radius: 10px; }
+        .admin-scroll-area::-webkit-scrollbar-thumb { background: #b0bec5; border-radius: 10px; }
+        .admin-scroll-area::-webkit-scrollbar-thumb:hover { background: #90a4ae; }
+
         /* Sidebar Logo Override */
         .logo-text {
             margin-top: 8px;
@@ -132,6 +145,71 @@
             text-transform: uppercase;
             padding-left: 1.5px;
         }
+        @media (max-width: 900px) {
+
+            .header-area h2 {
+                font-size: 20px;
+            }
+
+            .module-icon {
+                font-size: 22px;
+            }
+
+            .full-form-text {
+                font-size: 12px;
+            }
+
+            .scope-indicator {
+                font-size: 12px;
+            }
+
+            .main-content {
+                font-size: 15px;
+            }
+
+            
+            .logo {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-width: 72px;
+                padding: 4px 8px;
+                margin: 0;
+                border-right: 1px solid #e6e6e6;
+            }
+
+            .logo img {
+                width: 56px;
+                max-height: 56px;
+            }
+
+            .logo-text {
+                margin-top: 4px;
+                font-size: 20px;
+                line-height: 1;
+                letter-spacing: 1.6px;
+            }
+
+            .main-content {
+                height: calc(100dvh - 56px);
+                overflow-x: hidden;
+            }
+
+            .admin-scroll-area {
+                padding: 12px;
+            }
+
+            .admin-card {
+                padding: 16px;
+            }
+
+            .btn-sync {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -167,7 +245,7 @@
             <p class="scope-indicator"><span class="scope-dot"></span> Manage Data & Configuration</p>
         </div>
 
-        <div style="padding: 20px 40px;">
+        <div class="admin-scroll-area">
             
             <div class="admin-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -181,8 +259,9 @@
                 
                 <p style="color:#546e7a; font-size:14px; line-height:1.6; margin-bottom:20px;">
                     <strong>Instructions:</strong><br>
-                    1. Place new Excel files into <code style="background:#eceff1; padding:2px 6px; border-radius:4px; color:#37474f;">knowledge_base/raw_submissions/</code>.<br>
-                    2. Click "Start Data Sync". The system will normalize headers, aggregate data, and rebuild the cache in the background.
+                    1. Financial files: place into <code style="background:#eceff1; padding:2px 6px; border-radius:4px; color:#37474f;">knowledge_base/raw_submissions/</code>.<br>
+                    2. Regulatory files: place into <code style="background:#eceff1; padding:2px 6px; border-radius:4px; color:#37474f;">knowledge_base/health/</code> or <code style="background:#eceff1; padding:2px 6px; border-radius:4px; color:#37474f;">knowledge_base/life/</code> (folder controls module classification).<br>
+                    3. Click "Start Data Sync" to sync both financial and regulatory datasets in the background.
                 </p>
 
                 <div>
@@ -339,5 +418,6 @@
             consoleBox.scrollTop = consoleBox.scrollHeight; // Auto-scroll to bottom
         }
     </script>
+    <script src="{{ url_for('static', filename='mobile_nav.js') }}"></script>
 </body>
 </html>
