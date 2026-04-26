@@ -1,29 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IRIS Register</title>
     <style>
-        body { margin:0; font-family: Arial, sans-serif; background:#f0f2f5; min-height:100vh; display:flex; align-items:center; justify-content:center; }
-        .card { width:100%; max-width:420px; background:#fff; border-radius:14px; padding:28px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
-        .input { width:100%; box-sizing:border-box; padding:12px; margin-bottom:12px; border:1px solid #cfd8dc; border-radius:10px; }
-        .btn { width:100%; padding:12px; border:none; border-radius:10px; background:#1f2d80; color:#fff; cursor:pointer; }
-        .err { background:#fdecea; color:#b71c1c; padding:10px; border-radius:8px; margin-bottom:12px; }
-        .ok { background:#e8f5e9; color:#1b5e20; padding:10px; border-radius:8px; margin-bottom:12px; }
-        .note { margin-top:12px; font-size:13px; color:#677; }
+        *{box-sizing:border-box} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:linear-gradient(135deg,#0f215f,#2a45bf);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+        .card{width:min(460px,100%);background:#fff;border-radius:18px;padding:30px;box-shadow:0 20px 50px rgba(0,0,0,.24)}
+        .logo{display:flex;align-items:center;gap:10px;margin-bottom:8px}.logo img{width:42px;height:42px}
+        h2{margin:0 0 14px;color:#1f2d80}.input{width:100%;padding:12px;border:1px solid #d5ddf0;border-radius:10px;margin-bottom:10px}
+        .btn{width:100%;padding:12px;border:none;border-radius:10px;background:#1f2d80;color:#fff;font-weight:700;cursor:pointer}
+        .err{background:#fdecea;color:#b71c1c;padding:10px;border-radius:8px;margin-bottom:10px}.ok{background:#e8f5e9;color:#1b5e20;padding:10px;border-radius:8px;margin-bottom:10px}
+        .links{margin-top:12px;font-size:14px}.links a{color:#1f2d80;text-decoration:none;font-weight:600}
     </style>
 </head>
 <body>
-    <form class="card" method="POST" action="/register">
-        <h2>Create IRIS Credentials</h2>
-        {% if error %}<div class="err">{{ error }}</div>{% endif %}
-        {% if success %}<div class="ok">{{ success }}</div>{% endif %}
-        <input class="input" type="email" name="email" placeholder="Email" required />
-        <input class="input" type="password" name="password" placeholder="Password (min 8 chars)" required />
-        <input class="input" type="password" name="confirm_password" placeholder="Confirm password" required />
-        <button class="btn" type="submit">Create Account</button>
-        <div class="note"><a href="/login">Back to login</a></div>
-    </form>
+<form class="card" method="POST" action="/register">
+    <div class="logo"><img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo"/><strong>IRIS</strong></div>
+    <h2>Create your credentials</h2>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if success %}<div class="ok">{{ success }}</div>{% endif %}
+    <input class="input" type="email" name="email" placeholder="Email" required />
+    <input class="input" type="password" name="password" placeholder="Password (min 8 chars)" required />
+    <input class="input" type="password" name="confirm_password" placeholder="Confirm password" required />
+    <button class="btn" type="submit">Create Account</button>
+    <div class="links"><a href="/login">Back to login</a></div>
+</form>
 </body>
 </html>
