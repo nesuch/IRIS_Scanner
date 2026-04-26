@@ -94,7 +94,15 @@ body {
 .iris-bubble { background-color: white; border: 1px solid #e0e0e0; border-bottom-left-radius: 2px; width: 100%; box-sizing: border-box;}
 
 .chat-block.iris strong { color: #1a237e; font-weight: 700; display: inline; margin: 0; }
-.iris-highlight { background-color: #fff9c4; border-bottom: 2px solid #fbc02d; color: #212121; font-weight: 700; padding: 0px 4px; border-radius: 2px; }
+.iris-highlight {
+    background-color: #fff9c4;
+    border-bottom: 2px solid #fbc02d;
+    color: #212121;
+    font-weight: 700;
+    padding: 0px 4px;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
 
 /* =========================
    5. INPUT AREA (For Chat Modules)
@@ -258,3 +266,91 @@ button[type="submit"]:hover { background-color: #000051; }
 #copy-toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 1.5s; }
 @keyframes fadein { from {bottom: 80px; opacity: 0;} to {bottom: 100px; opacity: 1;} }
 @keyframes fadeout { from {bottom: 100px; opacity: 1;} to {bottom: 80px; opacity: 0;} }
+
+@media (max-width: 900px) {
+    body {
+        width: 100%;
+        max-width: 100%;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    .sidebar {
+        width: 100%;
+        min-height: 92px;
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+        flex-direction: row;
+        align-items: center;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px;
+        gap: 6px;
+    }
+
+    .sidebar-tagline, .menu-label {
+        display: none;
+    }
+
+
+    .logo {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-width: 72px;
+        padding: 4px 8px;
+        margin: 0;
+        border-right: 1px solid #e6e6e6;
+    }
+
+    .logo img {
+        width: 56px;
+        max-height: 56px;
+    }
+
+    .logo-text {
+        margin-top: 4px;
+        font-size: 20px;
+        line-height: 1;
+        letter-spacing: 1.6px;
+    }
+
+    .nav-item {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+
+    .nav-item.active {
+        border-right: none;
+    }
+
+    .header-area, .chat-window, .input-area {
+        max-width: 100%;
+        box-sizing: border-box;
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+    .main-content {
+        width: 100%;
+        max-width: 100%;
+        height: calc(100dvh - 62px);
+        min-height: 0;
+        overflow-x: hidden;
+    }
+
+    .search-wrapper {
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    button[type="submit"] {
+        margin-left: 0;
+    }
+
+}
