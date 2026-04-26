@@ -272,7 +272,7 @@ def _ensure_auth_users_table():
     if "password_hash" not in existing_cols:
         c.execute("ALTER TABLE auth_users ADD COLUMN password_hash TEXT")
     if "role" not in existing_cols:
-        c.execute("ALTER TABLE auth_users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'")
+        c.execute("ALTER TABLE auth_users ADD COLUMN role TEXT")
     if "created_at" not in existing_cols:
         c.execute("ALTER TABLE auth_users ADD COLUMN created_at TEXT")
 
@@ -296,16 +296,22 @@ def api_auth_register():
     if len(password) < 8:
         return jsonify({"message": "Password must be at least 8 characters long"}), 400
 
-    _ensure_auth_users_table()
-    owner_email = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
-    role = "admin" if owner_email and email == owner_email else "viewer"
-
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
+    conn = None
     try:
+        _ensure_auth_users_table()
+        owner_email = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+        role = "admin" if owner_email and email == owner_email else "viewer"
+
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
         c.execute(
             "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            (email, generate_password_hash(password), role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            (
+                email,
+                generate_password_hash(password, method="pbkdf2:sha256"),
+                role,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
         )
         conn.commit()
         user_id = c.lastrowid
@@ -320,7 +326,8 @@ def api_auth_register():
     except Exception as e:
         return jsonify({"message": f"Registration error: {str(e)}"}), 500
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -329,12 +336,15 @@ def api_auth_login():
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
 
-    _ensure_auth_users_table()
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT id, email, password_hash, role, created_at FROM auth_users WHERE email = ?", (email,))
-    row = c.fetchone()
-    conn.close()
+    try:
+        _ensure_auth_users_table()
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, email, password_hash, role, created_at FROM auth_users WHERE email = ?", (email,))
+        row = c.fetchone()
+        conn.close()
+    except Exception as e:
+        return jsonify({"message": f"Login error: {str(e)}"}), 500
 
     if not row or not check_password_hash(row[2], password):
         return jsonify({"message": "Invalid credentials"}), 401
