@@ -205,6 +205,7 @@ def _seed_admin_user():
     existing = User.query.filter_by(email=admin_email).first()
     if existing:
         existing.is_admin = True
+        existing.is_active = True
         # Keep default/dev admin login usable even if legacy hashes exist
         # or hashing algorithms changed across releases.
         if (not existing.password_hash) or (not _safe_check_password_hash(existing.password_hash, admin_password)):
@@ -489,7 +490,7 @@ def login():
         if not _is_allowed_email(email):
             error = invalid
             _record_admin_audit(email, "login_attempt", "failure")
-        elif user and user.is_active and check_password_hash(user.password_hash, password):
+        elif user and user.is_active and _safe_check_password_hash(user.password_hash, password):
             login_user(user)
             _start_user_session(user)
             app.logger.info("Login success for %s", email)
