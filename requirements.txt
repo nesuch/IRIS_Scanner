@@ -4,3 +4,5 @@ flask-sqlalchemy
 pandas
 openpyxl
 nltk
+gunicorn
+psycopg2-binary
