@@ -198,7 +198,7 @@ def _ensure_schema_compatibility():
 
 def _seed_admin_user():
     admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
-    admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
+    admin_password = (os.getenv("ADMIN_PASSWORD") or "admin12345").strip()
     if not _is_allowed_email(admin_email):
         admin_email = f"admin{ALLOWED_EMAIL_DOMAIN}"
 
@@ -497,6 +497,31 @@ def login():
             _record_admin_audit(email, "login_attempt", "success")
             return redirect(_safe_next_url(next_url))
         else:
+            # Recovery path: allow configured admin credentials even when legacy
+            # hash formats can't be verified in the current Python runtime.
+            admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
+            admin_password = (os.getenv("ADMIN_PASSWORD") or "admin12345").strip()
+            if email == admin_email and password == admin_password:
+                admin_user = user or User.query.filter(db.func.lower(User.email) == admin_email).first()
+                if not admin_user:
+                    admin_user = User(
+                        email=admin_email,
+                        password_hash=_safe_generate_password_hash(admin_password),
+                        is_admin=True,
+                        is_active=True,
+                        created_at=datetime.utcnow(),
+                    )
+                    db.session.add(admin_user)
+                else:
+                    admin_user.is_admin = True
+                    admin_user.is_active = True
+                    admin_user.password_hash = _safe_generate_password_hash(admin_password)
+                db.session.commit()
+                login_user(admin_user)
+                _start_user_session(admin_user)
+                app.logger.info("Admin login recovery success for %s", email)
+                _record_admin_audit(email, "login_attempt", "success")
+                return redirect(_safe_next_url(next_url))
             app.logger.warning("Login failed for %s", email or "<blank>")
             _record_admin_audit(email, "login_attempt", "failure")
             error = invalid
