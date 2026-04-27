@@ -22,7 +22,13 @@ app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
+AUTH_DATABASE_URL = os.getenv("IRIS_AUTH_DATABASE_URL") or os.getenv("DATABASE_URL")
+if AUTH_DATABASE_URL:
+    if AUTH_DATABASE_URL.startswith("postgres://"):
+        AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = AUTH_DATABASE_URL
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -360,7 +366,7 @@ def _record_admin_audit(email: str, action_type: str, status: str):
 def load_user(user_id: str):
     if not user_id.isdigit():
         return None
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 with app.app_context():
