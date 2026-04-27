@@ -15,6 +15,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from sqlalchemy import inspect, text
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -163,6 +164,31 @@ def _is_allowed_email(email: str) -> bool:
 def _hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
+def _safe_generate_password_hash(password: str) -> str:
+    """
+    Use PBKDF2 explicitly so password hashing works on environments where
+    hashlib.scrypt is unavailable.
+    """
+    return generate_password_hash(password, method="pbkdf2:sha256")
+
+def _ensure_schema_compatibility():
+    """
+    Backfill columns that may be missing in existing deployments with older DB schema.
+    """
+    try:
+        inspector = inspect(db.engine)
+        if "system_logs" not in inspector.get_table_names():
+            return
+
+        existing_cols = {c["name"] for c in inspector.get_columns("system_logs")}
+        if "user_email" not in existing_cols:
+            db.session.execute(text("ALTER TABLE system_logs ADD COLUMN user_email VARCHAR(255)"))
+            db.session.commit()
+            app.logger.info("Schema patch applied: added system_logs.user_email")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.warning("Schema compatibility patch skipped/failed: %s", e)
+
 
 def _seed_admin_user():
     admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
@@ -174,12 +200,12 @@ def _seed_admin_user():
     if existing:
         existing.is_admin = True
         if not existing.password_hash:
-            existing.password_hash = generate_password_hash(admin_password)
+            existing.password_hash = _safe_generate_password_hash(admin_password)
     else:
         db.session.add(
             User(
                 email=admin_email,
-                password_hash=generate_password_hash(admin_password),
+                password_hash=_safe_generate_password_hash(admin_password),
                 is_admin=True,
                 is_active=True,
                 created_at=datetime.utcnow(),
@@ -301,6 +327,7 @@ def load_user(user_id: str):
 
 with app.app_context():
     db.create_all()
+    _ensure_schema_compatibility()
     _seed_admin_user()
 
 
@@ -541,7 +568,7 @@ def reset_password(token):
         if new_password != confirm_password:
             return render_template("reset_password.html", error="Passwords do not match.", success=None), 400
 
-        user.password_hash = generate_password_hash(new_password)
+        user.password_hash = _safe_generate_password_hash(new_password)
         user.reset_token = None
         user.reset_token_expiry = None
         db.session.commit()
@@ -571,7 +598,7 @@ def create_user():
 
     new_user = User(
         email=email,
-        password_hash=generate_password_hash(password),
+        password_hash=_safe_generate_password_hash(password),
         is_active=True,
         is_admin=is_admin,
     )
@@ -625,7 +652,7 @@ def profile():
             error = "New password and confirm password do not match."
         else:
             user = db.session.get(User, current_user.id)
-            user.password_hash = generate_password_hash(new_password)
+            user.password_hash = _safe_generate_password_hash(new_password)
             user.session_version = (user.session_version or 0) + 1
             db.session.commit()
             _deactivate_all_user_sessions(user.id)
@@ -1254,7 +1281,7 @@ def build_chips_html(kw_tuples, original_query):
         if label in shown_labels: continue
         
         payload = f"{raw}|{clean}"
-        html += f"""<form method="POST" style="margin:0;" onsubmit="sessionStorage.setItem('iris_pending_response', '1')"><input type="hidden" name="query" value="__DEEP_SCAN__:{payload}">
+        html += f"""<form method="POST" style="margin:0;" onsubmit="return showDeepScanLoading(event, this)"><input type="hidden" name="query" value="__DEEP_SCAN__:{payload}">
                 <button type="submit" style="background:#e8eaf6; border:1px solid #3f51b5; color:#1a237e; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
                 {label}</button></form>"""
         shown_labels.add(label)
@@ -1265,14 +1292,14 @@ def build_chips_html(kw_tuples, original_query):
     
     has_special_compound = bool(re.search(r"[-/]", clean_original))
     if (len(clean_original.split()) > 1 or has_special_compound) and phrase_label not in shown_labels:
-        html += f"""<form method="POST" style="margin:0;" onsubmit="sessionStorage.setItem('iris_pending_response', '1')"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
+        html += f"""<form method="POST" style="margin:0;" onsubmit="return showDeepScanLoading(event, this)"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
                 <button type="submit" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:6px 12px; border-radius:16px; font-weight:700; font-size:11px; cursor:pointer;">
                 {phrase_label}</button></form>"""
     
     # 3. Chip for 'Search All' (combined) - Only if we have multiple distinct keywords
     if len(kw_tuples) > 1:
         all_payload = "||".join([f"{t[0]}|{t[1]}" for t in kw_tuples])
-        html += f"""<form method="POST" style="margin:0;" onsubmit="sessionStorage.setItem('iris_pending_response', '1')"><input type="hidden" name="query" value="__DEEP_SCAN__:{all_payload}">
+        html += f"""<form method="POST" style="margin:0;" onsubmit="return showDeepScanLoading(event, this)"><input type="hidden" name="query" value="__DEEP_SCAN__:{all_payload}">
                 <button type="submit" style="background:#fff; border:1px solid #999; color:#666; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
                 Search All</button></form>"""
                 
