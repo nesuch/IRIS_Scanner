@@ -614,6 +614,9 @@
             <i class="fas fa-cog"></i> Admin Panel
         </a>
         {% endif %}
+        <a href="/profile" class="nav-item {{ 'active' if active_module == 'profile' else '' }}">
+            <i class="fas fa-user-circle"></i> Profile
+        </a>
         <a href="/logout" class="nav-item">
             <i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})
         </a>
