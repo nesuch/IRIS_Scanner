@@ -7,7 +7,6 @@ import os
 import json
 import time
 import traceback
-import sqlite3
 import hashlib
 import threading # Required for Background Sync
 from datetime import datetime, timedelta
@@ -50,6 +49,7 @@ ALLOWED_EMAIL_DOMAIN = "@irdai.gov.in"
 
 class User(UserMixin, db.Model):
     __tablename__ = "auth_users"
+    __table_args__ = {'extend_existing': True}
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
@@ -60,6 +60,55 @@ class User(UserMixin, db.Model):
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
     session_version = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+class SystemLog(db.Model):
+    __tablename__ = "system_logs"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    endpoint = db.Column(db.String(255), nullable=True)
+    method = db.Column(db.String(16), nullable=True)
+    ip = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.Integer, nullable=True)
+    error_msg = db.Column(db.Text, nullable=True)
+    user_email = db.Column(db.String(255), nullable=True)
+
+
+class UserSession(db.Model):
+    __tablename__ = "user_sessions"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("auth_users.id"), nullable=False, index=True)
+    session_token = db.Column(db.String(255), nullable=False, index=True)
+    ip = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(300), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_seen_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class PasswordResetAudit(db.Model):
+    __tablename__ = "password_reset_audit"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False)
+    reset_link = db.Column(db.Text, nullable=False)
+    requested_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+
+class AdminAuditLog(db.Model):
+    __tablename__ = "admin_audit_logs"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=True)
+    action_type = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(64), nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
@@ -115,47 +164,7 @@ def _hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _ensure_auth_users_table():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS auth_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            is_active INTEGER NOT NULL DEFAULT 1,
-            is_admin INTEGER NOT NULL DEFAULT 0,
-            reset_token TEXT,
-            reset_token_expiry TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
-    c.execute("PRAGMA table_info(auth_users)")
-    columns = {row[1] for row in c.fetchall()}
-    if "is_active" not in columns:
-        c.execute("ALTER TABLE auth_users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-    if "is_admin" not in columns:
-        c.execute("ALTER TABLE auth_users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-    if "reset_token" not in columns:
-        c.execute("ALTER TABLE auth_users ADD COLUMN reset_token TEXT")
-    if "reset_token_expiry" not in columns:
-        c.execute("ALTER TABLE auth_users ADD COLUMN reset_token_expiry TEXT")
-    if "created_at" not in columns:
-        c.execute("ALTER TABLE auth_users ADD COLUMN created_at TEXT")
-        c.execute(
-            "UPDATE auth_users SET created_at = ? WHERE created_at IS NULL",
-            (datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),),
-        )
-    if "session_version" not in columns:
-        c.execute("ALTER TABLE auth_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
-    if "role" in columns:
-        c.execute("UPDATE auth_users SET is_admin = 1 WHERE lower(role) = 'admin'")
-    conn.commit()
-    conn.close()
-
-
 def _seed_admin_user():
-    _ensure_auth_users_table()
     admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
     admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
     if not _is_allowed_email(admin_email):
@@ -180,102 +189,21 @@ def _seed_admin_user():
     db.session.commit()
 
 
-def _ensure_system_logs_table():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS system_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            endpoint TEXT,
-            method TEXT,
-            ip TEXT,
-            status INTEGER,
-            error_msg TEXT,
-            user_email TEXT
-        )
-        """
-    )
-    c.execute("PRAGMA table_info(system_logs)")
-    columns = {row[1] for row in c.fetchall()}
-    if "user_email" not in columns:
-        c.execute("ALTER TABLE system_logs ADD COLUMN user_email TEXT")
-    conn.commit()
-    conn.close()
-
-
-def _ensure_password_reset_audit_table():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS password_reset_audit (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL,
-            reset_link TEXT NOT NULL,
-            requested_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-
-
-def _ensure_admin_audit_logs_table():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS admin_audit_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT,
-            action_type TEXT NOT NULL,
-            status TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-
-
-def _ensure_user_sessions_table():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            session_token TEXT NOT NULL,
-            ip TEXT,
-            user_agent TEXT,
-            active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL,
-            last_seen_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-
-
 def _start_user_session(user: User):
     session_token = secrets.token_urlsafe(32)
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute(
-        """
-        INSERT INTO user_sessions (user_id, session_token, ip, user_agent, active, created_at, last_seen_at)
-        VALUES (?, ?, ?, ?, 1, ?, ?)
-        """,
-        (user.id, session_token, get_client_ip(), (request.headers.get("User-Agent") or "")[:300], now, now),
+    now = datetime.utcnow()
+    db.session.add(
+        UserSession(
+            user_id=user.id,
+            session_token=session_token,
+            ip=get_client_ip(),
+            user_agent=(request.headers.get("User-Agent") or "")[:300],
+            active=True,
+            created_at=now,
+            last_seen_at=now,
+        )
     )
-    conn.commit()
-    conn.close()
+    db.session.commit()
     session["auth_token"] = session_token
     session["session_version"] = user.session_version
 
@@ -283,90 +211,83 @@ def _start_user_session(user: User):
 def _is_session_active(user_id: int, session_token: str) -> bool:
     if not session_token:
         return False
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute(
-        "SELECT id FROM user_sessions WHERE user_id = ? AND session_token = ? AND active = 1 LIMIT 1",
-        (user_id, session_token),
+    return (
+        UserSession.query.filter_by(
+            user_id=user_id,
+            session_token=session_token,
+            active=True,
+        ).first()
+        is not None
     )
-    row = c.fetchone()
-    conn.close()
-    return bool(row)
 
 
 def _deactivate_session_token(user_id: int, session_token: str):
     if not session_token:
         return
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE user_sessions SET active = 0 WHERE user_id = ? AND session_token = ?", (user_id, session_token))
-    conn.commit()
-    conn.close()
+    UserSession.query.filter_by(user_id=user_id, session_token=session_token).update(
+        {"active": False, "last_seen_at": datetime.utcnow()}
+    )
+    db.session.commit()
 
 
 def _deactivate_session_by_id(user_id: int, session_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE user_sessions SET active = 0 WHERE id = ? AND user_id = ?", (session_id, user_id))
-    conn.commit()
-    conn.close()
+    UserSession.query.filter_by(id=session_id, user_id=user_id).update(
+        {"active": False, "last_seen_at": datetime.utcnow()}
+    )
+    db.session.commit()
 
 
 def _list_user_sessions(user_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, ip, user_agent, active, created_at, last_seen_at
-        FROM user_sessions
-        WHERE user_id = ? AND active = 1
-        ORDER BY id DESC
-        LIMIT 30
-        """,
-        (user_id,),
+    rows = (
+        UserSession.query.with_entities(
+            UserSession.id,
+            UserSession.ip,
+            UserSession.user_agent,
+            UserSession.active,
+            UserSession.created_at,
+            UserSession.last_seen_at,
+        )
+        .filter_by(user_id=user_id, active=True)
+        .order_by(UserSession.id.desc())
+        .limit(30)
+        .all()
     )
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+    return [
+        {
+            "id": row.id,
+            "ip": row.ip,
+            "user_agent": row.user_agent,
+            "active": row.active,
+            "created_at": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
+            "last_seen_at": row.last_seen_at.strftime("%Y-%m-%d %H:%M:%S") if row.last_seen_at else None,
+        }
+        for row in rows
+    ]
 
 
 def _deactivate_all_user_sessions(user_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE user_sessions SET active = 0 WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
+    UserSession.query.filter_by(user_id=user_id).update(
+        {"active": False, "last_seen_at": datetime.utcnow()}
+    )
+    db.session.commit()
 
 
 def _get_active_device_count(user_id: int) -> int:
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM user_sessions WHERE user_id = ? AND active = 1", (user_id,))
-    row = c.fetchone()
-    count = row[0] if row else 0
-    conn.close()
+    count = UserSession.query.filter_by(user_id=user_id, active=True).count()
     return int(count or 0)
 
 
 def _record_admin_audit(email: str, action_type: str, status: str):
     try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute(
-            """
-            INSERT INTO admin_audit_logs (email, action_type, status, timestamp)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                (email or "").strip().lower() or None,
-                action_type,
-                status,
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            ),
+        db.session.add(
+            AdminAuditLog(
+                email=(email or "").strip().lower() or None,
+                action_type=action_type,
+                status=status,
+                timestamp=datetime.utcnow(),
+            )
         )
-        conn.commit()
-        conn.close()
+        db.session.commit()
     except Exception as e:
         app.logger.warning("Unable to record admin audit log: %s", e)
 
@@ -379,11 +300,6 @@ def load_user(user_id: str):
 
 
 with app.app_context():
-    _ensure_auth_users_table()
-    _ensure_system_logs_table()
-    _ensure_password_reset_audit_table()
-    _ensure_admin_audit_logs_table()
-    _ensure_user_sessions_table()
     db.create_all()
     _seed_admin_user()
 
@@ -452,7 +368,7 @@ def get_client_ip():
 
 def log_interaction(status_code, error_msg=None):
     """
-    Records every request to the SQLite database (system_logs table).
+    Records every request to the database (system_logs table).
     Filters out static assets and favicons to keep analytics clean.
     """
     # --- FILTER: Ignore static files AND favicon ---
@@ -460,24 +376,18 @@ def log_interaction(status_code, error_msg=None):
         return
     
     try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-
-        c.execute('''
-            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg, user_email)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            request.path,
-            request.method,
-            get_client_ip(),
-            status_code,
-            error_msg,
-            current_user.email if current_user.is_authenticated else None
-        ))
-        
-        conn.commit()
-        conn.close()
+        db.session.add(
+            SystemLog(
+                timestamp=datetime.utcnow(),
+                endpoint=request.path,
+                method=request.method,
+                ip=get_client_ip(),
+                status=status_code,
+                error_msg=error_msg,
+                user_email=current_user.email if current_user.is_authenticated else None,
+            )
+        )
+        db.session.commit()
     except Exception as e:
         print(f"Logging Failed: {e}") 
 
@@ -517,14 +427,10 @@ def clear_logs():
     Keeps legitimate user traffic stats intact.
     """
     try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        
-        # Delete logs where status is 500+ OR endpoint is favicon
-        c.execute("DELETE FROM system_logs WHERE status >= 500 OR endpoint = '/favicon.ico'")
-        
-        conn.commit()
-        conn.close()
+        SystemLog.query.filter(
+            (SystemLog.status >= 500) | (SystemLog.endpoint == "/favicon.ico")
+        ).delete(synchronize_session=False)
+        db.session.commit()
             
     except Exception as e:
         print(f"Error clearing logs: {e}")
@@ -590,22 +496,15 @@ def forgot_password():
                 reset_link = url_for("reset_password", token=raw_token, _external=True)
                 app.logger.info("Password reset link generated for %s: %s", email, reset_link)
                 try:
-                    conn = sqlite3.connect(DB_NAME)
-                    c = conn.cursor()
-                    c.execute(
-                        """
-                        INSERT INTO password_reset_audit (email, reset_link, requested_at, expires_at)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (
-                            email,
-                            reset_link,
-                            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                            user.reset_token_expiry.strftime("%Y-%m-%d %H:%M:%S"),
-                        ),
+                    db.session.add(
+                        PasswordResetAudit(
+                            email=email,
+                            reset_link=reset_link,
+                            requested_at=datetime.utcnow(),
+                            expires_at=user.reset_token_expiry,
+                        )
                     )
-                    conn.commit()
-                    conn.close()
+                    db.session.commit()
                 except Exception as e:
                     app.logger.warning("Unable to audit password reset request: %s", e)
                 _record_admin_audit(email, "password_reset_request", "success")
@@ -823,43 +722,37 @@ def _collect_admin_usage_insights():
     user_rows = []
     module_totals = {name: 0 for name in TRACKED_MODULE_ENDPOINTS.values()}
     try:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        placeholders = ",".join(["?"] * len(TRACKED_MODULE_ENDPOINTS))
-        c.execute(
-            f"""
-            SELECT timestamp, endpoint, user_email
-            FROM system_logs
-            WHERE endpoint IN ({placeholders}) AND user_email IS NOT NULL AND user_email != ''
-            ORDER BY timestamp ASC
-            """,
-            tuple(TRACKED_MODULE_ENDPOINTS.keys()),
+        rows = (
+            SystemLog.query.with_entities(SystemLog.timestamp, SystemLog.endpoint, SystemLog.user_email)
+            .filter(SystemLog.endpoint.in_(tuple(TRACKED_MODULE_ENDPOINTS.keys())))
+            .filter(SystemLog.user_email.isnot(None), SystemLog.user_email != "")
+            .order_by(SystemLog.timestamp.asc())
+            .all()
         )
-        rows = [dict(r) for r in c.fetchall()]
-        conn.close()
 
         per_user = {}
         for row in rows:
-            email = (row.get("user_email") or "").strip().lower()
-            endpoint = row.get("endpoint")
+            email = (row.user_email or "").strip().lower()
+            endpoint = row.endpoint
             module_label = TRACKED_MODULE_ENDPOINTS.get(endpoint, endpoint)
             module_totals[module_label] = module_totals.get(module_label, 0) + 1
-            event_time = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
+            event_time = row.timestamp
+            if event_time is None:
+                continue
 
             if email not in per_user:
                 per_user[email] = {
                     "email": email,
                     "total_requests": 0,
                     "estimated_minutes": 0.0,
-                    "last_seen": row["timestamp"],
+                    "last_seen": event_time.strftime("%Y-%m-%d %H:%M:%S"),
                     "module_counts": {},
                     "_last_event_dt": event_time,
                 }
 
             user_entry = per_user[email]
             user_entry["total_requests"] += 1
-            user_entry["last_seen"] = row["timestamp"]
+            user_entry["last_seen"] = event_time.strftime("%Y-%m-%d %H:%M:%S")
             user_entry["module_counts"][module_label] = user_entry["module_counts"].get(module_label, 0) + 1
 
             delta_seconds = (event_time - user_entry["_last_event_dt"]).total_seconds()
@@ -899,38 +792,52 @@ def admin_panel():
     usage_insights = _collect_admin_usage_insights()
     reset_audit = []
     try:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT email, reset_link, requested_at, expires_at
-            FROM password_reset_audit
-            ORDER BY id DESC
-            LIMIT 20
-            """
+        reset_audit_rows = (
+            PasswordResetAudit.query.with_entities(
+                PasswordResetAudit.email,
+                PasswordResetAudit.reset_link,
+                PasswordResetAudit.requested_at,
+                PasswordResetAudit.expires_at,
+            )
+            .order_by(PasswordResetAudit.id.desc())
+            .limit(20)
+            .all()
         )
-        reset_audit = [dict(row) for row in c.fetchall()]
-        conn.close()
+        reset_audit = [
+            {
+                "email": row.email,
+                "reset_link": row.reset_link,
+                "requested_at": row.requested_at.strftime("%Y-%m-%d %H:%M:%S") if row.requested_at else None,
+                "expires_at": row.expires_at.strftime("%Y-%m-%d %H:%M:%S") if row.expires_at else None,
+            }
+            for row in reset_audit_rows
+        ]
     except Exception as e:
         app.logger.warning("Unable to load password reset audit entries: %s", e)
     users = User.query.order_by(User.created_at.desc()).all()
     user_device_counts = {u.id: _get_active_device_count(u.id) for u in users}
     audit_logs = []
     try:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT email, action_type, status, timestamp
-            FROM admin_audit_logs
-            ORDER BY id DESC
-            LIMIT 100
-            """
+        audit_log_rows = (
+            AdminAuditLog.query.with_entities(
+                AdminAuditLog.email,
+                AdminAuditLog.action_type,
+                AdminAuditLog.status,
+                AdminAuditLog.timestamp,
+            )
+            .order_by(AdminAuditLog.id.desc())
+            .limit(100)
+            .all()
         )
-        audit_logs = [dict(row) for row in c.fetchall()]
-        conn.close()
+        audit_logs = [
+            {
+                "email": row.email,
+                "action_type": row.action_type,
+                "status": row.status,
+                "timestamp": row.timestamp.strftime("%Y-%m-%d %H:%M:%S") if row.timestamp else None,
+            }
+            for row in audit_log_rows
+        ]
     except Exception as e:
         app.logger.warning("Unable to load admin audit logs: %s", e)
     return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts)
@@ -988,22 +895,15 @@ def admin_trigger_user_reset(user_id):
     db.session.commit()
     reset_link = url_for("reset_password", token=raw_token, _external=True)
     try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute(
-            """
-            INSERT INTO password_reset_audit (email, reset_link, requested_at, expires_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                user.email.lower(),
-                reset_link,
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                user.reset_token_expiry.strftime("%Y-%m-%d %H:%M:%S"),
-            ),
+        db.session.add(
+            PasswordResetAudit(
+                email=user.email.lower(),
+                reset_link=reset_link,
+                requested_at=datetime.utcnow(),
+                expires_at=user.reset_token_expiry,
+            )
         )
-        conn.commit()
-        conn.close()
+        db.session.commit()
     except Exception as e:
         app.logger.warning("Unable to write admin-triggered reset audit: %s", e)
     _record_admin_audit(user.email, "password_reset_request", "success")
@@ -1015,11 +915,8 @@ def admin_trigger_user_reset(user_id):
 def admin_clear_reset_audit():
     if not current_user.is_admin:
         return jsonify({"message": "Admin access required"}), 403
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DELETE FROM password_reset_audit")
-    conn.commit()
-    conn.close()
+    PasswordResetAudit.query.delete()
+    db.session.commit()
     _record_admin_audit(current_user.email, "clear_reset_audit", "success")
     return redirect(url_for("admin_panel"))
 
@@ -1029,11 +926,8 @@ def admin_clear_reset_audit():
 def admin_clear_audit_logs():
     if not current_user.is_admin:
         return jsonify({"message": "Admin access required"}), 403
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DELETE FROM admin_audit_logs")
-    conn.commit()
-    conn.close()
+    AdminAuditLog.query.delete()
+    db.session.commit()
     _record_admin_audit(current_user.email, "clear_admin_audit_logs", "success")
     return redirect(url_for("admin_panel"))
 
@@ -1159,15 +1053,20 @@ def compliance_dashboard():
 def analytics_dashboard():
     logs = []
     try:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row # This enables column access by name
-        c = conn.cursor()
-        c.execute("SELECT * FROM system_logs ORDER BY id DESC")
-        rows = c.fetchall()
-        
-        # Convert sqlite3.Row objects to dicts for easy processing
-        logs = [dict(row) for row in rows]
-        conn.close()
+        rows = SystemLog.query.order_by(SystemLog.id.desc()).all()
+        logs = [
+            {
+                "id": row.id,
+                "timestamp": row.timestamp.strftime("%Y-%m-%d %H:%M:%S") if row.timestamp else None,
+                "endpoint": row.endpoint,
+                "method": row.method,
+                "ip": row.ip,
+                "status": row.status,
+                "error_msg": row.error_msg,
+                "user_email": row.user_email,
+            }
+            for row in rows
+        ]
     except Exception as e:
         print(f"DB Error in Analytics: {e}")
         logs = []
