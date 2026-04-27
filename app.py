@@ -1166,6 +1166,8 @@ def analytics_dashboard():
     unique_users = db.session.query(db.func.count(db.func.distinct(db.func.lower(User.email)))).scalar() or 0
     errors = [l for l in valid_logs if l['status'] >= 500]
     error_count = len(errors)
+    can_view_crash_details = bool(getattr(current_user, "is_admin", False))
+    visible_errors = errors if can_view_crash_details else []
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
     endpoints = {}
@@ -1213,7 +1215,8 @@ def analytics_dashboard():
     # Render template with all processed data
     return render_template("analytics.html", 
                            stats={"total": total_requests, "users": unique_users, "errors": error_count},
-                           logs=errors,
+                           logs=visible_errors,
+                           can_view_crash_details=can_view_crash_details,
                            chart={"labels": chart_labels, "data": chart_data},
                            monthly={"labels": monthly_labels, "data": monthly_data},
                            yearly=yearly_stats,
