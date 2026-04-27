@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel</title>
+</head>
+<body>
+    <h2>Admin Panel</h2>
+    <p>Create a new user account.</p>
+
+    <form id="create-user-form" method="POST" action="/create-user">
+        <div>
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" required />
+        </div>
+        <div>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" required minlength="8" />
+        </div>
+        <button type="submit">Create User</button>
+    </form>
+
+    <p id="message" role="status"></p>
+
+    <script>
+        const form = document.getElementById("create-user-form");
+        const message = document.getElementById("message");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            message.textContent = "";
+
+            const formData = new FormData(form);
+            const response = await fetch(form.action, {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+            message.textContent = data.message || "Request completed.";
+        });
+    </script>
+</body>
+</html>
