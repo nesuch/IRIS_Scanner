@@ -1254,7 +1254,7 @@ def build_chips_html(kw_tuples, original_query):
         if label in shown_labels: continue
         
         payload = f"{raw}|{clean}"
-        html += f"""<form method="POST" style="margin:0;" onsubmit="sessionStorage.setItem('iris_pending_response', '1')"><input type="hidden" name="query" value="__DEEP_SCAN__:{payload}">
+        html += f"""<form method="POST" style="margin:0;" onsubmit="return showDeepScanLoading(event, this)"><input type="hidden" name="query" value="__DEEP_SCAN__:{payload}">
                 <button type="submit" style="background:#e8eaf6; border:1px solid #3f51b5; color:#1a237e; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
                 {label}</button></form>"""
         shown_labels.add(label)
@@ -1265,14 +1265,14 @@ def build_chips_html(kw_tuples, original_query):
     
     has_special_compound = bool(re.search(r"[-/]", clean_original))
     if (len(clean_original.split()) > 1 or has_special_compound) and phrase_label not in shown_labels:
-        html += f"""<form method="POST" style="margin:0;" onsubmit="sessionStorage.setItem('iris_pending_response', '1')"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
+        html += f"""<form method="POST" style="margin:0;" onsubmit="return showDeepScanLoading(event, this)"><input type="hidden" name="query" value="__DEEP_SCAN__:{clean_original}|{clean_original}">
                 <button type="submit" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:6px 12px; border-radius:16px; font-weight:700; font-size:11px; cursor:pointer;">
                 {phrase_label}</button></form>"""
     
     # 3. Chip for 'Search All' (combined) - Only if we have multiple distinct keywords
     if len(kw_tuples) > 1:
         all_payload = "||".join([f"{t[0]}|{t[1]}" for t in kw_tuples])
-        html += f"""<form method="POST" style="margin:0;" onsubmit="sessionStorage.setItem('iris_pending_response', '1')"><input type="hidden" name="query" value="__DEEP_SCAN__:{all_payload}">
+        html += f"""<form method="POST" style="margin:0;" onsubmit="return showDeepScanLoading(event, this)"><input type="hidden" name="query" value="__DEEP_SCAN__:{all_payload}">
                 <button type="submit" style="background:#fff; border:1px solid #999; color:#666; padding:6px 12px; border-radius:16px; font-size:11px; cursor:pointer;">
                 Search All</button></form>"""
                 
