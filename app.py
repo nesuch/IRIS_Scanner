@@ -11,6 +11,8 @@ import hashlib
 import threading # Required for Background Sync
 from datetime import datetime, timedelta
 import secrets
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -45,6 +47,7 @@ login_manager.login_view = "login"
 login_manager.login_message = "Please sign in to continue."
 
 ALLOWED_EMAIL_DOMAIN = "@irdai.gov.in"
+PASSWORD_HASH_METHOD = "pbkdf2:sha256"
 
 
 class User(UserMixin, db.Model):
@@ -110,20 +113,6 @@ class AdminAuditLog(db.Model):
     status = db.Column(db.String(64), nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-# ==========================================
-# CRITICAL FIX: FORCE DATA LOAD ON STARTUP
-# ==========================================
-# This ensures that as soon as you run python app.py, 
-# the system loads the data from SQL/Files into memory.
-print("--- IRIS: Initializing Data Engine ---")
-try:
-    # 1. Load Knowledge Base (Text Search)
-    brain.load_knowledge_base()
-    # 2. Load Master Data Engine (Financial Data)
-    brain.load_master_data_engine()
-except Exception as e:
-    print(f"[!] Warning: Data Engine load failed on startup: {e}")
-
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
@@ -164,29 +153,78 @@ def _hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _generate_password_hash(password: str) -> str:
+    return generate_password_hash(password, method=PASSWORD_HASH_METHOD)
+
+
 def _seed_admin_user():
     admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
     admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
     if not _is_allowed_email(admin_email):
         admin_email = f"admin{ALLOWED_EMAIL_DOMAIN}"
 
-    existing = User.query.filter_by(email=admin_email).first()
-    if existing:
-        existing.is_admin = True
-        if not existing.password_hash:
-            existing.password_hash = generate_password_hash(admin_password)
-    else:
-        db.session.add(
-            User(
-                email=admin_email,
-                password_hash=generate_password_hash(admin_password),
-                is_admin=True,
-                is_active=True,
-                created_at=datetime.utcnow(),
+    try:
+        existing = User.query.filter_by(email=admin_email).first()
+        changed = False
+        if existing:
+            if not existing.is_admin:
+                existing.is_admin = True
+                changed = True
+            if not existing.password_hash:
+                existing.password_hash = _generate_password_hash(admin_password)
+                changed = True
+            if changed:
+                db.session.commit()
+        else:
+            db.session.add(
+                User(
+                    email=admin_email,
+                    password_hash=_generate_password_hash(admin_password),
+                    is_admin=True,
+                    is_active=True,
+                    created_at=datetime.utcnow(),
+                )
             )
-        )
-        print(f"[+] Default admin user created: {admin_email}")
-    db.session.commit()
+            db.session.commit()
+            print(f"[+] Default admin user created: {admin_email}")
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        app.logger.warning("Admin seeding skipped due to database error: %s", e)
+
+
+def _ensure_system_logs_schema():
+    try:
+        inspector = inspect(db.engine)
+        if "system_logs" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("system_logs")}
+        if "user_email" in columns:
+            return
+
+        if db.engine.dialect.name == "sqlite":
+            ddl = "ALTER TABLE system_logs ADD COLUMN user_email VARCHAR(255)"
+        else:
+            ddl = "ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS user_email VARCHAR(255)"
+
+        with db.engine.begin() as connection:
+            connection.execute(text(ddl))
+        app.logger.info("Added missing user_email column to system_logs table.")
+    except SQLAlchemyError as e:
+        app.logger.warning("System logs schema check failed: %s", e)
+
+
+def _initialize_runtime():
+    with app.app_context():
+        db.create_all()
+        _ensure_system_logs_schema()
+        _seed_admin_user()
+
+    print("--- IRIS: Initializing Data Engine ---")
+    try:
+        brain.load_knowledge_base()
+        brain.load_master_data_engine()
+    except Exception as e:
+        print(f"[!] Warning: Data Engine load failed on startup: {e}")
 
 
 def _start_user_session(user: User):
@@ -238,20 +276,23 @@ def _deactivate_session_by_id(user_id: int, session_id: int):
 
 
 def _list_user_sessions(user_id: int):
-    rows = (
-        UserSession.query.with_entities(
-            UserSession.id,
-            UserSession.ip,
-            UserSession.user_agent,
-            UserSession.active,
-            UserSession.created_at,
-            UserSession.last_seen_at,
+    try:
+        rows = (
+            UserSession.query.with_entities(
+                UserSession.id,
+                UserSession.ip,
+                UserSession.user_agent,
+                UserSession.active,
+                UserSession.created_at,
+                UserSession.last_seen_at,
+            )
+            .filter_by(user_id=user_id, active=True)
+            .order_by(UserSession.id.desc())
+            .limit(30)
+            .all()
         )
-        .filter_by(user_id=user_id, active=True)
-        .order_by(UserSession.id.desc())
-        .limit(30)
-        .all()
-    )
+    except SQLAlchemyError:
+        return []
     return [
         {
             "id": row.id,
@@ -273,8 +314,11 @@ def _deactivate_all_user_sessions(user_id: int):
 
 
 def _get_active_device_count(user_id: int) -> int:
-    count = UserSession.query.filter_by(user_id=user_id, active=True).count()
-    return int(count or 0)
+    try:
+        count = UserSession.query.filter_by(user_id=user_id, active=True).count()
+        return int(count or 0)
+    except SQLAlchemyError:
+        return 0
 
 
 def _record_admin_audit(email: str, action_type: str, status: str):
@@ -296,12 +340,13 @@ def _record_admin_audit(email: str, action_type: str, status: str):
 def load_user(user_id: str):
     if not user_id.isdigit():
         return None
-    return db.session.get(User, int(user_id))
+    try:
+        return db.session.get(User, int(user_id))
+    except SQLAlchemyError:
+        return None
 
 
-with app.app_context():
-    db.create_all()
-    _seed_admin_user()
+_initialize_runtime()
 
 
 @app.context_processor
@@ -448,7 +493,11 @@ def login():
         password = request.form.get("password") or ""
         app.logger.info("Login attempt for %s", email or "<blank>")
 
-        user = User.query.filter(db.func.lower(User.email) == email).first()
+        try:
+            user = User.query.filter(db.func.lower(User.email) == email).first()
+        except SQLAlchemyError as e:
+            app.logger.warning("Login query failed: %s", e)
+            user = None
         invalid = "Invalid credentials."
 
         if not _is_allowed_email(email):
@@ -541,7 +590,7 @@ def reset_password(token):
         if new_password != confirm_password:
             return render_template("reset_password.html", error="Passwords do not match.", success=None), 400
 
-        user.password_hash = generate_password_hash(new_password)
+        user.password_hash = _generate_password_hash(new_password)
         user.reset_token = None
         user.reset_token_expiry = None
         db.session.commit()
@@ -571,7 +620,7 @@ def create_user():
 
     new_user = User(
         email=email,
-        password_hash=generate_password_hash(password),
+        password_hash=_generate_password_hash(password),
         is_active=True,
         is_admin=is_admin,
     )
@@ -625,7 +674,7 @@ def profile():
             error = "New password and confirm password do not match."
         else:
             user = db.session.get(User, current_user.id)
-            user.password_hash = generate_password_hash(new_password)
+            user.password_hash = _generate_password_hash(new_password)
             user.session_version = (user.session_version or 0) + 1
             db.session.commit()
             _deactivate_all_user_sessions(user.id)
