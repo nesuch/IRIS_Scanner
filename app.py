@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
 from typing import List
 import re
 import pandas as pd
@@ -43,6 +43,7 @@ class User(UserMixin, db.Model):
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
     reset_token = db.Column(db.String(64), nullable=True)
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
+    session_version = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 # ==========================================
@@ -130,6 +131,8 @@ def _ensure_auth_users_table():
             "UPDATE auth_users SET created_at = ? WHERE created_at IS NULL",
             (datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),),
         )
+    if "session_version" not in columns:
+        c.execute("ALTER TABLE auth_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
     if "role" in columns:
         c.execute("UPDATE auth_users SET is_admin = 1 WHERE lower(role) = 'admin'")
     conn.commit()
@@ -223,6 +226,87 @@ def _ensure_admin_audit_logs_table():
     conn.close()
 
 
+def _ensure_user_sessions_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_token TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _start_user_session(user: User):
+    session_token = secrets.token_urlsafe(32)
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO user_sessions (user_id, session_token, ip, user_agent, active, created_at, last_seen_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
+        """,
+        (user.id, session_token, get_client_ip(), (request.headers.get("User-Agent") or "")[:300], now, now),
+    )
+    conn.commit()
+    conn.close()
+    session["auth_token"] = session_token
+    session["session_version"] = user.session_version
+
+
+def _is_session_active(user_id: int, session_token: str) -> bool:
+    if not session_token:
+        return False
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id FROM user_sessions WHERE user_id = ? AND session_token = ? AND active = 1 LIMIT 1",
+        (user_id, session_token),
+    )
+    row = c.fetchone()
+    conn.close()
+    return bool(row)
+
+
+def _deactivate_session_token(user_id: int, session_token: str):
+    if not session_token:
+        return
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE user_sessions SET active = 0 WHERE user_id = ? AND session_token = ?", (user_id, session_token))
+    conn.commit()
+    conn.close()
+
+
+def _deactivate_all_user_sessions(user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE user_sessions SET active = 0 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def _get_active_device_count(user_id: int) -> int:
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM user_sessions WHERE user_id = ? AND active = 1", (user_id,))
+    row = c.fetchone()
+    count = row[0] if row else 0
+    conn.close()
+    return int(count or 0)
+
+
 def _record_admin_audit(email: str, action_type: str, status: str):
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -257,8 +341,16 @@ with app.app_context():
     _ensure_system_logs_table()
     _ensure_password_reset_audit_table()
     _ensure_admin_audit_logs_table()
+    _ensure_user_sessions_table()
     db.create_all()
     _seed_admin_user()
+
+
+@app.context_processor
+def inject_device_count():
+    if current_user.is_authenticated:
+        return {"current_device_count": _get_active_device_count(current_user.id)}
+    return {"current_device_count": 0}
 
 
 @app.before_request
@@ -281,6 +373,14 @@ def iris_auth_gatekeeper():
         if request.path.startswith("/admin"):
             return jsonify({"message": "Admin access required"}), 403
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
+
+    expected_version = getattr(current_user, "session_version", 0)
+    current_version = session.get("session_version", 0)
+    session_token = session.get("auth_token")
+    if current_version != expected_version or not _is_session_active(current_user.id, session_token):
+        logout_user()
+        session.clear()
+        return redirect(url_for("login", next=request.path))
 
     return None
 
@@ -408,6 +508,7 @@ def login():
             _record_admin_audit(email, "login_attempt", "failure")
         elif user and user.is_active and check_password_hash(user.password_hash, password):
             login_user(user)
+            _start_user_session(user)
             app.logger.info("Login success for %s", email)
             _record_admin_audit(email, "login_attempt", "success")
             return redirect(_safe_next_url(next_url))
@@ -542,7 +643,23 @@ def create_user():
 
 @app.route("/logout", methods=["POST", "GET"])
 def logout():
+    if current_user.is_authenticated:
+        _deactivate_session_token(current_user.id, session.get("auth_token"))
     logout_user()
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/logout-all", methods=["POST"])
+@login_required
+def logout_all():
+    user = User.query.get(current_user.id)
+    user.session_version = (user.session_version or 0) + 1
+    db.session.commit()
+    _deactivate_all_user_sessions(user.id)
+    _record_admin_audit(user.email, "logout_all_devices", "success")
+    logout_user()
+    session.clear()
     return redirect(url_for("login"))
 
 # ==========================================
@@ -709,6 +826,7 @@ def admin_panel():
     except Exception as e:
         app.logger.warning("Unable to load password reset audit entries: %s", e)
     users = User.query.order_by(User.created_at.desc()).all()
+    user_device_counts = {u.id: _get_active_device_count(u.id) for u in users}
     audit_logs = []
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -726,7 +844,7 @@ def admin_panel():
         conn.close()
     except Exception as e:
         app.logger.warning("Unable to load admin audit logs: %s", e)
-    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts)
 
 
 @app.route("/admin/user/<int:user_id>/toggle-active", methods=["POST"])
@@ -738,6 +856,34 @@ def admin_toggle_user_active(user_id):
     user.is_active = not user.is_active
     db.session.commit()
     _record_admin_audit(user.email, "user_activate" if user.is_active else "user_deactivate", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/user/<int:user_id>/delete", methods=["POST"])
+@login_required
+def admin_delete_user(user_id):
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        return redirect(url_for("admin_panel"))
+    _deactivate_all_user_sessions(user.id)
+    _record_admin_audit(user.email, "user_delete", "success")
+    db.session.delete(user)
+    db.session.commit()
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/user/<int:user_id>/logout-all", methods=["POST"])
+@login_required
+def admin_logout_user_all_devices(user_id):
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    user = User.query.get_or_404(user_id)
+    user.session_version = (user.session_version or 0) + 1
+    db.session.commit()
+    _deactivate_all_user_sessions(user.id)
+    _record_admin_audit(user.email, "logout_all_devices", "success")
     return redirect(url_for("admin_panel"))
 
 
