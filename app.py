@@ -45,6 +45,7 @@ login_manager.login_view = "login"
 login_manager.login_message = "Please sign in to continue."
 
 ALLOWED_EMAIL_DOMAIN = "@irdai.gov.in"
+PASSWORD_HASH_METHOD = "pbkdf2:sha256"
 
 
 class User(UserMixin, db.Model):
@@ -164,6 +165,10 @@ def _hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _generate_password_hash(password: str) -> str:
+    return generate_password_hash(password, method=PASSWORD_HASH_METHOD)
+
+
 def _seed_admin_user():
     admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
     admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
@@ -174,12 +179,12 @@ def _seed_admin_user():
     if existing:
         existing.is_admin = True
         if not existing.password_hash:
-            existing.password_hash = generate_password_hash(admin_password)
+            existing.password_hash = _generate_password_hash(admin_password)
     else:
         db.session.add(
             User(
                 email=admin_email,
-                password_hash=generate_password_hash(admin_password),
+                password_hash=_generate_password_hash(admin_password),
                 is_admin=True,
                 is_active=True,
                 created_at=datetime.utcnow(),
@@ -541,7 +546,7 @@ def reset_password(token):
         if new_password != confirm_password:
             return render_template("reset_password.html", error="Passwords do not match.", success=None), 400
 
-        user.password_hash = generate_password_hash(new_password)
+        user.password_hash = _generate_password_hash(new_password)
         user.reset_token = None
         user.reset_token_expiry = None
         db.session.commit()
@@ -571,7 +576,7 @@ def create_user():
 
     new_user = User(
         email=email,
-        password_hash=generate_password_hash(password),
+        password_hash=_generate_password_hash(password),
         is_active=True,
         is_admin=is_admin,
     )
@@ -625,7 +630,7 @@ def profile():
             error = "New password and confirm password do not match."
         else:
             user = db.session.get(User, current_user.id)
-            user.password_hash = generate_password_hash(new_password)
+            user.password_hash = _generate_password_hash(new_password)
             user.session_version = (user.session_version or 0) + 1
             db.session.commit()
             _deactivate_all_user_sessions(user.id)
