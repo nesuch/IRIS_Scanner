@@ -305,7 +305,7 @@ def _list_user_sessions(user_id: int):
         """
         SELECT id, ip, user_agent, active, created_at, last_seen_at
         FROM user_sessions
-        WHERE user_id = ?
+        WHERE user_id = ? AND active = 1
         ORDER BY id DESC
         LIMIT 30
         """,
