@@ -708,6 +708,14 @@
         const VOCAB = JSON.parse('{{ vocab|tojson|safe }}');
         const ACTIVE_MODULE = "{{ active_module }}";
 
+        function showThinkingIndicator() {
+            const thinkingContainer = document.createElement('div');
+            thinkingContainer.className = 'standalone-thinking';
+            thinkingContainer.innerHTML = `<div class="typing-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+            chatWindow.appendChild(thinkingContainer);
+            scrollToBottom();
+        }
+
         function appendInteractionAndSubmit() {
             if (!input.value.trim()) return;
             const userBlock = document.createElement('div');
@@ -715,12 +723,7 @@
             userBlock.innerHTML = `<div class="label">You</div><div class="bubble user-bubble">${escapeHtml(input.value.trim())}</div>`;
             chatWindow.appendChild(userBlock);
 
-            const thinkingContainer = document.createElement('div');
-            thinkingContainer.className = 'standalone-thinking';
-            thinkingContainer.innerHTML = `<div class="typing-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
-            chatWindow.appendChild(thinkingContainer);
-
-            scrollToBottom();
+            showThinkingIndicator();
             sessionStorage.setItem('iris_pending_response', '1');
             form.submit();
         }
@@ -736,6 +739,17 @@
             e.preventDefault();
             appendInteractionAndSubmit();
         });
+
+        document.addEventListener('submit', function (e) {
+            const submittedForm = e.target;
+            if (!submittedForm || submittedForm === form) return;
+
+            const queryField = submittedForm.querySelector('input[name="query"]');
+            if (!queryField || !queryField.value.startsWith('__DEEP_SCAN__:')) return;
+
+            showThinkingIndicator();
+            sessionStorage.setItem('iris_pending_response', '1');
+        }, true);
 
         function escapeHtml(text) {
             const div = document.createElement('div');
