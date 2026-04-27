@@ -178,16 +178,26 @@
             border-collapse: collapse;
             margin-top: 14px;
             font-size: 13px;
+            table-layout: fixed;
         }
         .usage-table th, .usage-table td {
             border-bottom: 1px solid #eceff1;
             text-align: left;
             padding: 10px 8px;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         .usage-table th {
             color: #455a64;
             font-weight: 700;
             background: #fafbfc;
+        }
+        .usage-table-wrap {
+            overflow-x: auto;
+            margin-top: 8px;
+            border: 1px solid #eceff1;
+            border-radius: 8px;
+            background: #fff;
         }
 
 
@@ -280,6 +290,9 @@
             .btn-sync {
                 width: 100%;
                 justify-content: center;
+            }
+            .usage-table {
+                min-width: 620px;
             }
         }
 
@@ -397,34 +410,36 @@
                     Logged-in user behavior across Universal, Health, Life, Data Explorer, Compliance Cockpit, and Admin modules.
                 </p>
 
-                <table class="usage-table">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Requests</th>
-                            <th>Estimated Time (min)</th>
-                            <th>Top Module</th>
-                            <th>Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% if usage_insights.users %}
-                            {% for row in usage_insights.users %}
+                <div class="usage-table-wrap">
+                    <table class="usage-table">
+                        <thead>
                             <tr>
-                                <td>{{ row.email }}</td>
-                                <td>{{ row.total_requests }}</td>
-                                <td>{{ row.estimated_minutes }}</td>
-                                <td>{{ row.top_module }}</td>
-                                <td>{{ row.last_seen }}</td>
+                                <th style="width:30%;">User</th>
+                                <th style="width:12%;">Requests</th>
+                                <th style="width:18%;">Estimated Time (min)</th>
+                                <th style="width:20%;">Top Module</th>
+                                <th style="width:20%;">Last Seen</th>
                             </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="5" style="color:#90a4ae;">No module usage tracked yet.</td>
-                            </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {% if usage_insights.users %}
+                                {% for row in usage_insights.users %}
+                                <tr>
+                                    <td>{{ row.email }}</td>
+                                    <td>{{ row.total_requests }}</td>
+                                    <td>{{ row.estimated_minutes }}</td>
+                                    <td>{{ row.top_module }}</td>
+                                    <td>{{ row.last_seen }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" style="color:#90a4ae;">No module usage tracked yet.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
         </div>
