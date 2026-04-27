@@ -20,7 +20,9 @@ import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.abspath('iris.db')}"
+DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
+os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -59,9 +61,16 @@ except Exception as e:
 
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
-DB_NAME = "iris.db"
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
 PUBLIC_AUTH_PATHS = {"/login", "/logout", "/forgot-password"}
+TRACKED_MODULE_ENDPOINTS = {
+    "/": "Universal Search",
+    "/health": "Health Dept",
+    "/life": "Life Dept",
+    "/data": "Data Explorer",
+    "/compliance": "Compliance Cockpit",
+    "/admin": "Admin Panel",
+}
 
 
 def _route_exists(path: str) -> bool:
@@ -153,6 +162,89 @@ def _seed_admin_user():
     db.session.commit()
 
 
+def _ensure_system_logs_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            endpoint TEXT,
+            method TEXT,
+            ip TEXT,
+            status INTEGER,
+            error_msg TEXT,
+            user_email TEXT
+        )
+        """
+    )
+    c.execute("PRAGMA table_info(system_logs)")
+    columns = {row[1] for row in c.fetchall()}
+    if "user_email" not in columns:
+        c.execute("ALTER TABLE system_logs ADD COLUMN user_email TEXT")
+    conn.commit()
+    conn.close()
+
+
+def _ensure_password_reset_audit_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS password_reset_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            reset_link TEXT NOT NULL,
+            requested_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _ensure_admin_audit_logs_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT,
+            action_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _record_admin_audit(email: str, action_type: str, status: str):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO admin_audit_logs (email, action_type, status, timestamp)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                (email or "").strip().lower() or None,
+                action_type,
+                status,
+                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to record admin audit log: %s", e)
+
+
 @login_manager.user_loader
 def load_user(user_id: str):
     if not user_id.isdigit():
@@ -162,6 +254,9 @@ def load_user(user_id: str):
 
 with app.app_context():
     _ensure_auth_users_table()
+    _ensure_system_logs_table()
+    _ensure_password_reset_audit_table()
+    _ensure_admin_audit_logs_table()
     db.create_all()
     _seed_admin_user()
 
@@ -181,6 +276,8 @@ def iris_auth_gatekeeper():
         return redirect(url_for("login", next=request.path))
 
     if request.path in ADMIN_ONLY_PATHS and not current_user.is_admin:
+        if request.path == "/admin":
+            return redirect(url_for("index"))
         if request.path.startswith("/admin"):
             return jsonify({"message": "Admin access required"}), 403
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
@@ -223,21 +320,18 @@ def log_interaction(status_code, error_msg=None):
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        
-        # Ensure table exists
-        c.execute('''CREATE TABLE IF NOT EXISTS system_logs 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, endpoint TEXT, method TEXT, ip TEXT, status INTEGER, error_msg TEXT)''')
-        
+
         c.execute('''
-            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg, user_email)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             request.path,
             request.method,
             get_client_ip(),
             status_code,
-            error_msg
+            error_msg,
+            current_user.email if current_user.is_authenticated else None
         ))
         
         conn.commit()
@@ -306,17 +400,20 @@ def login():
         password = request.form.get("password") or ""
         app.logger.info("Login attempt for %s", email or "<blank>")
 
-        user = User.query.filter_by(email=email).first()
+        user = User.query.filter(db.func.lower(User.email) == email).first()
         invalid = "Invalid credentials."
 
         if not _is_allowed_email(email):
             error = invalid
+            _record_admin_audit(email, "login_attempt", "failure")
         elif user and user.is_active and check_password_hash(user.password_hash, password):
             login_user(user)
             app.logger.info("Login success for %s", email)
+            _record_admin_audit(email, "login_attempt", "success")
             return redirect(_safe_next_url(next_url))
         else:
             app.logger.warning("Login failed for %s", email or "<blank>")
+            _record_admin_audit(email, "login_attempt", "failure")
             error = invalid
 
     return render_template("login.html", error=error, next_url=next_url)
@@ -341,7 +438,7 @@ def forgot_password():
             success = generic_msg
             app.logger.warning("Password reset rejected for invalid domain: %s", email or "<blank>")
         else:
-            user = User.query.filter_by(email=email).first()
+            user = User.query.filter(db.func.lower(User.email) == email).first()
             if user and user.is_active:
                 raw_token = secrets.token_urlsafe(32)
                 user.reset_token = _hash_reset_token(raw_token)
@@ -349,9 +446,29 @@ def forgot_password():
                 db.session.commit()
                 reset_link = url_for("reset_password", token=raw_token, _external=True)
                 app.logger.info("Password reset link generated for %s: %s", email, reset_link)
-                print(f"Password reset link for {email}: {reset_link}")
+                try:
+                    conn = sqlite3.connect(DB_NAME)
+                    c = conn.cursor()
+                    c.execute(
+                        """
+                        INSERT INTO password_reset_audit (email, reset_link, requested_at, expires_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            email,
+                            reset_link,
+                            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                            user.reset_token_expiry.strftime("%Y-%m-%d %H:%M:%S"),
+                        ),
+                    )
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    app.logger.warning("Unable to audit password reset request: %s", e)
+                _record_admin_audit(email, "password_reset_request", "success")
             else:
                 app.logger.warning("Password reset request not fulfilled for %s", email)
+                _record_admin_audit(email, "password_reset_request", "failure")
             success = generic_msg
 
     return render_template("forgot_password.html", error=error, success=success)
@@ -387,6 +504,7 @@ def reset_password(token):
         user.reset_token_expiry = None
         db.session.commit()
         app.logger.info("Password reset completed for user id %s", user.id)
+        _record_admin_audit(user.email, "password_reset_complete", "success")
         return redirect(url_for("login"))
 
     return render_template("reset_password.html", error=None, success=None)
@@ -406,7 +524,7 @@ def create_user():
         return jsonify({"message": "Email must use @irdai.gov.in domain."}), 400
     if len(password) < 8:
         return jsonify({"message": "Password must be at least 8 characters."}), 400
-    if User.query.filter_by(email=email).first():
+    if User.query.filter(db.func.lower(User.email) == email).first():
         return jsonify({"message": "User already exists."}), 409
 
     new_user = User(
@@ -418,6 +536,7 @@ def create_user():
     db.session.add(new_user)
     db.session.commit()
     app.logger.info("Admin %s created user %s", current_user.email, email)
+    _record_admin_audit(email, "user_create", "success")
     return jsonify({"message": "User created successfully."}), 201
 
 
@@ -493,6 +612,75 @@ def run_background_sync():
         SYNC_STATE["status"] = "error"
         SYNC_STATE["message"] = f"Error: {str(e)}"
 
+
+def _collect_admin_usage_insights():
+    user_rows = []
+    module_totals = {name: 0 for name in TRACKED_MODULE_ENDPOINTS.values()}
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        placeholders = ",".join(["?"] * len(TRACKED_MODULE_ENDPOINTS))
+        c.execute(
+            f"""
+            SELECT timestamp, endpoint, user_email
+            FROM system_logs
+            WHERE endpoint IN ({placeholders}) AND user_email IS NOT NULL AND user_email != ''
+            ORDER BY timestamp ASC
+            """,
+            tuple(TRACKED_MODULE_ENDPOINTS.keys()),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+        conn.close()
+
+        per_user = {}
+        for row in rows:
+            email = (row.get("user_email") or "").strip().lower()
+            endpoint = row.get("endpoint")
+            module_label = TRACKED_MODULE_ENDPOINTS.get(endpoint, endpoint)
+            module_totals[module_label] = module_totals.get(module_label, 0) + 1
+            event_time = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
+
+            if email not in per_user:
+                per_user[email] = {
+                    "email": email,
+                    "total_requests": 0,
+                    "estimated_minutes": 0.0,
+                    "last_seen": row["timestamp"],
+                    "module_counts": {},
+                    "_last_event_dt": event_time,
+                }
+
+            user_entry = per_user[email]
+            user_entry["total_requests"] += 1
+            user_entry["last_seen"] = row["timestamp"]
+            user_entry["module_counts"][module_label] = user_entry["module_counts"].get(module_label, 0) + 1
+
+            delta_seconds = (event_time - user_entry["_last_event_dt"]).total_seconds()
+            if 0 < delta_seconds <= 600:
+                user_entry["estimated_minutes"] += delta_seconds / 60.0
+            user_entry["_last_event_dt"] = event_time
+
+        for data in per_user.values():
+            top_module = max(data["module_counts"], key=data["module_counts"].get) if data["module_counts"] else "-"
+            user_rows.append(
+                {
+                    "email": data["email"],
+                    "total_requests": data["total_requests"],
+                    "estimated_minutes": round(data["estimated_minutes"], 1),
+                    "top_module": top_module,
+                    "last_seen": data["last_seen"],
+                }
+            )
+
+        user_rows.sort(key=lambda row: row["total_requests"], reverse=True)
+        user_rows = user_rows[:15]
+    except Exception as e:
+        print(f"Admin insights error: {e}")
+
+    module_rows = [{"module": module, "count": count} for module, count in module_totals.items()]
+    return {"users": user_rows, "modules": module_rows}
+
 # ==========================================
 # ADMIN ROUTES (SYNC CONTROL)
 # ==========================================
@@ -502,7 +690,89 @@ def run_background_sync():
 def admin_panel():
     if not current_user.is_admin:
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
-    return render_template("admin_simple.html")
+    usage_insights = _collect_admin_usage_insights()
+    reset_audit = []
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT email, reset_link, requested_at, expires_at
+            FROM password_reset_audit
+            ORDER BY id DESC
+            LIMIT 20
+            """
+        )
+        reset_audit = [dict(row) for row in c.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to load password reset audit entries: %s", e)
+    users = User.query.order_by(User.created_at.desc()).all()
+    audit_logs = []
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT email, action_type, status, timestamp
+            FROM admin_audit_logs
+            ORDER BY id DESC
+            LIMIT 100
+            """
+        )
+        audit_logs = [dict(row) for row in c.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to load admin audit logs: %s", e)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs)
+
+
+@app.route("/admin/user/<int:user_id>/toggle-active", methods=["POST"])
+@login_required
+def admin_toggle_user_active(user_id):
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    user = User.query.get_or_404(user_id)
+    user.is_active = not user.is_active
+    db.session.commit()
+    _record_admin_audit(user.email, "user_activate" if user.is_active else "user_deactivate", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/user/<int:user_id>/trigger-reset", methods=["POST"])
+@login_required
+def admin_trigger_user_reset(user_id):
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    user = User.query.get_or_404(user_id)
+    raw_token = secrets.token_urlsafe(32)
+    user.reset_token = _hash_reset_token(raw_token)
+    user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
+    db.session.commit()
+    reset_link = url_for("reset_password", token=raw_token, _external=True)
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO password_reset_audit (email, reset_link, requested_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                user.email.lower(),
+                reset_link,
+                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                user.reset_token_expiry.strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to write admin-triggered reset audit: %s", e)
+    _record_admin_audit(user.email, "password_reset_request", "success")
+    return redirect(url_for("admin_panel"))
 
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
@@ -640,40 +910,20 @@ def analytics_dashboard():
         logs = []
 
     # --- 1. PRE-PROCESS LOGS ---
-    # Filter out favicon.ico
-    valid_logs = [l for l in logs if l.get('endpoint') != '/favicon.ico']
+    module_logs = [l for l in logs if l.get("endpoint") in TRACKED_MODULE_ENDPOINTS]
 
     # --- 2. CALCULATE BASIC STATS ---
-    total_requests = len(valid_logs)
-    unique_users = len(set(l['ip'] for l in valid_logs))
-    errors = [l for l in valid_logs if l['status'] >= 500]
+    total_requests = len(module_logs)
+    unique_users = db.session.query(db.func.count(db.func.distinct(db.func.lower(User.email)))).scalar() or 0
+    errors = [l for l in module_logs if l['status'] >= 500]
     error_count = len(errors)
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
     endpoints = {}
-    
-    # Define internal endpoints to hide from the pie chart
-    ignored_routes = ['/clear_logs', '/sync_data', '/download_data', '/admin/sync_status', '/admin/sync_start']
-    
-    for l in valid_logs:
+
+    for l in module_logs:
         ep = l['endpoint']
-        
-        # Skip hidden routes
-        if ep in ignored_routes: 
-            continue
-        
-        # Clean Labels (Remove slash & Format)
-        if ep == "/": label = "Home"
-        elif ep == "/data": label = "Data Explorer"
-        elif ep == "/compliance": label = "Compliance Cockpit"
-        elif ep == "/analytics": label = "Analytics"
-        elif ep == "/health": label = "Health Dept"
-        elif ep == "/life": label = "Life Dept"
-        elif ep == "/admin": label = "Admin Panel"
-        else:
-            # Fallback: remove slash and title case (e.g., "/some_page" -> "Some Page")
-            label = ep.lstrip("/").replace("_", " ").title()
-        
+        label = TRACKED_MODULE_ENDPOINTS.get(ep, ep.lstrip("/").replace("_", " ").title())
         endpoints[label] = endpoints.get(label, 0) + 1
         
     chart_labels = list(endpoints.keys())
@@ -688,8 +938,8 @@ def analytics_dashboard():
     yearly_stats = []
 
     try:
-        if valid_logs:
-            df = pd.DataFrame(valid_logs)
+        if module_logs:
+            df = pd.DataFrame(module_logs)
             df['dt'] = pd.to_datetime(df['timestamp'])
             
             # -- MONTHLY LOGIC --
