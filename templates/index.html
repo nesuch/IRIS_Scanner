@@ -281,26 +281,28 @@
 
         textarea {
             width: 100%;
-            padding: 10px;
+            padding: 6px 10px;
             border: none;
             font-size: 16px;
             font-family: inherit;
             resize: none;
-            height: 50px;
+            height: 40px;
             outline: none;
             background: transparent;
+            line-height: 1.4;
         }
 
         button[type="submit"] {
             background-color: #1a237e;
             color: white;
             border: none;
-            padding: 10px 24px;
+            padding: 8px 18px;
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
             margin-left: 10px;
             transition: 0.2s;
+            min-height: 40px;
         }
 
         button[type="submit"]:hover {
@@ -557,16 +559,16 @@
             }
 
             textarea {
-                min-height: 44px;
-                height: 44px;
-                padding: 8px;
+                min-height: 36px;
+                height: 36px;
+                padding: 5px 8px;
                 font-size: 15px;
             }
 
             button[type="submit"] {
                 margin-left: 0;
-                min-height: 44px;
-                padding: 10px 16px;
+                min-height: 36px;
+                padding: 7px 12px;
             }
 
             .scope-indicator {
@@ -706,11 +708,10 @@
         const VOCAB = JSON.parse('{{ vocab|tojson|safe }}');
         const ACTIVE_MODULE = "{{ active_module }}";
 
-        function appendInteractionAndSubmit() {
-            if (!input.value.trim()) return;
+        function showPendingResponse(queryLabel) {
             const userBlock = document.createElement('div');
             userBlock.className = 'chat-block user';
-            userBlock.innerHTML = `<div class="label">You</div><div class="bubble user-bubble">${escapeHtml(input.value.trim())}</div>`;
+            userBlock.innerHTML = `<div class="label">You</div><div class="bubble user-bubble">${escapeHtml(queryLabel)}</div>`;
             chatWindow.appendChild(userBlock);
 
             const thinkingContainer = document.createElement('div');
@@ -720,7 +721,20 @@
 
             scrollToBottom();
             sessionStorage.setItem('iris_pending_response', '1');
+        }
+
+        function appendInteractionAndSubmit() {
+            if (!input.value.trim()) return;
+            showPendingResponse(input.value.trim());
             form.submit();
+        }
+
+        function handleDeepScanSubmit(deepScanForm) {
+            const button = deepScanForm ? deepScanForm.querySelector('button[type="submit"]') : null;
+            const label = button ? button.textContent.trim() : "Deep Scan";
+            showPendingResponse(label);
+            deepScanForm.submit();
+            return false;
         }
 
         function handleKey(e) {
