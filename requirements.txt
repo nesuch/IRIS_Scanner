@@ -1,4 +1,6 @@
 flask
+flask-login
+flask-sqlalchemy
 pandas
 openpyxl
 nltk

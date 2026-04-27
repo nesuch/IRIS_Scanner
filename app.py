@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from typing import List
 import re
 import pandas as pd
@@ -8,45 +8,40 @@ import json
 import time
 import traceback
 import sqlite3
-import binascii
 import hashlib
-import hmac
 import threading # Required for Background Sync
-from datetime import datetime
+from datetime import datetime, timedelta
+import secrets
 from werkzeug.exceptions import HTTPException
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.abspath('iris.db')}"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Please sign in to continue."
+
+ALLOWED_EMAIL_DOMAIN = "@irdai.gov.in"
 
 
-def iris_hash_password(password: str) -> str:
-    """
-    Portable PBKDF2 password hash (no scrypt dependency).
-    Stored format: pbkdf2_sha256$iterations$salt_hex$hash_hex
-    """
-    iterations = 260_000
-    salt = os.urandom(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return (
-        f"pbkdf2_sha256${iterations}$"
-        f"{binascii.hexlify(salt).decode('utf-8')}$"
-        f"{binascii.hexlify(digest).decode('utf-8')}"
-    )
+class User(UserMixin, db.Model):
+    __tablename__ = "auth_users"
 
-
-def iris_verify_password(password: str, stored_hash: str) -> bool:
-    try:
-        algo, iter_s, salt_hex, hash_hex = stored_hash.split("$", 3)
-        if algo != "pbkdf2_sha256":
-            return False
-        iterations = int(iter_s)
-        salt = binascii.unhexlify(salt_hex.encode("utf-8"))
-        expected = binascii.unhexlify(hash_hex.encode("utf-8"))
-        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-        return hmac.compare_digest(actual, expected)
-    except Exception:
-        return False
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    reset_token = db.Column(db.String(64), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
@@ -66,7 +61,7 @@ CHAT_HISTORY = []
 JUST_REDIRECTED = False
 DB_NAME = "iris.db"
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
-PUBLIC_AUTH_PATHS = {"/login", "/logout", "/register", "/forgot-password"}
+PUBLIC_AUTH_PATHS = {"/login", "/logout", "/forgot-password"}
 
 
 def _route_exists(path: str) -> bool:
@@ -87,6 +82,14 @@ def _safe_next_url(next_url: str) -> str:
     return next_url
 
 
+def _is_allowed_email(email: str) -> bool:
+    return email.endswith(ALLOWED_EMAIL_DOMAIN)
+
+
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _ensure_auth_users_table():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -95,39 +98,72 @@ def _ensure_auth_users_table():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'viewer',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            reset_token TEXT,
+            reset_token_expiry TEXT,
             created_at TEXT NOT NULL
         )
     """)
+    c.execute("PRAGMA table_info(auth_users)")
+    columns = {row[1] for row in c.fetchall()}
+    if "is_active" not in columns:
+        c.execute("ALTER TABLE auth_users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "is_admin" not in columns:
+        c.execute("ALTER TABLE auth_users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    if "reset_token" not in columns:
+        c.execute("ALTER TABLE auth_users ADD COLUMN reset_token TEXT")
+    if "reset_token_expiry" not in columns:
+        c.execute("ALTER TABLE auth_users ADD COLUMN reset_token_expiry TEXT")
+    if "created_at" not in columns:
+        c.execute("ALTER TABLE auth_users ADD COLUMN created_at TEXT")
+        c.execute(
+            "UPDATE auth_users SET created_at = ? WHERE created_at IS NULL",
+            (datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),),
+        )
+    if "role" in columns:
+        c.execute("UPDATE auth_users SET is_admin = 1 WHERE lower(role) = 'admin'")
     conn.commit()
     conn.close()
 
 
 def _seed_admin_user():
     _ensure_auth_users_table()
-    admin_email = (os.getenv("ADMIN_EMAIL") or "admin@iris.local").strip().lower()
+    admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
     admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
+    if not _is_allowed_email(admin_email):
+        admin_email = f"admin{ALLOWED_EMAIL_DOMAIN}"
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT id FROM auth_users WHERE email = ?", (admin_email,))
-    existing = c.fetchone()
-    if not existing:
-        c.execute(
-            "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            (
-                admin_email,
-                iris_hash_password(admin_password),
-                "admin",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    existing = User.query.filter_by(email=admin_email).first()
+    if existing:
+        existing.is_admin = True
+        if not existing.password_hash:
+            existing.password_hash = generate_password_hash(admin_password)
+    else:
+        db.session.add(
+            User(
+                email=admin_email,
+                password_hash=generate_password_hash(admin_password),
+                is_admin=True,
+                is_active=True,
+                created_at=datetime.utcnow(),
             )
         )
-        conn.commit()
         print(f"[+] Default admin user created: {admin_email}")
-    conn.close()
+    db.session.commit()
 
 
-_seed_admin_user()
+@login_manager.user_loader
+def load_user(user_id: str):
+    if not user_id.isdigit():
+        return None
+    return User.query.get(int(user_id))
+
+
+with app.app_context():
+    _ensure_auth_users_table()
+    db.create_all()
+    _seed_admin_user()
 
 
 @app.before_request
@@ -135,17 +171,16 @@ def iris_auth_gatekeeper():
     if request.path.startswith("/static") or request.path == "/favicon.ico":
         return None
 
-    if request.path in PUBLIC_AUTH_PATHS:
+    if request.path in PUBLIC_AUTH_PATHS or request.path.startswith("/reset-password/"):
         return None
 
     if not _route_exists(request.path):
         return None
 
-    user = session.get("auth_user")
-    if not user:
+    if not current_user.is_authenticated:
         return redirect(url_for("login", next=request.path))
 
-    if request.path in ADMIN_ONLY_PATHS and user.get("role") != "admin":
+    if request.path in ADMIN_ONLY_PATHS and not current_user.is_admin:
         if request.path.startswith("/admin"):
             return jsonify({"message": "Admin access required"}), 403
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
@@ -269,60 +304,27 @@ def login():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
+        app.logger.info("Login attempt for %s", email or "<blank>")
 
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT id, email, password_hash, role FROM auth_users WHERE email = ?", (email,))
-        row = c.fetchone()
-        conn.close()
+        user = User.query.filter_by(email=email).first()
+        invalid = "Invalid credentials."
 
-        if row and iris_verify_password(password, row[2]):
-            session["auth_user"] = {"id": row[0], "email": row[1], "role": row[3]}
+        if not _is_allowed_email(email):
+            error = invalid
+        elif user and user.is_active and check_password_hash(user.password_hash, password):
+            login_user(user)
+            app.logger.info("Login success for %s", email)
             return redirect(_safe_next_url(next_url))
-
-        error = "Invalid email or password."
+        else:
+            app.logger.warning("Login failed for %s", email or "<blank>")
+            error = invalid
 
     return render_template("login.html", error=error, next_url=next_url)
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    error = None
-    success = None
-
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
-        confirm = request.form.get("confirm_password") or ""
-
-        if not email or "@" not in email:
-            error = "Please enter a valid email."
-        elif len(password) < 8:
-            error = "Password must be at least 8 characters."
-        elif password != confirm:
-            error = "Password and confirm password do not match."
-        else:
-            try:
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                c.execute(
-                    "INSERT INTO auth_users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-                    (
-                        email,
-                        iris_hash_password(password),
-                        "viewer",
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                )
-                conn.commit()
-                conn.close()
-                success = "Account created successfully. You can now sign in."
-            except sqlite3.IntegrityError:
-                error = "This email is already registered."
-            except Exception as e:
-                error = f"Registration failed: {str(e)}"
-
-    return render_template("register.html", error=error, success=success)
+    return "<h3>Signup disabled</h3><p>Please contact an administrator.</p>", 403
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
@@ -332,37 +334,96 @@ def forgot_password():
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
-        new_password = request.form.get("new_password") or ""
-        confirm = request.form.get("confirm_password") or ""
+        app.logger.info("Password reset request for %s", email or "<blank>")
+        generic_msg = "If the account is eligible, a password reset link has been generated."
 
-        if not email or "@" not in email:
-            error = "Please enter a valid email."
-        elif len(new_password) < 8:
-            error = "New password must be at least 8 characters."
-        elif new_password != confirm:
-            error = "New password and confirm password do not match."
+        if not email or not _is_allowed_email(email):
+            success = generic_msg
+            app.logger.warning("Password reset rejected for invalid domain: %s", email or "<blank>")
         else:
-            conn = sqlite3.connect(DB_NAME)
-            c = conn.cursor()
-            c.execute("SELECT id FROM auth_users WHERE email = ?", (email,))
-            row = c.fetchone()
-            if not row:
-                error = "No account found with this email."
+            user = User.query.filter_by(email=email).first()
+            if user and user.is_active:
+                raw_token = secrets.token_urlsafe(32)
+                user.reset_token = _hash_reset_token(raw_token)
+                user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
+                db.session.commit()
+                reset_link = url_for("reset_password", token=raw_token, _external=True)
+                app.logger.info("Password reset link generated for %s: %s", email, reset_link)
+                print(f"Password reset link for {email}: {reset_link}")
             else:
-                c.execute(
-                    "UPDATE auth_users SET password_hash = ? WHERE email = ?",
-                    (iris_hash_password(new_password), email)
-                )
-                conn.commit()
-                success = "Password reset successful. Please login with your new password."
-            conn.close()
+                app.logger.warning("Password reset request not fulfilled for %s", email)
+            success = generic_msg
 
     return render_template("forgot_password.html", error=error, success=success)
 
 
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    token_hash = _hash_reset_token(token)
+    now_utc = datetime.utcnow()
+    user = User.query.filter_by(reset_token=token_hash).first()
+    valid_token = (
+        user
+        and user.is_active
+        and user.reset_token_expiry
+        and user.reset_token_expiry >= now_utc
+    )
+
+    if not valid_token:
+        app.logger.warning("Invalid or expired reset token used.")
+        return render_template("reset_password.html", error="Invalid or expired reset link.", success=None), 400
+
+    if request.method == "POST":
+        new_password = request.form.get("new_password") or ""
+        confirm_password = request.form.get("confirm_password") or ""
+
+        if len(new_password) < 8:
+            return render_template("reset_password.html", error="Password must be at least 8 characters.", success=None), 400
+        if new_password != confirm_password:
+            return render_template("reset_password.html", error="Passwords do not match.", success=None), 400
+
+        user.password_hash = generate_password_hash(new_password)
+        user.reset_token = None
+        user.reset_token_expiry = None
+        db.session.commit()
+        app.logger.info("Password reset completed for user id %s", user.id)
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html", error=None, success=None)
+
+
+@app.route("/create-user", methods=["POST"])
+@login_required
+def create_user():
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    is_admin = (request.form.get("is_admin") or "").lower() in {"1", "true", "yes", "on"}
+
+    if not _is_allowed_email(email):
+        return jsonify({"message": "Email must use @irdai.gov.in domain."}), 400
+    if len(password) < 8:
+        return jsonify({"message": "Password must be at least 8 characters."}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({"message": "User already exists."}), 409
+
+    new_user = User(
+        email=email,
+        password_hash=generate_password_hash(password),
+        is_active=True,
+        is_admin=is_admin,
+    )
+    db.session.add(new_user)
+    db.session.commit()
+    app.logger.info("Admin %s created user %s", current_user.email, email)
+    return jsonify({"message": "User created successfully."}), 201
+
+
 @app.route("/logout", methods=["POST", "GET"])
 def logout():
-    session.pop("auth_user", None)
+    logout_user()
     return redirect(url_for("login"))
 
 # ==========================================
@@ -437,11 +498,13 @@ def run_background_sync():
 # ==========================================
 
 @app.route("/admin", methods=["GET"])
+@login_required
 def admin_panel():
     """Renders the Admin UI, passing initial sync state."""
     return render_template("admin.html", sync_state=SYNC_STATE)
 
 @app.route("/admin/sync_start", methods=["POST"])
+@login_required
 def sync_start():
     """Kicks off the background sync thread."""
     global SYNC_STATE
@@ -460,6 +523,7 @@ def sync_start():
     return jsonify({"status": "started"})
 
 @app.route("/admin/sync_status", methods=["GET"])
+@login_required
 def sync_status():
     """Frontend polls this to update progress bars."""
     return jsonify(SYNC_STATE)
@@ -470,19 +534,23 @@ def sync_status():
 # ==========================================
 
 @app.route("/", methods=["GET", "POST"])
+@login_required
 def index():
     return handle_search("universal")
 
 @app.route("/health", methods=["GET", "POST"])
+@login_required
 def health_module():
     return handle_search("health")
 
 @app.route("/life", methods=["GET", "POST"])
+@login_required
 def life_module():
     return handle_search("life")
 
 # --- DATA MODULE (UPDATED) ---
 @app.route("/data", methods=["GET", "POST"])
+@login_required
 def data_module():
     filter_options = brain.get_filter_options()
     
@@ -508,6 +576,7 @@ def data_module():
     return render_template("data_dashboard.html", options=filter_options, active_module="data")
 
 @app.route("/download_data", methods=["POST"])
+@login_required
 def download_data():
     """Generates and downloads the Excel report based on active filters."""
     filters = {
@@ -533,6 +602,7 @@ def download_data():
 
 # --- COMPLIANCE ROUTE (UPDATED FOR YEAR FILTER) ---
 @app.route("/compliance", methods=["GET"])
+@login_required
 def compliance_dashboard():
     # 1. Get available years for the dropdown
     available_years = brain.get_compliance_years()
@@ -551,6 +621,7 @@ def compliance_dashboard():
 
 # --- ANALYTICS ROUTE (SQL INTEGRATED) ---
 @app.route("/analytics")
+@login_required
 def analytics_dashboard():
     logs = []
     try:
