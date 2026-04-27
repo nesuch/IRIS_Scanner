@@ -15,6 +15,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from sqlalchemy import inspect, text
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -170,6 +171,24 @@ def _safe_generate_password_hash(password: str) -> str:
     """
     return generate_password_hash(password, method="pbkdf2:sha256")
 
+def _ensure_schema_compatibility():
+    """
+    Backfill columns that may be missing in existing deployments with older DB schema.
+    """
+    try:
+        inspector = inspect(db.engine)
+        if "system_logs" not in inspector.get_table_names():
+            return
+
+        existing_cols = {c["name"] for c in inspector.get_columns("system_logs")}
+        if "user_email" not in existing_cols:
+            db.session.execute(text("ALTER TABLE system_logs ADD COLUMN user_email VARCHAR(255)"))
+            db.session.commit()
+            app.logger.info("Schema patch applied: added system_logs.user_email")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.warning("Schema compatibility patch skipped/failed: %s", e)
+
 
 def _seed_admin_user():
     admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
@@ -308,6 +327,7 @@ def load_user(user_id: str):
 
 with app.app_context():
     db.create_all()
+    _ensure_schema_compatibility()
     _seed_admin_user()
 
 
