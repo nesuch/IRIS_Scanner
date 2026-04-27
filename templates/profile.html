@@ -11,8 +11,17 @@
         .profile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
         .profile-grid input{width:100%;padding:10px;border:1px solid #cfd8dc;border-radius:8px;box-sizing:border-box}
         .profile-btn{padding:10px 14px;border:none;border-radius:8px;background:#1a237e;color:#fff;font-weight:600;cursor:pointer}
-        .profile-table{width:100%;border-collapse:collapse;font-size:13px}
-        .profile-table th,.profile-table td{padding:10px;border-bottom:1px solid #eceff1;text-align:left}
+        .profile-table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+        .profile-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+        .profile-table th,.profile-table td{padding:10px;border-bottom:1px solid #eceff1;text-align:left;word-break:break-word}
+        .profile-table th:nth-child(1),.profile-table td:nth-child(1){width:18%}
+        .profile-table th:nth-child(2),.profile-table td:nth-child(2){width:44%}
+        .profile-table th:nth-child(3),.profile-table td:nth-child(3){width:24%}
+        .profile-table th:nth-child(4),.profile-table td:nth-child(4){width:14%}
+        @media (max-width: 768px){
+            .profile-card{margin:14px 12px;padding:14px}
+            .profile-table{min-width:620px}
+        }
         .err{background:#ffebee;color:#b71c1c;padding:8px;border-radius:8px;margin-bottom:10px}
         .ok{background:#e8f5e9;color:#2e7d32;padding:8px;border-radius:8px;margin-bottom:10px}
     </style>
@@ -63,27 +72,29 @@
 
         <div class="profile-card">
             <h3 style="margin-top:0;color:#1a237e;">Active Devices</h3>
-            <table class="profile-table">
-                <thead><tr><th>IP</th><th>User Agent</th><th>Login Time</th><th>Action</th></tr></thead>
-                <tbody>
-                    {% if sessions %}
-                        {% for s in sessions %}
-                        <tr>
-                            <td>{{ s.ip or "-" }}</td>
-                            <td>{{ s.user_agent or "-" }}</td>
-                            <td>{{ s.created_at }}</td>
-                            <td>
-                                <form method="POST" action="/profile/session/{{ s.id }}/logout" style="margin:0;">
-                                    <button class="profile-btn" style="background:#455a64;padding:6px 10px;font-size:12px;" type="submit">Logout</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr><td colspan="4" style="color:#90a4ae;">No active devices found.</td></tr>
-                    {% endif %}
-                </tbody>
-            </table>
+            <div class="profile-table-wrap">
+                <table class="profile-table">
+                    <thead><tr><th>IP</th><th>User Agent</th><th>Login Time</th><th>Action</th></tr></thead>
+                    <tbody>
+                        {% if sessions %}
+                            {% for s in sessions %}
+                            <tr>
+                                <td>{{ s.ip or "-" }}</td>
+                                <td>{{ s.user_agent or "-" }}</td>
+                                <td>{{ s.created_at }}</td>
+                                <td>
+                                    <form method="POST" action="/profile/session/{{ s.id }}/logout" style="margin:0;">
+                                        <button class="profile-btn" style="background:#455a64;padding:6px 10px;font-size:12px;" type="submit">Logout</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="4" style="color:#90a4ae;">No active devices found.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </body>
