@@ -7,25 +7,43 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <style>
         *{box-sizing:border-box} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:linear-gradient(135deg,#0b1f5f,#1f2d80 45%,#334dc6);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-        .shell{width:min(980px,100%);display:grid;grid-template-columns:1.05fr 1fr;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.28)}
-        .brand{padding:44px;color:#fff;background:radial-gradient(circle at top,#4d68e5,#1f2d80 65%)}
+        .shell{width:min(980px,100%);display:grid;grid-template-columns:1.05fr 1fr;background:transparent;border-radius:22px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.28)}
+        .brand{padding:46px 52px;color:#fff;background:radial-gradient(circle at top,#4d68e5,#1f2d80 65%);display:flex;flex-direction:column;gap:10px;justify-content:center;border-radius:22px 0 0 22px}
+        .brand-header{display:flex;align-items:center;gap:16px}
         .brand img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:16px;padding:10px}
-        .brand h1{margin:16px 0 6px;font-size:34px;letter-spacing:.5px}.brand p{margin:0;opacity:.92;line-height:1.5}
-        .panel{padding:42px;background:#fbfcff}.panel h2{margin:0 0 6px;color:#1f2d80}.sub{margin:0 0 20px;color:#5e6b85}
+        .brand h1{margin:0;font-size:48px;line-height:1;letter-spacing:.8px}
+        .fullform{margin:0;font-size:18px;line-height:1.35;font-weight:600;max-width:410px;opacity:.96}
+        .brand .caption{margin-top:6px;font-size:13px;font-weight:700;letter-spacing:.4px;opacity:.88;text-transform:uppercase}
+        .brand .description{margin-top:14px;opacity:.82;line-height:1.45;max-width:410px;font-size:16px}
+        .panel{padding:42px;background:#fbfcff;border-radius:0 22px 22px 0}.panel h2{margin:0 0 6px;color:#1f2d80}.sub{margin:0 0 20px;color:#5e6b85}
         .input{width:100%;padding:13px 14px;border:1px solid #d8deee;border-radius:12px;font-size:15px;margin-bottom:12px}
         .btn{width:100%;padding:13px;border:none;border-radius:12px;background:#1f2d80;color:#fff;font-weight:700;cursor:pointer}
         .err{background:#fdecea;color:#b71c1c;padding:10px 12px;border-radius:10px;margin-bottom:12px}
         .links{display:flex;justify-content:space-between;margin-top:14px;font-size:14px}.links a{color:#1f2d80;text-decoration:none;font-weight:600}
-        @media(max-width:860px){.shell{grid-template-columns:1fr}.brand{display:none}}
+        @media(max-width:860px){
+            .shell{grid-template-columns:1fr}
+            .brand{padding:22px 22px 16px;align-items:center;text-align:center;border-radius:22px 22px 0 0}
+            .brand-header{gap:10px}
+            .brand img{width:70px;height:70px;border-radius:14px}
+            .brand h1{font-size:34px}
+            .fullform{font-size:11px;max-width:none;white-space:nowrap}
+            .brand .caption{font-size:10px;white-space:nowrap}
+            .brand .description{display:none}
+            .panel{padding:26px 22px 28px}
+            .panel{border-radius:0 0 22px 22px}
+        }
     </style>
 </head>
 <body>
 <form class="shell" method="POST" action="/login">
     <section class="brand">
-        <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo" />
-        <h1>IRIS</h1>
-        <p>Regulatory Intelligence System</p>
-        <p style="margin-top:14px;opacity:.85;">Secure sign-in gateway for search, analytics and compliance workflows.</p>
+        <div class="brand-header">
+            <img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo" />
+            <h1>IRIS</h1>
+        </div>
+        <p class="fullform">IRDAI&#39;s Regulatory intelligence system</p>
+        <p class="caption">Exact Regulation, Zero Hallucination</p>
+        <p class="description">Secure sign-in gateway for search, analytics and compliance workflows.</p>
     </section>
     <section class="panel">
         <h2>Welcome back</h2>

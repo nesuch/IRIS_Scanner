@@ -418,7 +418,8 @@ def aggregate_regulatory_documents():
     # Rebuilds regulatory_clauses from all Excel files under knowledge_base/.
     # Enables Admin sync to refresh regulatory docs without manual migrate_raw.py runs.
     all_files = glob.glob(os.path.join(KB_FOLDER, "**", "*.xlsx"), recursive=True)
-    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.xlxs"), recursive=True)
+    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.xls"), recursive=True)
+    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.csv"), recursive=True)
 
     doc_files = []
     for file_path in all_files:
@@ -442,18 +443,36 @@ def aggregate_regulatory_documents():
     for file_path in doc_files:
         filename = os.path.basename(file_path)
         try:
-            df = pd.read_excel(file_path).fillna("")
+            normalized_frames = []
+            if file_path.lower().endswith(".csv"):
+                normalized_frames.append(pd.read_csv(file_path).fillna(""))
+            else:
+                sheet_map = pd.read_excel(file_path, sheet_name=None)
+                normalized_frames.extend([sheet_df.fillna("") for sheet_df in sheet_map.values()])
+
+            if not normalized_frames:
+                continue
+
+            df = pd.concat(normalized_frames, ignore_index=True)
             if df.empty:
                 continue
 
-            source_doc = re.sub(r"\.(xlsx|xlxs)$", "", filename, flags=re.IGNORECASE).replace("_", " ").upper()
+            source_doc = re.sub(r"\.(xlsx|xls|csv|xlxs)$", "", filename, flags=re.IGNORECASE).replace("_", " ").upper()
             category = _get_doc_category_from_path(file_path, source_doc)
             doc_type = get_doc_type(source_doc)
             priority = DOC_HIERARCHY.get(doc_type, 99)
 
+            cols_norm = {str(col).strip().lower(): col for col in df.columns}
+            clause_text_col = cols_norm.get("clause_text") or cols_norm.get("clause text") or cols_norm.get("text") or cols_norm.get("clause")
+            clause_id_col = cols_norm.get("clause_id") or cols_norm.get("clause id") or cols_norm.get("id")
+            context_col = cols_norm.get("context_header") or cols_norm.get("context header")
+            tags_col = cols_norm.get("regulatory_tags") or cols_norm.get("regulatory tags")
+            if not clause_text_col:
+                continue
+
             insert_rows = []
             for _, row in df.iterrows():
-                clause_text = str(row.get("Clause_Text", "")).strip()
+                clause_text = str(row.get(clause_text_col, "")).strip()
                 if not clause_text:
                     continue
 
@@ -465,10 +484,10 @@ def aggregate_regulatory_documents():
                     source_doc.title(),
                     category,
                     doc_type,
-                    str(row.get("Clause_ID", "")).strip(),
+                    str(row.get(clause_id_col, "")).strip() if clause_id_col else "",
                     clause_text,
-                    str(row.get("Context_Header", "General")),
-                    str(row.get("Regulatory_Tags", "")),
+                    str(row.get(context_col, "General")) if context_col else "General",
+                    str(row.get(tags_col, "")) if tags_col else "",
                     priority,
                     is_header
                 ))
