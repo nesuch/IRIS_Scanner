@@ -409,6 +409,50 @@
                 </form>
 
                 <div id="createUserMessage" class="admin-message" role="status" aria-live="polite"></div>
+
+                <div class="usage-table-wrap" style="margin-top:20px;">
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th style="width:32%;">Email</th>
+                                <th style="width:12%;">Active</th>
+                                <th style="width:12%;">Admin</th>
+                                <th style="width:18%;">Created At</th>
+                                <th style="width:26%;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if users %}
+                                {% for user in users %}
+                                <tr>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ "Yes" if user.is_active else "No" }}</td>
+                                    <td>{{ "Yes" if user.is_admin else "No" }}</td>
+                                    <td>{{ user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else "-" }}</td>
+                                    <td>
+                                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <form method="POST" action="/admin/user/{{ user.id }}/toggle-active" style="margin:0;">
+                                                <button type="submit" class="btn-sync" style="padding:6px 10px; font-size:12px;">
+                                                    {{ "Deactivate" if user.is_active else "Activate" }}
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="/admin/user/{{ user.id }}/trigger-reset" style="margin:0;">
+                                                <button type="submit" class="btn-sync" style="padding:6px 10px; font-size:12px; background:#455a64;">
+                                                    Trigger Reset
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" style="color:#90a4ae;">No users available.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div class="admin-card">
@@ -482,6 +526,43 @@
                             {% else %}
                                 <tr>
                                     <td colspan="4" style="color:#90a4ae;">No password reset requests found.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <h3 style="margin:0; color:#1a237e; display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-clipboard-list"></i> Audit Logs
+                </h3>
+                <p style="color:#546e7a; font-size:14px; line-height:1.6; margin:10px 0 0;">
+                    Login attempts, password reset events, and user creation events.
+                </p>
+                <div class="usage-table-wrap">
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th style="width:30%;">Email</th>
+                                <th style="width:30%;">Action</th>
+                                <th style="width:15%;">Status</th>
+                                <th style="width:25%;">Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if audit_logs %}
+                                {% for row in audit_logs %}
+                                <tr>
+                                    <td>{{ row.email or "-" }}</td>
+                                    <td>{{ row.action_type }}</td>
+                                    <td>{{ row.status }}</td>
+                                    <td>{{ row.timestamp }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" style="color:#90a4ae;">No audit logs found.</td>
                                 </tr>
                             {% endif %}
                         </tbody>

@@ -205,6 +205,46 @@ def _ensure_password_reset_audit_table():
     conn.close()
 
 
+def _ensure_admin_audit_logs_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT,
+            action_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _record_admin_audit(email: str, action_type: str, status: str):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO admin_audit_logs (email, action_type, status, timestamp)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                (email or "").strip().lower() or None,
+                action_type,
+                status,
+                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to record admin audit log: %s", e)
+
+
 @login_manager.user_loader
 def load_user(user_id: str):
     if not user_id.isdigit():
@@ -216,6 +256,7 @@ with app.app_context():
     _ensure_auth_users_table()
     _ensure_system_logs_table()
     _ensure_password_reset_audit_table()
+    _ensure_admin_audit_logs_table()
     db.create_all()
     _seed_admin_user()
 
@@ -364,12 +405,15 @@ def login():
 
         if not _is_allowed_email(email):
             error = invalid
+            _record_admin_audit(email, "login_attempt", "failure")
         elif user and user.is_active and check_password_hash(user.password_hash, password):
             login_user(user)
             app.logger.info("Login success for %s", email)
+            _record_admin_audit(email, "login_attempt", "success")
             return redirect(_safe_next_url(next_url))
         else:
             app.logger.warning("Login failed for %s", email or "<blank>")
+            _record_admin_audit(email, "login_attempt", "failure")
             error = invalid
 
     return render_template("login.html", error=error, next_url=next_url)
@@ -421,8 +465,10 @@ def forgot_password():
                     conn.close()
                 except Exception as e:
                     app.logger.warning("Unable to audit password reset request: %s", e)
+                _record_admin_audit(email, "password_reset_request", "success")
             else:
                 app.logger.warning("Password reset request not fulfilled for %s", email)
+                _record_admin_audit(email, "password_reset_request", "failure")
             success = generic_msg
 
     return render_template("forgot_password.html", error=error, success=success)
@@ -458,6 +504,7 @@ def reset_password(token):
         user.reset_token_expiry = None
         db.session.commit()
         app.logger.info("Password reset completed for user id %s", user.id)
+        _record_admin_audit(user.email, "password_reset_complete", "success")
         return redirect(url_for("login"))
 
     return render_template("reset_password.html", error=None, success=None)
@@ -489,6 +536,7 @@ def create_user():
     db.session.add(new_user)
     db.session.commit()
     app.logger.info("Admin %s created user %s", current_user.email, email)
+    _record_admin_audit(email, "user_create", "success")
     return jsonify({"message": "User created successfully."}), 201
 
 
@@ -660,7 +708,71 @@ def admin_panel():
         conn.close()
     except Exception as e:
         app.logger.warning("Unable to load password reset audit entries: %s", e)
-    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit)
+    users = User.query.order_by(User.created_at.desc()).all()
+    audit_logs = []
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT email, action_type, status, timestamp
+            FROM admin_audit_logs
+            ORDER BY id DESC
+            LIMIT 100
+            """
+        )
+        audit_logs = [dict(row) for row in c.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to load admin audit logs: %s", e)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs)
+
+
+@app.route("/admin/user/<int:user_id>/toggle-active", methods=["POST"])
+@login_required
+def admin_toggle_user_active(user_id):
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    user = User.query.get_or_404(user_id)
+    user.is_active = not user.is_active
+    db.session.commit()
+    _record_admin_audit(user.email, "user_activate" if user.is_active else "user_deactivate", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/user/<int:user_id>/trigger-reset", methods=["POST"])
+@login_required
+def admin_trigger_user_reset(user_id):
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    user = User.query.get_or_404(user_id)
+    raw_token = secrets.token_urlsafe(32)
+    user.reset_token = _hash_reset_token(raw_token)
+    user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
+    db.session.commit()
+    reset_link = url_for("reset_password", token=raw_token, _external=True)
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO password_reset_audit (email, reset_link, requested_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                user.email.lower(),
+                reset_link,
+                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                user.reset_token_expiry.strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to write admin-triggered reset audit: %s", e)
+    _record_admin_audit(user.email, "password_reset_request", "success")
+    return redirect(url_for("admin_panel"))
 
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
@@ -802,13 +914,7 @@ def analytics_dashboard():
 
     # --- 2. CALCULATE BASIC STATS ---
     total_requests = len(module_logs)
-    unique_users = len(
-        {
-            (l.get("user_email") or "").strip().lower() or l.get("ip")
-            for l in module_logs
-            if (l.get("user_email") or "").strip().lower() or l.get("ip")
-        }
-    )
+    unique_users = db.session.query(db.func.count(db.func.distinct(db.func.lower(User.email)))).scalar() or 0
     errors = [l for l in module_logs if l['status'] >= 500]
     error_count = len(errors)
     
