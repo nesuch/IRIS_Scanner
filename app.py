@@ -22,11 +22,20 @@ app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
-AUTH_DATABASE_URL = os.getenv("IRIS_AUTH_DATABASE_URL") or os.getenv("DATABASE_URL")
+IRIS_AUTH_DATABASE_URL = (os.getenv("IRIS_AUTH_DATABASE_URL") or "").strip()
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
+AUTH_DATABASE_URL = IRIS_AUTH_DATABASE_URL or DATABASE_URL
+running_in_cloud = any(os.getenv(flag) for flag in ("K_SERVICE", "GAE_ENV", "GOOGLE_CLOUD_PROJECT"))
+
 if AUTH_DATABASE_URL:
     if AUTH_DATABASE_URL.startswith("postgres://"):
         AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = AUTH_DATABASE_URL
+elif running_in_cloud:
+    raise RuntimeError(
+        "Persistent auth database is required in cloud deployments. "
+        "Set IRIS_AUTH_DATABASE_URL (preferred) or DATABASE_URL."
+    )
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -690,7 +699,7 @@ def logout():
 @app.route("/logout-all", methods=["POST"])
 @login_required
 def logout_all():
-    user = User.query.get(current_user.id)
+    user = db.session.get(User, current_user.id)
     user.session_version = (user.session_version or 0) + 1
     db.session.commit()
     _deactivate_all_user_sessions(user.id)
@@ -716,7 +725,7 @@ def profile():
         elif new_password != confirm_password:
             error = "New password and confirm password do not match."
         else:
-            user = User.query.get(current_user.id)
+            user = db.session.get(User, current_user.id)
             user.password_hash = generate_password_hash(new_password)
             user.session_version = (user.session_version or 0) + 1
             db.session.commit()
