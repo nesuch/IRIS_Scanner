@@ -502,7 +502,7 @@ def run_background_sync():
 def admin_panel():
     if not current_user.is_admin:
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
-    return render_template("admin_simple.html")
+    return render_template("admin.html", sync_state=SYNC_STATE)
 
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
