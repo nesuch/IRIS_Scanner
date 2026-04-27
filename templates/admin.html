@@ -117,6 +117,98 @@
         .btn-sync:hover { background: #1a237e; transform: translateY(-1px); }
         .btn-sync:disabled { background: #b0bec5; cursor: not-allowed; transform: none; }
 
+        .admin-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 12px;
+        }
+
+        .admin-form-field label {
+            display: block;
+            font-size: 13px;
+            color: #455a64;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .admin-form-field input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #cfd8dc;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 14px;
+            color: #263238;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .admin-form-field input:focus {
+            border-color: #2b58a6;
+            box-shadow: 0 0 0 3px rgba(43, 88, 166, 0.12);
+        }
+
+        .admin-message {
+            margin-top: 14px;
+            font-size: 13px;
+            font-weight: 600;
+            display: none;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+        }
+
+        .admin-message.success {
+            display: block;
+            color: #2e7d32;
+            background: #e8f5e9;
+            border-color: #c8e6c9;
+        }
+
+        .admin-message.error {
+            display: block;
+            color: #b71c1c;
+            background: #ffebee;
+            border-color: #ffcdd2;
+        }
+
+        .usage-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+            font-size: 13px;
+            table-layout: fixed;
+        }
+        .reset-link {
+            color: #1a237e;
+            text-decoration: none;
+            word-break: break-all;
+            font-size: 12px;
+        }
+        .reset-link:hover {
+            text-decoration: underline;
+        }
+        .usage-table th, .usage-table td {
+            border-bottom: 1px solid #eceff1;
+            text-align: left;
+            padding: 10px 8px;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+        .usage-table th {
+            color: #455a64;
+            font-weight: 700;
+            background: #fafbfc;
+        }
+        .usage-table-wrap {
+            overflow-x: auto;
+            margin-top: 8px;
+            border: 1px solid #eceff1;
+            border-radius: 8px;
+            background: #fff;
+        }
+
 
         .admin-scroll-area {
             flex: 1;
@@ -208,6 +300,9 @@
                 width: 100%;
                 justify-content: center;
             }
+            .usage-table {
+                min-width: 620px;
+            }
         }
 
     </style>
@@ -232,8 +327,11 @@
         
         <div class="menu-label">System</div>
         <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+        {% if current_user.is_admin %}
         <a href="/admin" class="nav-item active"><i class="fas fa-cog"></i> Admin Panel</a>
-        <a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        {% endif %}
+        <a href="/profile" class="nav-item"><i class="fas fa-user-circle"></i> Profile</a>
+        <a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})</a>
     </div>
 
     <div class="main-content">
@@ -280,6 +378,211 @@
                     {% if sync_state.status != 'idle' %}
                         <span class="console-line"><span class="console-timestamp">STATUS</span> {{ sync_state.message }}</span>
                     {% endif %}
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h3 style="margin:0; color:#1a237e; display:flex; align-items:center; gap:10px;">
+                        <i class="fas fa-users-cog"></i> User Management
+                    </h3>
+                </div>
+                <p style="color:#546e7a; font-size:14px; line-height:1.6; margin-bottom:6px;">
+                    Create user accounts from the unified admin panel.
+                </p>
+                <div style="margin-bottom:10px; color:#1a237e; font-size:13px; font-weight:600;">Your active devices: {{ current_device_count }}</div>
+
+                <form id="createUserForm" method="POST" action="/create-user">
+                    <div class="admin-form-grid">
+                        <div class="admin-form-field">
+                            <label for="adminUserEmail">Email</label>
+                            <input id="adminUserEmail" name="email" type="email" required>
+                        </div>
+                        <div class="admin-form-field">
+                            <label for="adminUserPassword">Password</label>
+                            <input id="adminUserPassword" name="password" type="password" required minlength="8">
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;">
+                        <button type="submit" class="btn-sync">
+                            <i class="fas fa-user-plus"></i> Create User
+                        </button>
+                    </div>
+                </form>
+
+                <div id="createUserMessage" class="admin-message" role="status" aria-live="polite"></div>
+
+                <div class="usage-table-wrap" style="margin-top:20px;">
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th style="width:32%;">Email</th>
+                                <th style="width:12%;">Active</th>
+                                <th style="width:12%;">Admin</th>
+                                <th style="width:10%;">Devices</th>
+                                <th style="width:15%;">Created At</th>
+                                <th style="width:31%;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if users %}
+                                {% for user in users %}
+                                <tr>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ "Yes" if user.is_active else "No" }}</td>
+                                    <td>{{ "Yes" if user.is_admin else "No" }}</td>
+                                    <td>{{ user_device_counts.get(user.id, 0) }}</td>
+                                    <td>{{ user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else "-" }}</td>
+                                    <td>
+                                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <form method="POST" action="/admin/user/{{ user.id }}/toggle-active" style="margin:0;">
+                                                <button type="submit" class="btn-sync" style="padding:6px 10px; font-size:12px;">
+                                                    {{ "Deactivate" if user.is_active else "Activate" }}
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="/admin/user/{{ user.id }}/trigger-reset" style="margin:0;">
+                                                <button type="submit" class="btn-sync" style="padding:6px 10px; font-size:12px; background:#455a64;">
+                                                    Trigger Reset
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="/admin/user/{{ user.id }}/logout-all" style="margin:0;">
+                                                <button type="submit" class="btn-sync" style="padding:6px 10px; font-size:12px; background:#6a1b9a;">
+                                                    Logout All
+                                                </button>
+                                            </form>
+                                            {% if user.id != current_user.id %}
+                                            <form method="POST" action="/admin/user/{{ user.id }}/delete" style="margin:0;">
+                                                <button type="submit" class="btn-sync" style="padding:6px 10px; font-size:12px; background:#b71c1c;">
+                                                    Delete
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" style="color:#90a4ae;">No users available.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <h3 style="margin:0; color:#1a237e; display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-user-clock"></i> Usage Insights
+                </h3>
+                <p style="color:#546e7a; font-size:14px; line-height:1.6; margin:10px 0 0;">
+                    Logged-in user behavior across Universal, Health, Life, Data Explorer, Compliance Cockpit, and Admin modules.
+                </p>
+
+                <div class="usage-table-wrap">
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th style="width:30%;">User</th>
+                                <th style="width:12%;">Requests</th>
+                                <th style="width:18%;">Estimated Time (min)</th>
+                                <th style="width:20%;">Top Module</th>
+                                <th style="width:20%;">Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if usage_insights.users %}
+                                {% for row in usage_insights.users %}
+                                <tr>
+                                    <td>{{ row.email }}</td>
+                                    <td>{{ row.total_requests }}</td>
+                                    <td>{{ row.estimated_minutes }}</td>
+                                    <td>{{ row.top_module }}</td>
+                                    <td>{{ row.last_seen }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" style="color:#90a4ae;">No module usage tracked yet.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <h3 style="margin:0; color:#1a237e; display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-key"></i> Password Reset Activity
+                </h3>
+                <p style="color:#546e7a; font-size:14px; line-height:1.6; margin:10px 0 0;">
+                    Recent password reset requests generated by users.
+                </p>
+
+                <div class="usage-table-wrap">
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th style="width:22%;">Email</th>
+                                <th style="width:18%;">Requested At</th>
+                                <th style="width:18%;">Expires At</th>
+                                <th style="width:42%;">Reset Link</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if reset_audit %}
+                                {% for row in reset_audit %}
+                                <tr>
+                                    <td>{{ row.email }}</td>
+                                    <td>{{ row.requested_at }}</td>
+                                    <td>{{ row.expires_at }}</td>
+                                    <td><a class="reset-link" href="{{ row.reset_link }}" target="_blank" rel="noopener">{{ row.reset_link }}</a></td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" style="color:#90a4ae;">No password reset requests found.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <h3 style="margin:0; color:#1a237e; display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-clipboard-list"></i> Audit Logs
+                </h3>
+                <p style="color:#546e7a; font-size:14px; line-height:1.6; margin:10px 0 0;">
+                    Login attempts, password reset events, and user creation events.
+                </p>
+                <div class="usage-table-wrap">
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th style="width:30%;">Email</th>
+                                <th style="width:30%;">Action</th>
+                                <th style="width:15%;">Status</th>
+                                <th style="width:25%;">Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if audit_logs %}
+                                {% for row in audit_logs %}
+                                <tr>
+                                    <td>{{ row.email or "-" }}</td>
+                                    <td>{{ row.action_type }}</td>
+                                    <td>{{ row.status }}</td>
+                                    <td>{{ row.timestamp }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" style="color:#90a4ae;">No audit logs found.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -417,6 +720,36 @@
             
             consoleBox.appendChild(line);
             consoleBox.scrollTop = consoleBox.scrollHeight; // Auto-scroll to bottom
+        }
+
+        const createUserForm = document.getElementById('createUserForm');
+        const createUserMessage = document.getElementById('createUserMessage');
+
+        if (createUserForm) {
+            createUserForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                createUserMessage.className = 'admin-message';
+                createUserMessage.textContent = '';
+
+                try {
+                    const response = await fetch(createUserForm.action, {
+                        method: 'POST',
+                        body: new FormData(createUserForm)
+                    });
+
+                    if (response.ok) {
+                        createUserMessage.className = 'admin-message success';
+                        createUserMessage.textContent = 'User created successfully';
+                        createUserForm.reset();
+                    } else {
+                        createUserMessage.className = 'admin-message error';
+                        createUserMessage.textContent = 'Unable to create user. Please try again.';
+                    }
+                } catch (error) {
+                    createUserMessage.className = 'admin-message error';
+                    createUserMessage.textContent = 'Unable to create user. Please try again.';
+                }
+            });
         }
     </script>
     <script src="{{ url_for('static', filename='mobile_nav.js') }}"></script>

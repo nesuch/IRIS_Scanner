@@ -418,7 +418,8 @@ def aggregate_regulatory_documents():
     # Rebuilds regulatory_clauses from all Excel files under knowledge_base/.
     # Enables Admin sync to refresh regulatory docs without manual migrate_raw.py runs.
     all_files = glob.glob(os.path.join(KB_FOLDER, "**", "*.xlsx"), recursive=True)
-    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.xlxs"), recursive=True)
+    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.xls"), recursive=True)
+    all_files += glob.glob(os.path.join(KB_FOLDER, "**", "*.csv"), recursive=True)
 
     doc_files = []
     for file_path in all_files:
@@ -442,7 +443,10 @@ def aggregate_regulatory_documents():
     for file_path in doc_files:
         filename = os.path.basename(file_path)
         try:
-            df = pd.read_excel(file_path).fillna("")
+            if file_path.lower().endswith(".csv"):
+                df = pd.read_csv(file_path).fillna("")
+            else:
+                df = pd.read_excel(file_path).fillna("")
             if df.empty:
                 continue
 
