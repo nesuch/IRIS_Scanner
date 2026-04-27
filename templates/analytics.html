@@ -351,10 +351,13 @@
         <div class="error-log">
             <div class="log-header">
                 <span><i class="fas fa-bug"></i> Recent Failures</span>
+                {% if can_view_crash_details %}
                 <form action="clear_logs" method="POST" style="margin:0;">
                     <button type="submit" class="clear-btn">Clear Crashes</button>
                 </form>
+                {% endif %}
             </div>
+            {% if can_view_crash_details %}
             <div class="table-scroll-container">
                 <table class="log-table">
                     <thead>
@@ -375,6 +378,11 @@
                     </tbody>
                 </table>
             </div>
+            {% else %}
+            <div style="padding:16px 20px; color:#8d6e63; background:#fffaf8;">
+                Crash details are restricted to admin users.
+            </div>
+            {% endif %}
         </div>
         {% else %}
         <div style="text-align:center; padding:30px; color:#aaa;">

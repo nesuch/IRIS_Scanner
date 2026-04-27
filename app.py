@@ -22,7 +22,22 @@ app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
 DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
+IRIS_AUTH_DATABASE_URL = (os.getenv("IRIS_AUTH_DATABASE_URL") or "").strip()
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
+AUTH_DATABASE_URL = IRIS_AUTH_DATABASE_URL or DATABASE_URL
+running_in_cloud = any(os.getenv(flag) for flag in ("K_SERVICE", "GAE_ENV", "GOOGLE_CLOUD_PROJECT"))
+
+if AUTH_DATABASE_URL:
+    if AUTH_DATABASE_URL.startswith("postgres://"):
+        AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = AUTH_DATABASE_URL
+elif running_in_cloud:
+    raise RuntimeError(
+        "Persistent auth database is required in cloud deployments. "
+        "Set IRIS_AUTH_DATABASE_URL (preferred) or DATABASE_URL."
+    )
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -360,7 +375,7 @@ def _record_admin_audit(email: str, action_type: str, status: str):
 def load_user(user_id: str):
     if not user_id.isdigit():
         return None
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 with app.app_context():
@@ -684,7 +699,7 @@ def logout():
 @app.route("/logout-all", methods=["POST"])
 @login_required
 def logout_all():
-    user = User.query.get(current_user.id)
+    user = db.session.get(User, current_user.id)
     user.session_version = (user.session_version or 0) + 1
     db.session.commit()
     _deactivate_all_user_sessions(user.id)
@@ -710,7 +725,7 @@ def profile():
         elif new_password != confirm_password:
             error = "New password and confirm password do not match."
         else:
-            user = User.query.get(current_user.id)
+            user = db.session.get(User, current_user.id)
             user.password_hash = generate_password_hash(new_password)
             user.session_version = (user.session_version or 0) + 1
             db.session.commit()
@@ -1166,6 +1181,8 @@ def analytics_dashboard():
     unique_users = db.session.query(db.func.count(db.func.distinct(db.func.lower(User.email)))).scalar() or 0
     errors = [l for l in valid_logs if l['status'] >= 500]
     error_count = len(errors)
+    can_view_crash_details = bool(getattr(current_user, "is_admin", False))
+    visible_errors = errors if can_view_crash_details else []
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
     endpoints = {}
@@ -1213,7 +1230,8 @@ def analytics_dashboard():
     # Render template with all processed data
     return render_template("analytics.html", 
                            stats={"total": total_requests, "users": unique_users, "errors": error_count},
-                           logs=errors,
+                           logs=visible_errors,
+                           can_view_crash_details=can_view_crash_details,
                            chart={"labels": chart_labels, "data": chart_data},
                            monthly={"labels": monthly_labels, "data": monthly_data},
                            yearly=yearly_stats,
