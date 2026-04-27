@@ -171,6 +171,12 @@ def _safe_generate_password_hash(password: str) -> str:
     """
     return generate_password_hash(password, method="pbkdf2:sha256")
 
+def _safe_check_password_hash(stored_hash: str, raw_password: str) -> bool:
+    try:
+        return bool(stored_hash) and check_password_hash(stored_hash, raw_password)
+    except Exception:
+        return False
+
 def _ensure_schema_compatibility():
     """
     Backfill columns that may be missing in existing deployments with older DB schema.
@@ -199,7 +205,9 @@ def _seed_admin_user():
     existing = User.query.filter_by(email=admin_email).first()
     if existing:
         existing.is_admin = True
-        if not existing.password_hash:
+        # Keep default/dev admin login usable even if legacy hashes exist
+        # or hashing algorithms changed across releases.
+        if (not existing.password_hash) or (not _safe_check_password_hash(existing.password_hash, admin_password)):
             existing.password_hash = _safe_generate_password_hash(admin_password)
     else:
         db.session.add(
