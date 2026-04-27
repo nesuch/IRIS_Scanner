@@ -289,6 +289,33 @@ def _deactivate_session_token(user_id: int, session_token: str):
     conn.close()
 
 
+def _deactivate_session_by_id(user_id: int, session_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE user_sessions SET active = 0 WHERE id = ? AND user_id = ?", (session_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def _list_user_sessions(user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, ip, user_agent, active, created_at, last_seen_at
+        FROM user_sessions
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 30
+        """,
+        (user_id,),
+    )
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
 def _deactivate_all_user_sessions(user_id: int):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -643,6 +670,10 @@ def create_user():
 
 @app.route("/logout", methods=["POST", "GET"])
 def logout():
+    if request.method == "GET":
+        if not current_user.is_authenticated:
+            return redirect(url_for("login"))
+        return render_template("logout_confirm.html")
     if current_user.is_authenticated:
         _deactivate_session_token(current_user.id, session.get("auth_token"))
     logout_user()
@@ -661,6 +692,49 @@ def logout_all():
     logout_user()
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    error = None
+    success = None
+    if request.method == "POST":
+        current_password = request.form.get("current_password") or ""
+        new_password = request.form.get("new_password") or ""
+        confirm_password = request.form.get("confirm_password") or ""
+        if not check_password_hash(current_user.password_hash, current_password):
+            error = "Current password is incorrect."
+        elif len(new_password) < 8:
+            error = "New password must be at least 8 characters."
+        elif new_password != confirm_password:
+            error = "New password and confirm password do not match."
+        else:
+            user = User.query.get(current_user.id)
+            user.password_hash = generate_password_hash(new_password)
+            user.session_version = (user.session_version or 0) + 1
+            db.session.commit()
+            _deactivate_all_user_sessions(user.id)
+            _record_admin_audit(user.email, "password_change", "success")
+            success = "Password changed. Please login again."
+            logout_user()
+            session.clear()
+            return redirect(url_for("login"))
+    sessions = _list_user_sessions(current_user.id)
+    return render_template("profile.html", sessions=sessions, error=error, success=success)
+
+
+@app.route("/profile/session/<int:session_id>/logout", methods=["POST"])
+@login_required
+def profile_logout_session(session_id):
+    _deactivate_session_by_id(current_user.id, session_id)
+    if session_id and session.get("auth_token"):
+        # if current session row is disabled by user, enforce immediate logout
+        if not _is_session_active(current_user.id, session.get("auth_token")):
+            logout_user()
+            session.clear()
+            return redirect(url_for("login"))
+    return redirect(url_for("profile"))
 
 # ==========================================
 # CONFIGURATION
