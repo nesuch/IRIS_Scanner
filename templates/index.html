@@ -609,11 +609,13 @@
         <a href="/analytics" class="nav-item {{ 'active' if active_module == 'analytics' else '' }}">
             <i class="fas fa-server"></i> System Analytics
         </a>
+        {% if current_user.is_admin %}
         <a href="/admin" class="nav-item {{ 'active' if active_module == 'admin' else '' }}">
             <i class="fas fa-cog"></i> Admin Panel
         </a>
+        {% endif %}
         <a href="/logout" class="nav-item">
-            <i class="fas fa-sign-out-alt"></i> Logout
+            <i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})
         </a>
     </div>
 
@@ -808,6 +810,14 @@
 
         function selectItem(value) {
             const val = input.value;
+            const trimmed = val.trim();
+            if (trimmed && value.toLowerCase().startsWith(trimmed.toLowerCase())) {
+                input.value = value + " ";
+                box.style.display = 'none';
+                input.focus();
+                input.dispatchEvent(new Event('input'));
+                return;
+            }
             const lastSpaceIndex = val.lastIndexOf(' ');
             if (lastSpaceIndex === -1) { input.value = value + " "; }
             else { input.value = val.substring(0, lastSpaceIndex + 1) + value + " "; }
