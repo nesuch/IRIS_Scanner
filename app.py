@@ -994,6 +994,34 @@ def admin_trigger_user_reset(user_id):
     _record_admin_audit(user.email, "password_reset_request", "success")
     return redirect(url_for("admin_panel"))
 
+
+@app.route("/admin/clear-reset-audit", methods=["POST"])
+@login_required
+def admin_clear_reset_audit():
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM password_reset_audit")
+    conn.commit()
+    conn.close()
+    _record_admin_audit(current_user.email, "clear_reset_audit", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/clear-audit-logs", methods=["POST"])
+@login_required
+def admin_clear_audit_logs():
+    if not current_user.is_admin:
+        return jsonify({"message": "Admin access required"}), 403
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM admin_audit_logs")
+    conn.commit()
+    conn.close()
+    _record_admin_audit(current_user.email, "clear_admin_audit_logs", "success")
+    return redirect(url_for("admin_panel"))
+
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
 def sync_start():
@@ -1131,11 +1159,12 @@ def analytics_dashboard():
 
     # --- 1. PRE-PROCESS LOGS ---
     module_logs = [l for l in logs if l.get("endpoint") in TRACKED_MODULE_ENDPOINTS]
+    valid_logs = [l for l in logs if l.get("endpoint") != "/favicon.ico"]
 
     # --- 2. CALCULATE BASIC STATS ---
     total_requests = len(module_logs)
     unique_users = db.session.query(db.func.count(db.func.distinct(db.func.lower(User.email)))).scalar() or 0
-    errors = [l for l in module_logs if l['status'] >= 500]
+    errors = [l for l in valid_logs if l['status'] >= 500]
     error_count = len(errors)
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---

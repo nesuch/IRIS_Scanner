@@ -5,25 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Logout Options</title>
     <style>
-        body{font-family:Inter,Arial,sans-serif;background:#f2f5fb;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
-        .card{background:#fff;border-radius:12px;padding:24px;max-width:420px;width:92%;box-shadow:0 10px 25px rgba(0,0,0,.08)}
+        body{font-family:Inter,Arial,sans-serif;margin:0;min-height:100vh;background:linear-gradient(135deg,#0b1f5f,#1f2d80 45%,#334dc6)}
+        .overlay{position:fixed;inset:0;background:rgba(8,17,61,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
+        .card{background:rgba(255,255,255,.96);border-radius:14px;padding:24px;max-width:430px;width:92%;box-shadow:0 16px 40px rgba(0,0,0,.24);border:1px solid rgba(255,255,255,.5)}
         h3{margin:0 0 12px;color:#1a237e}
         p{margin:0 0 16px;color:#455a64}
         .row{display:flex;gap:10px;flex-wrap:wrap}
         button,a{border:none;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer;text-decoration:none}
         .current{background:#1a237e;color:#fff}
-        .all{background:#6a1b9a;color:#fff}
+        .all{background:#0d47a1;color:#fff}
         .cancel{background:#eceff1;color:#263238}
     </style>
 </head>
 <body>
-    <div class="card">
-        <h3>Logout</h3>
-        <p>Choose how you want to logout.</p>
-        <div class="row">
-            <form method="POST" action="/logout" style="margin:0;"><button class="current" type="submit">Logout current device</button></form>
-            <form method="POST" action="/logout-all" style="margin:0;"><button class="all" type="submit">Logout all devices</button></form>
-            <a class="cancel" href="/">Cancel</a>
+    <div class="overlay">
+        <div class="card">
+            <h3>Logout</h3>
+            <p>Choose how you want to logout.</p>
+            <div class="row">
+                <form method="POST" action="/logout" style="margin:0;"><button class="current" type="submit">Logout current device</button></form>
+                <form method="POST" action="/logout-all" style="margin:0;"><button class="all" type="submit">Logout all devices</button></form>
+                <a class="cancel" href="/">Cancel</a>
+            </div>
         </div>
     </div>
 </body>
