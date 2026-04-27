@@ -500,8 +500,9 @@ def run_background_sync():
 @app.route("/admin", methods=["GET"])
 @login_required
 def admin_panel():
-    """Renders the Admin UI, passing initial sync state."""
-    return render_template("admin.html", sync_state=SYNC_STATE)
+    if not current_user.is_admin:
+        return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
+    return render_template("admin_simple.html")
 
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
