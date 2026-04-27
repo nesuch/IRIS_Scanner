@@ -20,7 +20,9 @@ import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.abspath('iris.db')}"
+DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
+os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -59,7 +61,6 @@ except Exception as e:
 
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
-DB_NAME = "iris.db"
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
 PUBLIC_AUTH_PATHS = {"/login", "/logout", "/forgot-password"}
 TRACKED_MODULE_ENDPOINTS = {
@@ -186,6 +187,24 @@ def _ensure_system_logs_table():
     conn.close()
 
 
+def _ensure_password_reset_audit_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS password_reset_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            reset_link TEXT NOT NULL,
+            requested_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
 @login_manager.user_loader
 def load_user(user_id: str):
     if not user_id.isdigit():
@@ -196,6 +215,7 @@ def load_user(user_id: str):
 with app.app_context():
     _ensure_auth_users_table()
     _ensure_system_logs_table()
+    _ensure_password_reset_audit_table()
     db.create_all()
     _seed_admin_user()
 
@@ -339,7 +359,7 @@ def login():
         password = request.form.get("password") or ""
         app.logger.info("Login attempt for %s", email or "<blank>")
 
-        user = User.query.filter_by(email=email).first()
+        user = User.query.filter(db.func.lower(User.email) == email).first()
         invalid = "Invalid credentials."
 
         if not _is_allowed_email(email):
@@ -374,7 +394,7 @@ def forgot_password():
             success = generic_msg
             app.logger.warning("Password reset rejected for invalid domain: %s", email or "<blank>")
         else:
-            user = User.query.filter_by(email=email).first()
+            user = User.query.filter(db.func.lower(User.email) == email).first()
             if user and user.is_active:
                 raw_token = secrets.token_urlsafe(32)
                 user.reset_token = _hash_reset_token(raw_token)
@@ -382,7 +402,25 @@ def forgot_password():
                 db.session.commit()
                 reset_link = url_for("reset_password", token=raw_token, _external=True)
                 app.logger.info("Password reset link generated for %s: %s", email, reset_link)
-                print(f"Password reset link for {email}: {reset_link}")
+                try:
+                    conn = sqlite3.connect(DB_NAME)
+                    c = conn.cursor()
+                    c.execute(
+                        """
+                        INSERT INTO password_reset_audit (email, reset_link, requested_at, expires_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            email,
+                            reset_link,
+                            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                            user.reset_token_expiry.strftime("%Y-%m-%d %H:%M:%S"),
+                        ),
+                    )
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    app.logger.warning("Unable to audit password reset request: %s", e)
             else:
                 app.logger.warning("Password reset request not fulfilled for %s", email)
             success = generic_msg
@@ -439,7 +477,7 @@ def create_user():
         return jsonify({"message": "Email must use @irdai.gov.in domain."}), 400
     if len(password) < 8:
         return jsonify({"message": "Password must be at least 8 characters."}), 400
-    if User.query.filter_by(email=email).first():
+    if User.query.filter(db.func.lower(User.email) == email).first():
         return jsonify({"message": "User already exists."}), 409
 
     new_user = User(
@@ -605,7 +643,24 @@ def admin_panel():
     if not current_user.is_admin:
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
     usage_insights = _collect_admin_usage_insights()
-    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights)
+    reset_audit = []
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT email, reset_link, requested_at, expires_at
+            FROM password_reset_audit
+            ORDER BY id DESC
+            LIMIT 20
+            """
+        )
+        reset_audit = [dict(row) for row in c.fetchall()]
+        conn.close()
+    except Exception as e:
+        app.logger.warning("Unable to load password reset audit entries: %s", e)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit)
 
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
