@@ -281,12 +281,12 @@
 
         textarea {
             width: 100%;
-            padding: 10px;
+            padding: 8px 10px;
             border: none;
             font-size: 16px;
             font-family: inherit;
             resize: none;
-            height: 50px;
+            height: 44px;
             outline: none;
             background: transparent;
         }
@@ -557,9 +557,9 @@
             }
 
             textarea {
-                min-height: 44px;
-                height: 44px;
-                padding: 8px;
+                min-height: 40px;
+                height: 40px;
+                padding: 6px 8px;
                 font-size: 15px;
             }
 
@@ -712,15 +712,28 @@
             userBlock.className = 'chat-block user';
             userBlock.innerHTML = `<div class="label">You</div><div class="bubble user-bubble">${escapeHtml(input.value.trim())}</div>`;
             chatWindow.appendChild(userBlock);
-
-            const thinkingContainer = document.createElement('div');
-            thinkingContainer.className = 'standalone-thinking';
-            thinkingContainer.innerHTML = `<div class="typing-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
-            chatWindow.appendChild(thinkingContainer);
+            appendThinkingIndicator();
 
             scrollToBottom();
             sessionStorage.setItem('iris_pending_response', '1');
             form.submit();
+        }
+
+        function appendThinkingIndicator() {
+            if (!chatWindow) return;
+            const thinkingContainer = document.createElement('div');
+            thinkingContainer.className = 'standalone-thinking';
+            thinkingContainer.innerHTML = `<div class="typing-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+            chatWindow.appendChild(thinkingContainer);
+        }
+
+        function showDeepScanLoading(e, formElement) {
+            if (e) e.preventDefault();
+            appendThinkingIndicator();
+            scrollToBottom();
+            sessionStorage.setItem('iris_pending_response', '1');
+            formElement.submit();
+            return false;
         }
 
         function handleKey(e) {
