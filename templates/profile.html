@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile</title>
+    <style>
+        body{font-family:Inter,Arial,sans-serif;background:#f4f6fb;margin:0;padding:20px}
+        .wrap{max-width:980px;margin:0 auto}
+        .card{background:#fff;border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:0 8px 24px rgba(0,0,0,.06)}
+        h2,h3{margin:0 0 12px;color:#1a237e}
+        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+        input{width:100%;padding:10px;border:1px solid #cfd8dc;border-radius:8px;box-sizing:border-box}
+        button,a{padding:10px 14px;border-radius:8px;border:none;background:#1a237e;color:#fff;font-weight:600;text-decoration:none;cursor:pointer}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        th,td{padding:10px;border-bottom:1px solid #eceff1;text-align:left}
+        .muted{color:#607d8b}
+        .err{background:#ffebee;color:#b71c1c;padding:8px;border-radius:8px;margin-bottom:10px}
+        .ok{background:#e8f5e9;color:#2e7d32;padding:8px;border-radius:8px;margin-bottom:10px}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <h2>Profile</h2>
+        <a href="/">Back to dashboard</a>
+    </div>
+
+    <div class="card">
+        <h3>Change Password</h3>
+        {% if error %}<div class="err">{{ error }}</div>{% endif %}
+        {% if success %}<div class="ok">{{ success }}</div>{% endif %}
+        <form method="POST">
+            <div class="grid">
+                <input type="password" name="current_password" placeholder="Current password" required>
+                <input type="password" name="new_password" placeholder="New password" required minlength="8">
+                <input type="password" name="confirm_password" placeholder="Confirm new password" required minlength="8">
+            </div>
+            <div style="margin-top:10px;"><button type="submit">Update Password</button></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Logged-in Devices</h3>
+        <table>
+            <thead>
+                <tr><th>IP</th><th>User Agent</th><th>Login Time</th><th>Status</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {% for s in sessions %}
+                <tr>
+                    <td>{{ s.ip or "-" }}</td>
+                    <td>{{ s.user_agent or "-" }}</td>
+                    <td>{{ s.created_at }}</td>
+                    <td>{{ "Active" if s.active else "Logged out" }}</td>
+                    <td>
+                        {% if s.active %}
+                        <form method="POST" action="/profile/session/{{ s.id }}/logout" style="margin:0;">
+                            <button type="submit" style="background:#455a64;">Logout</button>
+                        </form>
+                        {% else %}
+                        <span class="muted">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>
