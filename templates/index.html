@@ -609,9 +609,11 @@
         <a href="/analytics" class="nav-item {{ 'active' if active_module == 'analytics' else '' }}">
             <i class="fas fa-server"></i> System Analytics
         </a>
+        {% if current_user.is_admin %}
         <a href="/admin" class="nav-item {{ 'active' if active_module == 'admin' else '' }}">
             <i class="fas fa-cog"></i> Admin Panel
         </a>
+        {% endif %}
         <a href="/logout" class="nav-item">
             <i class="fas fa-sign-out-alt"></i> Logout
         </a>
