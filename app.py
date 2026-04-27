@@ -62,6 +62,14 @@ JUST_REDIRECTED = False
 DB_NAME = "iris.db"
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
 PUBLIC_AUTH_PATHS = {"/login", "/logout", "/forgot-password"}
+TRACKED_MODULE_ENDPOINTS = {
+    "/": "Universal Search",
+    "/health": "Health Dept",
+    "/life": "Life Dept",
+    "/data": "Data Explorer",
+    "/compliance": "Compliance Cockpit",
+    "/admin": "Admin Panel",
+}
 
 
 def _route_exists(path: str) -> bool:
@@ -153,6 +161,31 @@ def _seed_admin_user():
     db.session.commit()
 
 
+def _ensure_system_logs_table():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            endpoint TEXT,
+            method TEXT,
+            ip TEXT,
+            status INTEGER,
+            error_msg TEXT,
+            user_email TEXT
+        )
+        """
+    )
+    c.execute("PRAGMA table_info(system_logs)")
+    columns = {row[1] for row in c.fetchall()}
+    if "user_email" not in columns:
+        c.execute("ALTER TABLE system_logs ADD COLUMN user_email TEXT")
+    conn.commit()
+    conn.close()
+
+
 @login_manager.user_loader
 def load_user(user_id: str):
     if not user_id.isdigit():
@@ -162,6 +195,7 @@ def load_user(user_id: str):
 
 with app.app_context():
     _ensure_auth_users_table()
+    _ensure_system_logs_table()
     db.create_all()
     _seed_admin_user()
 
@@ -181,6 +215,8 @@ def iris_auth_gatekeeper():
         return redirect(url_for("login", next=request.path))
 
     if request.path in ADMIN_ONLY_PATHS and not current_user.is_admin:
+        if request.path == "/admin":
+            return redirect(url_for("index"))
         if request.path.startswith("/admin"):
             return jsonify({"message": "Admin access required"}), 403
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
@@ -223,21 +259,18 @@ def log_interaction(status_code, error_msg=None):
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        
-        # Ensure table exists
-        c.execute('''CREATE TABLE IF NOT EXISTS system_logs 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, endpoint TEXT, method TEXT, ip TEXT, status INTEGER, error_msg TEXT)''')
-        
+
         c.execute('''
-            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg, user_email)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             request.path,
             request.method,
             get_client_ip(),
             status_code,
-            error_msg
+            error_msg,
+            current_user.email if current_user.is_authenticated else None
         ))
         
         conn.commit()
@@ -493,6 +526,75 @@ def run_background_sync():
         SYNC_STATE["status"] = "error"
         SYNC_STATE["message"] = f"Error: {str(e)}"
 
+
+def _collect_admin_usage_insights():
+    user_rows = []
+    module_totals = {name: 0 for name in TRACKED_MODULE_ENDPOINTS.values()}
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        placeholders = ",".join(["?"] * len(TRACKED_MODULE_ENDPOINTS))
+        c.execute(
+            f"""
+            SELECT timestamp, endpoint, user_email
+            FROM system_logs
+            WHERE endpoint IN ({placeholders}) AND user_email IS NOT NULL AND user_email != ''
+            ORDER BY timestamp ASC
+            """,
+            tuple(TRACKED_MODULE_ENDPOINTS.keys()),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+        conn.close()
+
+        per_user = {}
+        for row in rows:
+            email = (row.get("user_email") or "").strip().lower()
+            endpoint = row.get("endpoint")
+            module_label = TRACKED_MODULE_ENDPOINTS.get(endpoint, endpoint)
+            module_totals[module_label] = module_totals.get(module_label, 0) + 1
+            event_time = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
+
+            if email not in per_user:
+                per_user[email] = {
+                    "email": email,
+                    "total_requests": 0,
+                    "estimated_minutes": 0.0,
+                    "last_seen": row["timestamp"],
+                    "module_counts": {},
+                    "_last_event_dt": event_time,
+                }
+
+            user_entry = per_user[email]
+            user_entry["total_requests"] += 1
+            user_entry["last_seen"] = row["timestamp"]
+            user_entry["module_counts"][module_label] = user_entry["module_counts"].get(module_label, 0) + 1
+
+            delta_seconds = (event_time - user_entry["_last_event_dt"]).total_seconds()
+            if 0 < delta_seconds <= 600:
+                user_entry["estimated_minutes"] += delta_seconds / 60.0
+            user_entry["_last_event_dt"] = event_time
+
+        for data in per_user.values():
+            top_module = max(data["module_counts"], key=data["module_counts"].get) if data["module_counts"] else "-"
+            user_rows.append(
+                {
+                    "email": data["email"],
+                    "total_requests": data["total_requests"],
+                    "estimated_minutes": round(data["estimated_minutes"], 1),
+                    "top_module": top_module,
+                    "last_seen": data["last_seen"],
+                }
+            )
+
+        user_rows.sort(key=lambda row: row["total_requests"], reverse=True)
+        user_rows = user_rows[:15]
+    except Exception as e:
+        print(f"Admin insights error: {e}")
+
+    module_rows = [{"module": module, "count": count} for module, count in module_totals.items()]
+    return {"users": user_rows, "modules": module_rows}
+
 # ==========================================
 # ADMIN ROUTES (SYNC CONTROL)
 # ==========================================
@@ -502,7 +604,8 @@ def run_background_sync():
 def admin_panel():
     if not current_user.is_admin:
         return "<h3>Forbidden</h3><p>Admin access required.</p>", 403
-    return render_template("admin_simple.html")
+    usage_insights = _collect_admin_usage_insights()
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights)
 
 @app.route("/admin/sync_start", methods=["POST"])
 @login_required
@@ -640,40 +743,26 @@ def analytics_dashboard():
         logs = []
 
     # --- 1. PRE-PROCESS LOGS ---
-    # Filter out favicon.ico
-    valid_logs = [l for l in logs if l.get('endpoint') != '/favicon.ico']
+    module_logs = [l for l in logs if l.get("endpoint") in TRACKED_MODULE_ENDPOINTS]
 
     # --- 2. CALCULATE BASIC STATS ---
-    total_requests = len(valid_logs)
-    unique_users = len(set(l['ip'] for l in valid_logs))
-    errors = [l for l in valid_logs if l['status'] >= 500]
+    total_requests = len(module_logs)
+    unique_users = len(
+        {
+            (l.get("user_email") or "").strip().lower() or l.get("ip")
+            for l in module_logs
+            if (l.get("user_email") or "").strip().lower() or l.get("ip")
+        }
+    )
+    errors = [l for l in module_logs if l['status'] >= 500]
     error_count = len(errors)
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
     endpoints = {}
-    
-    # Define internal endpoints to hide from the pie chart
-    ignored_routes = ['/clear_logs', '/sync_data', '/download_data', '/admin/sync_status', '/admin/sync_start']
-    
-    for l in valid_logs:
+
+    for l in module_logs:
         ep = l['endpoint']
-        
-        # Skip hidden routes
-        if ep in ignored_routes: 
-            continue
-        
-        # Clean Labels (Remove slash & Format)
-        if ep == "/": label = "Home"
-        elif ep == "/data": label = "Data Explorer"
-        elif ep == "/compliance": label = "Compliance Cockpit"
-        elif ep == "/analytics": label = "Analytics"
-        elif ep == "/health": label = "Health Dept"
-        elif ep == "/life": label = "Life Dept"
-        elif ep == "/admin": label = "Admin Panel"
-        else:
-            # Fallback: remove slash and title case (e.g., "/some_page" -> "Some Page")
-            label = ep.lstrip("/").replace("_", " ").title()
-        
+        label = TRACKED_MODULE_ENDPOINTS.get(ep, ep.lstrip("/").replace("_", " ").title())
         endpoints[label] = endpoints.get(label, 0) + 1
         
     chart_labels = list(endpoints.keys())
@@ -688,8 +777,8 @@ def analytics_dashboard():
     yearly_stats = []
 
     try:
-        if valid_logs:
-            df = pd.DataFrame(valid_logs)
+        if module_logs:
+            df = pd.DataFrame(module_logs)
             df['dt'] = pd.to_datetime(df['timestamp'])
             
             # -- MONTHLY LOGIC --
