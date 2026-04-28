@@ -14,29 +14,16 @@ import secrets
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
-DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
-os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
-IRIS_AUTH_DATABASE_URL = (os.getenv("IRIS_AUTH_DATABASE_URL") or "").strip()
-DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
-AUTH_DATABASE_URL = IRIS_AUTH_DATABASE_URL or DATABASE_URL
-running_in_cloud = any(os.getenv(flag) for flag in ("K_SERVICE", "GAE_ENV", "GOOGLE_CLOUD_PROJECT"))
-
-if AUTH_DATABASE_URL:
-    if AUTH_DATABASE_URL.startswith("postgres://"):
-        AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = AUTH_DATABASE_URL
-elif running_in_cloud:
-    raise RuntimeError(
-        "Persistent auth database is required in cloud deployments. "
-        "Set IRIS_AUTH_DATABASE_URL (preferred) or DATABASE_URL."
-    )
-else:
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
+database_uri = os.environ.get("DATABASE_URL", "sqlite:///iris.db")
+if database_uri.startswith("postgres://"):
+    database_uri = database_uri.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -121,8 +108,8 @@ try:
     brain.load_knowledge_base()
     # 2. Load Master Data Engine (Financial Data)
     brain.load_master_data_engine()
-except Exception as e:
-    print(f"[!] Warning: Data Engine load failed on startup: {e}")
+except Exception:
+    app.logger.warning("Knowledge base empty")
 
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
@@ -165,17 +152,14 @@ def _hash_reset_token(token: str) -> str:
 
 
 def _seed_admin_user():
-    admin_email = (os.getenv("ADMIN_EMAIL") or f"admin{ALLOWED_EMAIL_DOMAIN}").strip().lower()
+    admin_email = "admin@irdai.gov.in"
     admin_password = os.getenv("ADMIN_PASSWORD") or "admin12345"
-    if not _is_allowed_email(admin_email):
-        admin_email = f"admin{ALLOWED_EMAIL_DOMAIN}"
-
+    user_count = User.query.count()
     existing = User.query.filter_by(email=admin_email).first()
     if existing:
-        existing.is_admin = True
-        if not existing.password_hash:
-            existing.password_hash = generate_password_hash(admin_password)
-    else:
+        return
+
+    if user_count == 0 or not existing:
         db.session.add(
             User(
                 email=admin_email,
@@ -185,8 +169,24 @@ def _seed_admin_user():
                 created_at=datetime.utcnow(),
             )
         )
-        print(f"[+] Default admin user created: {admin_email}")
-    db.session.commit()
+        try:
+            db.session.commit()
+            app.logger.info("Default admin user seeded: %s", admin_email)
+        except IntegrityError:
+            db.session.rollback()
+            app.logger.warning("Admin user already exists; skipping seed.")
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            app.logger.warning("Admin seeding skipped due to DB error: %s", e)
+
+
+def initialize_database():
+    try:
+        db.create_all()
+        _seed_admin_user()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.warning("Database initialization warning: %s", e)
 
 
 def _start_user_session(user: User):
@@ -300,8 +300,7 @@ def load_user(user_id: str):
 
 
 with app.app_context():
-    db.create_all()
-    _seed_admin_user()
+    initialize_database()
 
 
 @app.context_processor
