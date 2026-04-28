@@ -16,6 +16,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -325,10 +326,27 @@ def load_user(user_id: str):
     return db.session.get(User, int(user_id))
 
 
-with app.app_context():
-    db.create_all()
+def _initialize_database_state():
+    """
+    Initialize runtime DB state.
+
+    - Prefer migration-managed schema (`alembic -c migrations/alembic.ini upgrade head`).
+    - Optional local bootstrap via IRIS_AUTO_CREATE_SCHEMA=true for fresh SQLite DBs.
+    """
+    auto_create = (os.getenv("IRIS_AUTO_CREATE_SCHEMA") or "").strip().lower() in {"1", "true", "yes"}
+
+    if auto_create:
+        db.create_all()
+
     _ensure_schema_compatibility()
-    _seed_admin_user()
+
+    inspector = inspect(db.engine)
+    if "auth_users" in inspector.get_table_names():
+        _seed_admin_user()
+
+
+with app.app_context():
+    _initialize_database_state()
 
 
 @app.context_processor
@@ -399,24 +417,53 @@ def log_interaction(status_code, error_msg=None):
     Filters out static assets and favicons to keep analytics clean.
     """
     # --- FILTER: Ignore static files AND favicon ---
-    if request.path.startswith('/static') or request.path == '/favicon.ico': 
+    if request.path.startswith('/static') or request.path == '/favicon.ico':
         return
-    
+
+    log_payload = {
+        "timestamp": datetime.utcnow(),
+        "endpoint": request.path,
+        "method": request.method,
+        "ip": get_client_ip(),
+        "status": status_code,
+        "error_msg": error_msg,
+        "user_email": current_user.email if current_user.is_authenticated else None,
+    }
+
     try:
-        db.session.add(
-            SystemLog(
-                timestamp=datetime.utcnow(),
-                endpoint=request.path,
-                method=request.method,
-                ip=get_client_ip(),
-                status=status_code,
-                error_msg=error_msg,
-                user_email=current_user.email if current_user.is_authenticated else None,
-            )
-        )
+        db.session.add(SystemLog(**log_payload))
         db.session.commit()
+    except OperationalError as e:
+        db.session.rollback()
+        if "no column named user_email" not in str(e).lower():
+            print(f"Logging Failed: {e}")
+            return
+
+        # Legacy schema compatibility fallback for old SQLite files.
+        try:
+            db.session.execute(
+                text(
+                    """
+                    INSERT INTO system_logs (timestamp, endpoint, method, ip, status, error_msg)
+                    VALUES (:timestamp, :endpoint, :method, :ip, :status, :error_msg)
+                    """
+                ),
+                {
+                    "timestamp": log_payload["timestamp"],
+                    "endpoint": log_payload["endpoint"],
+                    "method": log_payload["method"],
+                    "ip": log_payload["ip"],
+                    "status": log_payload["status"],
+                    "error_msg": log_payload["error_msg"],
+                },
+            )
+            db.session.commit()
+        except Exception as fallback_exc:
+            db.session.rollback()
+            print(f"Logging Failed (legacy fallback): {fallback_exc}")
     except Exception as e:
-        print(f"Logging Failed: {e}") 
+        db.session.rollback()
+        print(f"Logging Failed: {e}")
 
 @app.after_request
 def record_success(response):
