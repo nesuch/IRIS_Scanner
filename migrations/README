@@ -1,0 +1,1 @@
+Run migrations with: alembic -c migrations/alembic.ini upgrade head
