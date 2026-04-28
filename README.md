@@ -116,3 +116,34 @@ If you only know “what is in production”, identify deployed commit via Cloud
 - Always save `pip freeze` artifact for every release.
 - Keep `.env.example` current with required variables.
 - Add a pre-release checklist item: attach `scripts/diagnose_env.py` output.
+
+
+## Database migrations (authoritative schema management)
+
+This repo now uses **Flask-Migrate/Alembic** for schema changes. Do not rely on `db.create_all()` as your migration strategy.
+
+### Apply migrations (local/prod)
+
+```bash
+export FLASK_APP=app.py
+flask db upgrade
+```
+
+### Create a new migration after model changes
+
+```bash
+export FLASK_APP=app.py
+flask db migrate -m "describe change"
+flask db upgrade
+```
+
+### Current migration
+
+- `20260428_0001_add_user_email_to_system_logs` adds `system_logs.user_email` for older SQLite files.
+
+## Keep schema consistent across environments
+
+- Run `flask db upgrade` as part of startup/release pipeline before serving traffic.
+- Never edit production schema manually.
+- Store migration files in version control and deploy them with code.
+- Keep one source of truth for DB URL configuration (`IRIS_AUTH_DATABASE_URL` preferred).

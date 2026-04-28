@@ -16,6 +16,7 @@ REQUIRED_PACKAGES = [
     "flask",
     "flask-login",
     "flask-sqlalchemy",
+    "flask-migrate",
     "pandas",
     "openpyxl",
     "nltk",
@@ -85,6 +86,14 @@ def _sqlite_status(db_path: Path) -> dict[str, str]:
         info["connection"] = "ok"
         info["table_count"] = str(len(table_names))
         info["tables"] = ", ".join(table_names[:12]) + (" ..." if len(table_names) > 12 else "")
+
+        if "alembic_version" in table_names:
+            cur.execute("SELECT version_num FROM alembic_version LIMIT 1")
+            row = cur.fetchone()
+            info["alembic_version"] = row[0] if row else "<empty>"
+        else:
+            info["alembic_version"] = "<missing>"
+
         conn.close()
     except Exception as exc:  # noqa: BLE001
         info["connection"] = f"failed: {exc}"
