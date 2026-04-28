@@ -97,19 +97,30 @@ class AdminAuditLog(db.Model):
     status = db.Column(db.String(64), nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-# ==========================================
-# CRITICAL FIX: FORCE DATA LOAD ON STARTUP
-# ==========================================
-# This ensures that as soon as you run python app.py, 
-# the system loads the data from SQL/Files into memory.
-print("--- IRIS: Initializing Data Engine ---")
-try:
-    # 1. Load Knowledge Base (Text Search)
-    brain.load_knowledge_base()
-    # 2. Load Master Data Engine (Financial Data)
-    brain.load_master_data_engine()
-except Exception:
-    app.logger.warning("Knowledge base empty")
+def _should_run_startup_init() -> bool:
+    """
+    Prevent duplicate startup initialization under Flask debug reloader.
+    """
+    if not app.debug:
+        return True
+    return os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+
+
+def _initialize_data_engine():
+    """
+    Warm in-memory caches from SQL only once in the serving process.
+    """
+    if not _should_run_startup_init():
+        return
+    print("--- IRIS: Initializing Data Engine ---")
+    try:
+        brain.load_knowledge_base()
+        brain.load_master_data_engine()
+    except Exception:
+        app.logger.warning("Knowledge base empty")
+
+
+_initialize_data_engine()
 
 CHAT_HISTORY = []
 JUST_REDIRECTED = False
@@ -693,28 +704,30 @@ SYNC_STATE = {
     "message": "System ready.",
     "timestamp": None
 }
+SYNC_LOCK = threading.Lock()
 
 def run_background_sync():
     """Executes the heavy data aggregation logic in a separate thread."""
     global SYNC_STATE
-    try:
-        print("--- BACKGROUND SYNC STARTED ---")
-        SYNC_STATE["status"] = "running"
-        SYNC_STATE["message"] = "Syncing financial + regulatory data from knowledge_base..."
+    with SYNC_LOCK:
+        try:
+            print("--- BACKGROUND SYNC STARTED ---")
+            SYNC_STATE["status"] = "running"
+            SYNC_STATE["message"] = "Syncing financial + regulatory data from knowledge_base..."
 
-        financial_msg = brain.aggregate_submissions()
-        regulatory_msg = brain.aggregate_regulatory_documents()
-        result_msg = f"{financial_msg} | {regulatory_msg}"
+            financial_msg = brain.aggregate_submissions()
+            regulatory_msg = brain.aggregate_regulatory_documents()
+            result_msg = f"{financial_msg} | {regulatory_msg}"
 
-        SYNC_STATE["status"] = "complete"
-        SYNC_STATE["message"] = result_msg
-        SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
-        print("--- BACKGROUND SYNC FINISHED ---")
-        
-    except Exception as e:
-        print(f"--- SYNC ERROR: {e} ---")
-        SYNC_STATE["status"] = "error"
-        SYNC_STATE["message"] = f"Error: {str(e)}"
+            SYNC_STATE["status"] = "complete"
+            SYNC_STATE["message"] = result_msg
+            SYNC_STATE["timestamp"] = time.strftime("%H:%M:%S")
+            print("--- BACKGROUND SYNC FINISHED ---")
+            
+        except Exception as e:
+            print(f"--- SYNC ERROR: {e} ---")
+            SYNC_STATE["status"] = "error"
+            SYNC_STATE["message"] = f"Error: {str(e)}"
 
 
 def _collect_admin_usage_insights():
@@ -936,7 +949,7 @@ def sync_start():
     """Kicks off the background sync thread."""
     global SYNC_STATE
     
-    if SYNC_STATE["status"] == "running":
+    if SYNC_STATE["status"] in {"starting", "running"} or SYNC_LOCK.locked():
         return jsonify({"status": "error", "message": "Sync already in progress."})
 
     # Reset State & Start
