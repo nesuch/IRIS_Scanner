@@ -14,6 +14,7 @@ import secrets
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
@@ -41,6 +42,7 @@ else:
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+migrate = Migrate(app, db, compare_type=True)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
