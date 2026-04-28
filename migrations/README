@@ -1,1 +1,1 @@
-Single-database configuration for Flask-Migrate/Alembic.
+Run migrations with: alembic -c migrations/alembic.ini upgrade head

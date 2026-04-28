@@ -120,21 +120,20 @@ If you only know “what is in production”, identify deployed commit via Cloud
 
 ## Database migrations (authoritative schema management)
 
-This repo now uses **Flask-Migrate/Alembic** for schema changes. Do not rely on `db.create_all()` as your migration strategy.
+This repo now uses **Alembic** for schema changes. Do not rely on `db.create_all()` as your migration strategy.
 
 ### Apply migrations (local/prod)
 
 ```bash
-export FLASK_APP=app.py
-flask db upgrade
+alembic -c migrations/alembic.ini upgrade head
 ```
 
 ### Create a new migration after model changes
 
 ```bash
-export FLASK_APP=app.py
-flask db migrate -m "describe change"
-flask db upgrade
+alembic -c migrations/alembic.ini revision -m "describe change"
+# edit migration file in migrations/versions/
+alembic -c migrations/alembic.ini upgrade head
 ```
 
 ### Current migration
@@ -143,7 +142,7 @@ flask db upgrade
 
 ## Keep schema consistent across environments
 
-- Run `flask db upgrade` as part of startup/release pipeline before serving traffic.
+- Run `alembic -c migrations/alembic.ini upgrade head` as part of startup/release pipeline before serving traffic.
 - Never edit production schema manually.
 - Store migration files in version control and deploy them with code.
 - Keep one source of truth for DB URL configuration (`IRIS_AUTH_DATABASE_URL` preferred).

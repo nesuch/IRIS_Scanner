@@ -16,7 +16,7 @@ REQUIRED_PACKAGES = [
     "flask",
     "flask-login",
     "flask-sqlalchemy",
-    "flask-migrate",
+    "alembic",
     "pandas",
     "openpyxl",
     "nltk",

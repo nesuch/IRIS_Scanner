@@ -332,7 +332,7 @@ def _initialize_database_state():
     """
     Initialize runtime DB state.
 
-    - Prefer migration-managed schema (`flask db upgrade`).
+    - Prefer migration-managed schema (`alembic -c migrations/alembic.ini upgrade head`).
     - Optional local bootstrap via IRIS_AUTO_CREATE_SCHEMA=true for fresh SQLite DBs.
     """
     auto_create = (os.getenv("IRIS_AUTO_CREATE_SCHEMA") or "").strip().lower() in {"1", "true", "yes"}
