@@ -281,14 +281,15 @@
 
         textarea {
             width: 100%;
-            padding: 10px;
+            padding: 8px 10px;
             border: none;
-            font-size: 16px;
+            font-size: 15px;
             font-family: inherit;
             resize: none;
-            height: 50px;
+            height: 40px;
             outline: none;
             background: transparent;
+            line-height: 1.35;
         }
 
         button[type="submit"] {
@@ -557,8 +558,8 @@
             }
 
             textarea {
-                min-height: 44px;
-                height: 44px;
+                min-height: 38px;
+                height: 38px;
                 padding: 8px;
                 font-size: 15px;
             }
@@ -617,6 +618,9 @@
         <a href="/profile" class="nav-item {{ 'active' if active_module == 'profile' else '' }}">
             <i class="fas fa-user-circle"></i> Profile
         </a>
+        <a href="/feedback" class="nav-item {{ 'active' if active_module == 'feedback' else '' }}">
+            <i class="fas fa-comment-dots"></i> Feedback
+        </a>
         <a href="/logout" class="nav-item">
             <i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})
         </a>
@@ -641,6 +645,7 @@
                     {% elif active_module == 'data' %} Data Explorer
                     {% elif active_module == 'compliance' %} Compliance Cockpit
                     {% elif active_module == 'analytics' %} System Analytics
+                    {% elif active_module == 'feedback' %} Feedback
                     {% else %} Universal Search
                     {% endif %}
                 </h2>
@@ -733,6 +738,25 @@
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             appendInteractionAndSubmit();
+        });
+
+        document.addEventListener('submit', function (e) {
+            const deepScanForm = e.target.closest('.iris-bubble form');
+            if (!deepScanForm) return;
+            const queryInput = deepScanForm.querySelector('input[name=\"query\"]');
+            if (!queryInput || !queryInput.value.startsWith('__DEEP_SCAN__:')) return;
+            e.preventDefault();
+            const userBlock = document.createElement('div');
+            userBlock.className = 'chat-block user';
+            userBlock.innerHTML = `<div class=\"label\">You</div><div class=\"bubble user-bubble\">Deep Scan</div>`;
+            chatWindow.appendChild(userBlock);
+            const thinkingContainer = document.createElement('div');
+            thinkingContainer.className = 'standalone-thinking';
+            thinkingContainer.innerHTML = `<div class=\"typing-indicator\"><div class=\"dot\"></div><div class=\"dot\"></div><div class=\"dot\"></div></div>`;
+            chatWindow.appendChild(thinkingContainer);
+            scrollToBottom();
+            sessionStorage.setItem('iris_pending_response', '1');
+            deepScanForm.submit();
         });
 
         function escapeHtml(text) {
