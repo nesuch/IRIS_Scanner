@@ -705,7 +705,7 @@ def feedback():
     if request.method == "POST":
         category = (request.form.get("category") or "Suggestion").strip()
         message = (request.form.get("message") or "").strip()
-        allowed = {"Bug", "Suggestion", "UI Issue"}
+        allowed = {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}
         if category not in allowed:
             category = "Suggestion"
         if len(message) < 5:
@@ -926,7 +926,20 @@ def admin_panel():
         ]
     except Exception as e:
         app.logger.warning("Unable to load admin audit logs: %s", e)
-    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts)
+    feedback_rows = []
+    feedback_filter = (request.args.get("feedback_type") or "ALL").strip()
+    try:
+        feedback_query = (
+            db.session.query(FeedbackEntry, User.email)
+            .join(User, User.id == FeedbackEntry.user_id)
+            .order_by(FeedbackEntry.id.desc())
+        )
+        if feedback_filter in {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}:
+            feedback_query = feedback_query.filter(FeedbackEntry.category == feedback_filter)
+        feedback_rows = feedback_query.limit(200).all()
+    except Exception as e:
+        app.logger.warning("Unable to load feedback list: %s", e)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts, feedback_rows=feedback_rows, feedback_filter=feedback_filter)
 
 
 @app.route("/admin/user/<int:user_id>/toggle-active", methods=["POST"])
