@@ -893,14 +893,24 @@ def admin_panel():
             {
                 "email": row.email,
                 "reset_link": row.reset_link,
-                "requested_at": row.requested_at.strftime("%Y-%m-%d %H:%M:%S") if row.requested_at else None,
-                "expires_at": row.expires_at.strftime("%Y-%m-%d %H:%M:%S") if row.expires_at else None,
+                "requested_at": _format_dt_local(row.requested_at),
+                "expires_at": _format_dt_local(row.expires_at),
             }
             for row in reset_audit_rows
         ]
     except Exception as e:
         app.logger.warning("Unable to load password reset audit entries: %s", e)
     users = User.query.order_by(User.created_at.desc()).all()
+    admin_user_rows = [
+        {
+            "id": user.id,
+            "email": user.email,
+            "is_active": user.is_active,
+            "is_admin": user.is_admin,
+            "created_at": _format_dt_local(user.created_at),
+        }
+        for user in users
+    ]
     user_device_counts = {u.id: _get_active_device_count(u.id) for u in users}
     audit_logs = []
     try:
@@ -920,7 +930,7 @@ def admin_panel():
                 "email": row.email,
                 "action_type": row.action_type,
                 "status": row.status,
-                "timestamp": row.timestamp.strftime("%Y-%m-%d %H:%M:%S") if row.timestamp else None,
+                "timestamp": _format_dt_local(row.timestamp),
             }
             for row in audit_log_rows
         ]
@@ -936,10 +946,18 @@ def admin_panel():
         )
         if feedback_filter in {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}:
             feedback_query = feedback_query.filter(FeedbackEntry.category == feedback_filter)
-        admin_feedback_rows = feedback_query.limit(200).all()
+        admin_feedback_rows = [
+            {
+                "created_at": _format_dt_local(entry.created_at),
+                "user_email": user_email,
+                "category": entry.category,
+                "message": entry.message,
+            }
+            for entry, user_email in feedback_query.limit(200).all()
+        ]
     except Exception as e:
         app.logger.warning("Unable to load feedback list: %s", e)
-    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts, admin_feedback_rows=admin_feedback_rows, feedback_filter=feedback_filter)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=admin_user_rows, audit_logs=audit_logs, user_device_counts=user_device_counts, admin_feedback_rows=admin_feedback_rows, feedback_filter=feedback_filter)
 
 
 @app.route("/admin/user/<int:user_id>/toggle-active", methods=["POST"])

@@ -246,6 +246,11 @@
             padding-left: 1.5px;
         }
         @media (max-width: 900px) {
+            .sidebar {
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+            }
 
             .header-area h2 {
                 font-size: 20px;
@@ -441,7 +446,7 @@
                                     <td>{{ "Yes" if user.is_active else "No" }}</td>
                                     <td>{{ "Yes" if user.is_admin else "No" }}</td>
                                     <td>{{ user_device_counts.get(user.id, 0) }}</td>
-                                    <td>{{ user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else "-" }}</td>
+                                    <td>{{ user.created_at or "-" }}</td>
                                     <td>
                                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
                                             <form method="POST" action="/admin/user/{{ user.id }}/toggle-active" style="margin:0;">
@@ -624,12 +629,12 @@
                     <table class="usage-table">
                         <thead><tr><th style="width:22%;">Time</th><th style="width:22%;">User</th><th style="width:14%;">Type</th><th style="width:42%;">Message</th></tr></thead>
                         <tbody>
-                            {% for entry, user_email in admin_feedback_rows %}
+                            {% for row in admin_feedback_rows %}
                             <tr>
-                                <td>{{ entry.created_at.strftime("%Y-%m-%d %H:%M:%S") if entry.created_at else "-" }}</td>
-                                <td>{{ user_email }}</td>
-                                <td>{{ entry.category }}</td>
-                                <td style="white-space:normal;min-width:320px;">{{ entry.message }}</td>
+                                <td>{{ row.created_at or "-" }}</td>
+                                <td>{{ row.user_email }}</td>
+                                <td>{{ row.category }}</td>
+                                <td style="white-space:normal;min-width:320px;">{{ row.message }}</td>
                             </tr>
                             {% else %}
                             <tr><td colspan="4" style="text-align:center;color:#888;">No feedback submissions found.</td></tr>
