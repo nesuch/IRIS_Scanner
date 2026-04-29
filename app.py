@@ -1151,8 +1151,10 @@ def compliance_dashboard():
 @login_required
 def analytics_dashboard():
     logs = []
+    raw_logs = []
     try:
         rows = SystemLog.query.order_by(SystemLog.id.desc()).all()
+        raw_logs = rows
         logs = [
             {
                 "id": row.id,
@@ -1171,22 +1173,25 @@ def analytics_dashboard():
         logs = []
 
     # --- 1. PRE-PROCESS LOGS ---
-    module_logs = [l for l in logs if l.get("endpoint") in TRACKED_MODULE_ENDPOINTS]
-    valid_logs = [l for l in logs if l.get("endpoint") != "/favicon.ico"]
+    module_logs = [r for r in raw_logs if r.endpoint in TRACKED_MODULE_ENDPOINTS]
+    valid_logs = [r for r in raw_logs if r.endpoint != "/favicon.ico"]
 
     # --- 2. CALCULATE BASIC STATS ---
     total_requests = len(module_logs)
     unique_users = db.session.query(db.func.count(db.func.distinct(db.func.lower(User.email)))).scalar() or 0
-    errors = [l for l in valid_logs if l['status'] >= 500]
-    error_count = len(errors)
+    errors = [r for r in valid_logs if (r.status or 0) >= 500]
     can_view_crash_details = bool(getattr(current_user, "is_admin", False))
-    visible_errors = errors if can_view_crash_details else []
+    error_count = len(errors) if can_view_crash_details else 0
+    visible_errors = [
+        {"timestamp": _format_dt_local(r.timestamp), "endpoint": r.endpoint, "error": r.error_msg}
+        for r in errors
+    ] if can_view_crash_details else []
     
     # --- 3. CALCULATE ENDPOINT USAGE (PIE CHART) ---
     endpoints = {}
 
-    for l in module_logs:
-        ep = l['endpoint']
+    for r in module_logs:
+        ep = r.endpoint
         label = TRACKED_MODULE_ENDPOINTS.get(ep, ep.lstrip("/").replace("_", " ").title())
         endpoints[label] = endpoints.get(label, 0) + 1
         
@@ -1203,8 +1208,8 @@ def analytics_dashboard():
 
     try:
         if module_logs:
-            df = pd.DataFrame(module_logs)
-            df['dt'] = pd.to_datetime(df['timestamp'])
+            df = pd.DataFrame([{"dt": r.timestamp, "endpoint": r.endpoint} for r in module_logs if r.timestamp is not None])
+            df['dt'] = pd.to_datetime(df['dt'])
             
             # -- MONTHLY LOGIC --
             # Filter for CURRENT YEAR ONLY
