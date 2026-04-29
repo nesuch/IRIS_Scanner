@@ -21,7 +21,7 @@ except ImportError:
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-DB_NAME = "iris.db"
+DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 KB_FOLDER = "knowledge_base"
 RAW_SUBMISSIONS_FOLDER = os.path.join(KB_FOLDER, "raw_submissions")
 
@@ -107,7 +107,10 @@ def load_knowledge_base(force_reload=False):
         print(f"[!] Error loading regulatory_clauses from DB: {e}")
         return pd.DataFrame()
 
-    if df.empty: return df
+    if df.empty:
+        print("[!] Knowledge Base Loaded: 0 regulatory clauses from SQL.")
+        return df
+    print(f"[+] Knowledge Base Loaded: {len(df)} regulatory clauses from SQL.")
 
     # 2. Map SQL columns to Application Logic (PascalCase)
     df = df.rename(columns={
