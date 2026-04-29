@@ -15,6 +15,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from sqlalchemy import inspect, text
 import iris_brain as brain
 
 app = Flask(__name__)
@@ -299,8 +300,45 @@ def load_user(user_id: str):
     return db.session.get(User, int(user_id))
 
 
-with app.app_context():
+def _ensure_database_schema():
+    """Backfills missing columns/tables when database files are out of sync with models."""
     db.create_all()
+    inspector = inspect(db.engine)
+
+    required_columns = {
+        "auth_users": {
+            "is_active": "BOOLEAN NOT NULL DEFAULT 1",
+            "is_admin": "BOOLEAN NOT NULL DEFAULT 0",
+            "reset_token": "VARCHAR(64)",
+            "reset_token_expiry": "DATETIME",
+            "session_version": "INTEGER NOT NULL DEFAULT 0",
+            "created_at": "DATETIME",
+        },
+        "system_logs": {
+            "user_email": "VARCHAR(255)",
+        },
+        "user_sessions": {
+            "active": "BOOLEAN NOT NULL DEFAULT 1",
+            "created_at": "DATETIME",
+            "last_seen_at": "DATETIME",
+        },
+    }
+
+    for table_name, cols in required_columns.items():
+        if not inspector.has_table(table_name):
+            continue
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        for col_name, col_type in cols.items():
+            if col_name in existing_cols:
+                continue
+            db.session.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+            app.logger.warning("Backfilled missing column %s.%s", table_name, col_name)
+
+    db.session.commit()
+
+
+with app.app_context():
+    _ensure_database_schema()
     _seed_admin_user()
 
 
