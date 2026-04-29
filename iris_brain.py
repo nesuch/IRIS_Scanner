@@ -107,7 +107,10 @@ def load_knowledge_base(force_reload=False):
         print(f"[!] Error loading regulatory_clauses from DB: {e}")
         return pd.DataFrame()
 
-    if df.empty: return df
+    if df.empty:
+        print("[!] Knowledge Base Loaded: 0 regulatory clauses from SQL.")
+        return df
+    print(f"[+] Knowledge Base Loaded: {len(df)} regulatory clauses from SQL.")
 
     # 2. Map SQL columns to Application Logic (PascalCase)
     df = df.rename(columns={
