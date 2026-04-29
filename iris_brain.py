@@ -21,7 +21,7 @@ except ImportError:
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-DB_NAME = "iris.db"
+DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 KB_FOLDER = "knowledge_base"
 RAW_SUBMISSIONS_FOLDER = os.path.join(KB_FOLDER, "raw_submissions")
 
