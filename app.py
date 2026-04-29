@@ -11,6 +11,7 @@ import hashlib
 import threading # Required for Background Sync
 from datetime import datetime, timedelta
 import secrets
+from zoneinfo import ZoneInfo
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -111,6 +112,17 @@ class AdminAuditLog(db.Model):
     status = db.Column(db.String(64), nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+
+class FeedbackEntry(db.Model):
+    __tablename__ = "feedback_entries"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("auth_users.id"), nullable=False, index=True)
+    category = db.Column(db.String(32), nullable=False, default="Suggestion")
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
 # ==========================================
@@ -137,6 +149,15 @@ TRACKED_MODULE_ENDPOINTS = {
     "/compliance": "Compliance Cockpit",
     "/admin": "Admin Panel",
 }
+DISPLAY_TZ = ZoneInfo("Asia/Kolkata")
+
+
+def _format_dt_local(dt_obj: datetime) -> str:
+    if dt_obj is None:
+        return None
+    if dt_obj.tzinfo is None:
+        dt_obj = dt_obj.replace(tzinfo=ZoneInfo("UTC"))
+    return dt_obj.astimezone(DISPLAY_TZ).strftime("%Y-%m-%d %H:%M:%S IST")
 
 
 def _route_exists(path: str) -> bool:
@@ -259,8 +280,8 @@ def _list_user_sessions(user_id: int):
             "ip": row.ip,
             "user_agent": row.user_agent,
             "active": row.active,
-            "created_at": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else None,
-            "last_seen_at": row.last_seen_at.strftime("%Y-%m-%d %H:%M:%S") if row.last_seen_at else None,
+            "created_at": _format_dt_local(row.created_at),
+            "last_seen_at": _format_dt_local(row.last_seen_at),
         }
         for row in rows
     ]
@@ -676,6 +697,33 @@ def profile():
     return render_template("profile.html", sessions=sessions, error=error, success=success)
 
 
+@app.route("/feedback", methods=["GET", "POST"])
+@login_required
+def feedback():
+    error = None
+    success = None
+    if request.method == "POST":
+        category = (request.form.get("category") or "Suggestion").strip()
+        message = (request.form.get("message") or "").strip()
+        allowed = {"Bug", "Suggestion", "UI Issue"}
+        if category not in allowed:
+            category = "Suggestion"
+        if len(message) < 5:
+            error = "Please enter at least 5 characters."
+        else:
+            db.session.add(
+                FeedbackEntry(
+                    user_id=current_user.id,
+                    category=category,
+                    message=message,
+                    created_at=datetime.utcnow(),
+                )
+            )
+            db.session.commit()
+            success = "Thanks! Your feedback has been submitted."
+    return render_template("feedback.html", error=error, success=success, active_module="feedback")
+
+
 @app.route("/profile/session/<int:session_id>/logout", methods=["POST"])
 @login_required
 def profile_logout_session(session_id):
@@ -783,14 +831,14 @@ def _collect_admin_usage_insights():
                     "email": email,
                     "total_requests": 0,
                     "estimated_minutes": 0.0,
-                    "last_seen": event_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "last_seen": _format_dt_local(event_time),
                     "module_counts": {},
                     "_last_event_dt": event_time,
                 }
 
             user_entry = per_user[email]
             user_entry["total_requests"] += 1
-            user_entry["last_seen"] = event_time.strftime("%Y-%m-%d %H:%M:%S")
+            user_entry["last_seen"] = _format_dt_local(event_time)
             user_entry["module_counts"][module_label] = user_entry["module_counts"].get(module_label, 0) + 1
 
             delta_seconds = (event_time - user_entry["_last_event_dt"]).total_seconds()
@@ -1095,7 +1143,7 @@ def analytics_dashboard():
         logs = [
             {
                 "id": row.id,
-                "timestamp": row.timestamp.strftime("%Y-%m-%d %H:%M:%S") if row.timestamp else None,
+                "timestamp": _format_dt_local(row.timestamp),
                 "endpoint": row.endpoint,
                 "method": row.method,
                 "ip": row.ip,
