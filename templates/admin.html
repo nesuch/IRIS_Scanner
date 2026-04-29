@@ -212,6 +212,10 @@
             max-height: 280px;
             overflow-y: auto;
         }
+        .sidebar {
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
 
 
         .admin-scroll-area {
@@ -653,7 +657,7 @@
                     <table class="usage-table">
                         <thead><tr><th style="width:22%;">Time</th><th style="width:22%;">User</th><th style="width:14%;">Type</th><th style="width:42%;">Message</th></tr></thead>
                         <tbody>
-                            {% for entry, user_email in feedback_rows %}
+                            {% for entry, user_email in admin_feedback_rows %}
                             <tr>
                                 <td>{{ entry.created_at.strftime("%Y-%m-%d %H:%M:%S") if entry.created_at else "-" }}</td>
                                 <td>{{ user_email }}</td>

@@ -926,7 +926,7 @@ def admin_panel():
         ]
     except Exception as e:
         app.logger.warning("Unable to load admin audit logs: %s", e)
-    feedback_rows = []
+    admin_feedback_rows = []
     feedback_filter = (request.args.get("feedback_type") or "ALL").strip()
     try:
         feedback_query = (
@@ -936,10 +936,10 @@ def admin_panel():
         )
         if feedback_filter in {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}:
             feedback_query = feedback_query.filter(FeedbackEntry.category == feedback_filter)
-        feedback_rows = feedback_query.limit(200).all()
+        admin_feedback_rows = feedback_query.limit(200).all()
     except Exception as e:
         app.logger.warning("Unable to load feedback list: %s", e)
-    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts, feedback_rows=feedback_rows, feedback_filter=feedback_filter)
+    return render_template("admin.html", sync_state=SYNC_STATE, usage_insights=usage_insights, reset_audit=reset_audit, users=users, audit_logs=audit_logs, user_device_counts=user_device_counts, admin_feedback_rows=admin_feedback_rows, feedback_filter=feedback_filter)
 
 
 @app.route("/admin/user/<int:user_id>/toggle-active", methods=["POST"])
