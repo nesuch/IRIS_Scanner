@@ -12,6 +12,9 @@
 <a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
 <div class="menu-label">System</div>
 <a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+{% if current_user.is_admin %}
+<a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
+{% endif %}
 <a href="/profile" class="nav-item"><i class="fas fa-user-circle"></i> Profile</a>
 <a href="/feedback" class="nav-item active"><i class="fas fa-comment-dots"></i> Feedback</a>
 <a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})</a>
@@ -24,7 +27,7 @@
 <label>Category</label>
 <select name="category" style="width:100%; max-width:100%; padding:10px; margin:8px 0 14px; border:1px solid #d0d0d0; border-radius:8px; box-sizing:border-box;">
 <option>Bug</option><option selected>Suggestion</option><option>UI Issue</option><option>Other (please specify)</option></select>
-<label>Message</label>
+<label style="display:block; margin-top:8px; margin-bottom:8px;">Message</label>
 <textarea name="message" required style="width:100%; max-width:100%; min-height:140px; padding:10px; border:1px solid #d0d0d0; border-radius:8px; box-sizing:border-box;"></textarea>
 <div style="margin-top:14px;"><button type="submit">Submit Feedback</button></div>
 </form></div></div>
