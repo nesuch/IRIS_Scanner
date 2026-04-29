@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>IRIS Feedback</title><link rel='stylesheet' href='{{ url_for("static", filename="style.css") }}'>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></head>
+<body>
+<div class="sidebar">
+<div class="logo"><img src="{{ url_for('static', filename='iris_logo.png') }}" alt="IRIS Logo"><div class="logo-text">IRIS</div></div>
+<div class="sidebar-tagline">Exact regulation.<br>Zero hallucination.</div>
+<div class="menu-label">Knowledge Base</div>
+<a href="/" class="nav-item"><i class="fas fa-search"></i> Universal Search</a>
+<a href="/health" class="nav-item"><i class="fas fa-heartbeat"></i> Health Dept</a>
+<a href="/life" class="nav-item"><i class="fas fa-umbrella"></i> Life Dept</a>
+<div class="menu-label">System</div>
+<a href="/analytics" class="nav-item"><i class="fas fa-server"></i> System Analytics</a>
+<a href="/profile" class="nav-item"><i class="fas fa-user-circle"></i> Profile</a>
+<a href="/feedback" class="nav-item active"><i class="fas fa-comment-dots"></i> Feedback</a>
+<a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})</a>
+</div>
+<div class="main-content"><div class="header-area"><h2><i class="fas fa-comment-dots module-icon"></i> Feedback</h2><p class="scope-indicator"><span class="scope-dot"></span> Share bugs, suggestions, and UI issues</p></div>
+<div class="chat-window" style="display:block;">
+<form method="POST" style="max-width:700px; width:min(700px,92%); margin:20px auto; background:white; padding:20px; border-radius:12px; border:1px solid #ddd; box-sizing:border-box; overflow:hidden;">
+{% if error %}<div style="color:#b71c1c; margin-bottom:12px;">{{ error }}</div>{% endif %}
+{% if success %}<div style="color:#1b5e20; margin-bottom:12px;">{{ success }}</div>{% endif %}
+<label>Category</label>
+<select name="category" style="width:100%; max-width:100%; padding:10px; margin:8px 0 14px; border:1px solid #d0d0d0; border-radius:8px; box-sizing:border-box;">
+<option>Bug</option><option selected>Suggestion</option><option>UI Issue</option><option>Other (please specify)</option></select>
+<label>Message</label>
+<textarea name="message" required style="width:100%; max-width:100%; min-height:140px; padding:10px; border:1px solid #d0d0d0; border-radius:8px; box-sizing:border-box;"></textarea>
+<div style="margin-top:14px;"><button type="submit">Submit Feedback</button></div>
+</form></div></div>
+<script src="{{ url_for('static', filename='mobile_nav.js') }}"></script>
+</body></html>
