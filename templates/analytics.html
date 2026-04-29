@@ -277,6 +277,7 @@
         <a href="/admin" class="nav-item"><i class="fas fa-cog"></i> Admin Panel</a>
         {% endif %}
         <a href="/profile" class="nav-item"><i class="fas fa-user-circle"></i> Profile</a>
+        <a href="/feedback" class="nav-item"><i class="fas fa-comment-dots"></i> Feedback</a>
         <a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout ({{ current_device_count }})</a>
     </div>
 
@@ -347,17 +348,14 @@
             </table>
         </div>
 
-        {% if stats.errors > 0 %}
+        {% if stats.errors > 0 and can_view_crash_details %}
         <div class="error-log">
             <div class="log-header">
                 <span><i class="fas fa-bug"></i> Recent Failures</span>
-                {% if can_view_crash_details %}
                 <form action="clear_logs" method="POST" style="margin:0;">
                     <button type="submit" class="clear-btn">Clear Crashes</button>
                 </form>
-                {% endif %}
             </div>
-            {% if can_view_crash_details %}
             <div class="table-scroll-container">
                 <table class="log-table">
                     <thead>
@@ -378,13 +376,8 @@
                     </tbody>
                 </table>
             </div>
-            {% else %}
-            <div style="padding:16px 20px; color:#8d6e63; background:#fffaf8;">
-                Crash details are restricted to admin users.
-            </div>
-            {% endif %}
         </div>
-        {% else %}
+        {% elif stats.errors == 0 %}
         <div style="text-align:center; padding:30px; color:#aaa;">
             <i class="fas fa-check-circle" style="font-size:30px; margin-bottom:10px; color:#2e7d32;"></i><br>
             No system failures recorded.

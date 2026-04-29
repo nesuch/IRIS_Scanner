@@ -21,7 +21,7 @@ except ImportError:
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-DB_NAME = "iris.db"
+DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 KB_FOLDER = "knowledge_base"
 RAW_SUBMISSIONS_FOLDER = os.path.join(KB_FOLDER, "raw_submissions")
 
@@ -87,15 +87,19 @@ ALL_DOC_NAMES = set()
 TAG_INGREDIENTS = {} 
 KNOWN_VOCAB = set()
 NORMALIZED_TAG_LOOKUP = {}
+KB_CACHE_DF = None
 
 def normalize_tag_text(text: str) -> str:
     return " ".join(re.findall(r"\w+", str(text).lower().replace("_", " "))).strip()
 
 def load_knowledge_base(force_reload=False):
-    global ALL_UNIQUE_TAGS, ALL_DOC_NAMES, TAG_INGREDIENTS, KNOWN_VOCAB, NORMALIZED_TAG_LOOKUP
+    global ALL_UNIQUE_TAGS, ALL_DOC_NAMES, TAG_INGREDIENTS, KNOWN_VOCAB, NORMALIZED_TAG_LOOKUP, KB_CACHE_DF
     
     # Pre-load financial data if needed
     if force_reload: load_master_data_engine()
+
+    if not force_reload and KB_CACHE_DF is not None and not KB_CACHE_DF.empty:
+        return KB_CACHE_DF
 
     # 1. Fetch from SQL
     try:
@@ -107,7 +111,11 @@ def load_knowledge_base(force_reload=False):
         print(f"[!] Error loading regulatory_clauses from DB: {e}")
         return pd.DataFrame()
 
-    if df.empty: return df
+    if df.empty:
+        KB_CACHE_DF = df
+        print("[!] Knowledge Base Loaded: 0 regulatory clauses from SQL.")
+        return df
+    print(f"[+] Knowledge Base Loaded: {len(df)} regulatory clauses from SQL.")
 
     # 2. Map SQL columns to Application Logic (PascalCase)
     df = df.rename(columns={
@@ -153,6 +161,7 @@ def load_knowledge_base(force_reload=False):
                         ingredients.add(get_stem(w))
                     if ingredients: TAG_INGREDIENTS[clean_tag] = ingredients
 
+    KB_CACHE_DF = df
     return df
 
 def get_autocomplete_data():
