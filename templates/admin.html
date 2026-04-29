@@ -634,6 +634,40 @@
                 </div>
             </div>
 
+            <div class="admin-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <h3 style="margin:0;color:#1a237e;"><i class="fas fa-comment-dots"></i> User Feedback</h3>
+                    <form method="GET" action="/admin" style="display:flex;gap:8px;align-items:center;">
+                        <label for="feedback_type" style="font-size:12px;color:#666;">Type</label>
+                        <select id="feedback_type" name="feedback_type" style="padding:8px;border:1px solid #ddd;border-radius:8px;">
+                            <option value="ALL" {% if feedback_filter == 'ALL' %}selected{% endif %}>All</option>
+                            <option value="Bug" {% if feedback_filter == 'Bug' %}selected{% endif %}>Bug</option>
+                            <option value="Suggestion" {% if feedback_filter == 'Suggestion' %}selected{% endif %}>Suggestion</option>
+                            <option value="UI Issue" {% if feedback_filter == 'UI Issue' %}selected{% endif %}>UI Issue</option>
+                            <option value="Other (please specify)" {% if feedback_filter == 'Other (please specify)' %}selected{% endif %}>Other (please specify)</option>
+                        </select>
+                        <button type="submit" class="btn-sync" style="padding:8px 14px; font-size:12px;">Apply</button>
+                    </form>
+                </div>
+                <div class="usage-table-wrap log-scroll-wrap" style="margin-top:12px;">
+                    <table class="usage-table">
+                        <thead><tr><th style="width:22%;">Time</th><th style="width:22%;">User</th><th style="width:14%;">Type</th><th style="width:42%;">Message</th></tr></thead>
+                        <tbody>
+                            {% for entry, user_email in feedback_rows %}
+                            <tr>
+                                <td>{{ entry.created_at.strftime("%Y-%m-%d %H:%M:%S") if entry.created_at else "-" }}</td>
+                                <td>{{ user_email }}</td>
+                                <td>{{ entry.category }}</td>
+                                <td style="white-space:normal;min-width:320px;">{{ entry.message }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" style="text-align:center;color:#888;">No feedback submissions found.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
 
