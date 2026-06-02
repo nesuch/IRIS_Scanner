@@ -185,3 +185,5 @@ frontend/.vite/
 # Keep the built SPA committed so Flask/gunicorn can serve it without Node on the server.
 !frontend/dist/
 !frontend/dist/**
+!frontend/src/lib/
+!frontend/src/lib/**
