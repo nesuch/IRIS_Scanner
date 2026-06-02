@@ -38,6 +38,18 @@ export default function PdfViewer({ url }) {
       const ctx = canvas.getContext('2d');
       ctx.scale(dpr, dpr);
       await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      // Selectable/copyable text layer aligned over the canvas.
+      try {
+        const textContent = await page.getTextContent();
+        const tlDiv = document.createElement('div');
+        tlDiv.className = 'textLayer';
+        tlDiv.style.setProperty('--scale-factor', String(scale()));
+        tlDiv.style.width = `${vp.width}px`;
+        tlDiv.style.height = `${vp.height}px`;
+        wrap.appendChild(tlDiv);
+        const layer = new pdfjsLib.TextLayer({ textContentSource: textContent, container: tlDiv, viewport: vp });
+        await layer.render();
+      } catch { /* text layer optional */ }
     } catch { /* page render failure is non-fatal */ }
   }, []);
 

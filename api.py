@@ -296,12 +296,20 @@ def api_docs():
     scoped = brain.filter_df_by_module(df, module)
 
     src_type = {}
+    src_tags = {}
     if scoped is not None and not scoped.empty:
         for _, row in scoped.iterrows():
             src = str(row.get("Source_Doc") or "").strip()
             if not src:
                 continue
             src_type.setdefault(src, str(row.get("Doc_Type") or "UNKNOWN").strip().upper() or "UNKNOWN")
+            raw_tags = str(row.get("Regulatory_Tags") or "")
+            if raw_tags:
+                tset = src_tags.setdefault(src, set())
+                for t in raw_tags.split(","):
+                    clean = t.strip().replace("_", " ").lower()
+                    if len(clean) >= 2:
+                        tset.add(clean)
 
     by_type = {}
     for src, typ in src_type.items():
@@ -312,7 +320,8 @@ def api_docs():
     ordered_types = [t for t in _DOC_TYPE_ORDER if t in by_type]
     ordered_types += [t for t in by_type if t not in _DOC_TYPE_ORDER]
     groups = [{"type": t, "label": _DOC_TYPE_LABELS.get(t, t.title()), "docs": by_type[t]} for t in ordered_types]
-    return jsonify({"module": module, "groups": groups})
+    doc_tags = {src: sorted(tags) for src, tags in src_tags.items()}
+    return jsonify({"module": module, "groups": groups, "doc_tags": doc_tags})
 
 
 # ----------------------------------------------------------------------------

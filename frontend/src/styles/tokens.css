@@ -40,7 +40,7 @@
 
   /* Signature gradients — restrained, navy/indigo (no cyan sparkle) */
   --grad-brand: linear-gradient(135deg, #1a237e 0%, #283593 55%, #3949ab 100%);
-  --grad-wordmark: linear-gradient(115deg, #0f1747 0%, #1a237e 45%, #2f3aa3 100%);
+  --grad-wordmark: linear-gradient(180deg, #2b58a6 0%, #0a2357 100%);
   --grad-primary: linear-gradient(180deg, #283593 0%, #1a237e 100%);
   --grad-sheen: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
   --grad-app-glow: none;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { api } from '../api.js';
@@ -92,35 +92,42 @@ export default function Search({ module }) {
   const meta = MODULE_META[module] || MODULE_META.universal;
   const toast = useToast();
   const [history, setHistory] = useState([]);
-  const [vocab, setVocab] = useState([]);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [docGroups, setDocGroups] = useState([]);
+  const [docTags, setDocTags] = useState({});
   const [selected, setSelected] = useState(() => new Set());
   const [docFilterOpen, setDocFilterOpen] = useState(false);
   const [pdfPane, setPdfPane] = useState(null); // { url, source }
+  const [paneWidth, setPaneWidth] = useState(46); // % width of the PDF pane
+  const [dragging, setDragging] = useState(false);
   const chatRef = useRef(null);
   const lastUserRef = useRef(null);
   const docFilterRef = useRef(null);
+  const searchMainRef = useRef(null);
 
   // Reset chat when switching modules (matches per-page server history reset).
   useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
 
-  useEffect(() => {
-    api.get('/vocab').then((d) => setVocab(d.CONCEPTS || [])).catch(() => {});
-  }, []);
-
-  // Load the documents available to this module and select them all by default.
+  // Load the documents available to this module (with their tags) and select all by default.
   useEffect(() => {
     api.get(`/docs?module=${module}`).then((d) => {
       const groups = d.groups || [];
       setDocGroups(groups);
+      setDocTags(d.doc_tags || {});
       const all = new Set();
       groups.forEach((g) => g.docs.forEach((s) => all.add(s)));
       setSelected(all);
-    }).catch(() => { setDocGroups([]); setSelected(new Set()); });
+    }).catch(() => { setDocGroups([]); setDocTags({}); setSelected(new Set()); });
   }, [module]);
+
+  // Autocomplete vocabulary = tags present only in the currently selected documents.
+  const vocab = useMemo(() => {
+    const set = new Set();
+    selected.forEach((s) => (docTags[s] || []).forEach((t) => set.add(t)));
+    return [...set];
+  }, [docTags, selected]);
 
   // Close the doc-filter popover on outside click.
   useEffect(() => {
@@ -136,6 +143,27 @@ export default function Search({ module }) {
   const toggleDoc = (src) => setSelected((s) => { const n = new Set(s); n.has(src) ? n.delete(src) : n.add(src); return n; });
   const toggleGroup = (g) => setSelected((s) => { const n = new Set(s); const allIn = g.docs.every((d) => n.has(d)); g.docs.forEach((d) => (allIn ? n.delete(d) : n.add(d))); return n; });
   const toggleAll = () => setSelected((s) => (s.size === allDocs.length ? new Set() : new Set(allDocs)));
+
+  // Drag the divider to resize the results / PDF split.
+  function startResize(e) {
+    e.preventDefault();
+    const rect = searchMainRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setDragging(true);
+    document.body.style.userSelect = 'none';
+    const onMove = (ev) => {
+      const pct = ((rect.right - ev.clientX) / rect.width) * 100;
+      setPaneWidth(Math.min(72, Math.max(28, pct)));
+    };
+    const onUp = () => {
+      setDragging(false);
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
 
   useEffect(() => {
     // Scroll so the latest question sits near the top (jumpToLatestQuestionStart).
@@ -209,7 +237,7 @@ export default function Search({ module }) {
     <div className="search-shell">
       <PageHeader fullForm="IRDAI's Regulatory Intelligence System" title={meta.title} scope={`Scope: ${meta.scope}`} />
 
-      <div className="search-main">
+      <div className={`search-main ${dragging ? 'dragging' : ''}`} ref={searchMainRef}>
       <div className={`chat-window ${empty ? 'is-empty' : ''}`} ref={chatRef}>
         {empty && (
           <div className="chat-empty anim-fade">
@@ -237,8 +265,9 @@ export default function Search({ module }) {
         <div style={{ height: 10 }} />
       </div>
 
+        {pdfPane && <div className={`pane-resizer ${dragging ? 'dragging' : ''}`} onMouseDown={startResize} title="Drag to resize" />}
         {pdfPane && (
-          <aside className="pdf-pane anim-fade">
+          <aside className="pdf-pane anim-fade" style={{ flexBasis: `${paneWidth}%` }}>
             <div className="pdf-pane-head">
               <span className="pdf-pane-title" title={pdfPane.source}><i className="fas fa-file-pdf" /> {pdfPane.source}</span>
               <span className="pdf-pane-actions">

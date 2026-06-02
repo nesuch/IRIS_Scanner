@@ -5,7 +5,10 @@ import './styles/base.css';
 import './styles/components.css';
 import { AuthProvider } from './auth/AuthContext.jsx';
 import { ToastProvider } from './components/Toast.jsx';
+import { setTransparentFavicon } from './lib/favicon.js';
 import App from './App.jsx';
+
+setTransparentFavicon();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

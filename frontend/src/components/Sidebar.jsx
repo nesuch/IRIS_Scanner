@@ -34,10 +34,7 @@ export default function Sidebar({ open, onNavigate }) {
     <aside className={`sidebar ${open ? 'open' : ''}`}>
       <div className="sidebar-brand">
         <img className="sidebar-logo" src="/static/iris_logo.png" alt="IRIS" />
-        <div className="sidebar-wordmark">
-          <span className="wm">IRIS</span>
-          <span className="wm-sub">Reg. Intelligence</span>
-        </div>
+        <span className="wm">IRIS</span>
       </div>
       <div className="sidebar-tagline">Exact regulation.<br />Zero hallucination.</div>
 
