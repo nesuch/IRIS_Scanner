@@ -11,7 +11,7 @@ const MODULE_META = {
   life: { title: 'Life Department', icon: 'fa-umbrella', scope: 'Regulatory Framework (Life Insurance)' },
 };
 
-function ResultCards({ resp, onChip }) {
+function ResultCards({ resp, onChip, onOpenPane }) {
   const toast = useToast();
   const copy = async (text) => {
     try { await navigator.clipboard.writeText(text); toast.success('Clause text copied!'); }
@@ -58,6 +58,9 @@ function ResultCards({ resp, onChip }) {
                   <span className="clause-id">Clause: {m.id}</span>
                   <span className="clause-actions">
                     {m.pdf_url && (
+                      <button className="pane-btn" title="Open PDF in side pane" onClick={() => onOpenPane(m)}><i className="fas fa-table-columns" /> Pane</button>
+                    )}
+                    {m.pdf_url && (
                       <a className="pdf-btn" href={m.pdf_url} target="_blank" rel="noreferrer"><i className="fas fa-file-pdf" /> PDF</a>
                     )}
                     <button className="copy-btn" title="Copy clause" onClick={() => copy(m.raw_text)}><i className="far fa-copy" /></button>
@@ -95,12 +98,13 @@ export default function Search({ module }) {
   const [docGroups, setDocGroups] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [docFilterOpen, setDocFilterOpen] = useState(false);
+  const [pdfPane, setPdfPane] = useState(null); // { url, source }
   const chatRef = useRef(null);
   const lastUserRef = useRef(null);
   const docFilterRef = useRef(null);
 
   // Reset chat when switching modules (matches per-page server history reset).
-  useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); }, [module]);
+  useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
 
   useEffect(() => {
     api.get('/vocab').then((d) => setVocab(d.CONCEPTS || [])).catch(() => {});
@@ -204,6 +208,7 @@ export default function Search({ module }) {
     <div className="search-shell">
       <PageHeader fullForm="IRDAI's Regulatory Intelligence System" title={meta.title} scope={`Scope: ${meta.scope}`} />
 
+      <div className="search-main">
       <div className={`chat-window ${empty ? 'is-empty' : ''}`} ref={chatRef}>
         {empty && (
           <div className="chat-empty anim-fade">
@@ -221,7 +226,7 @@ export default function Search({ module }) {
             <div className="chat-block iris">
               <div className="chat-label">IRIS</div>
               <div className="bubble iris-bubble">
-                {item.response ? <ResultCards resp={item.response} onChip={onChip} />
+                {item.response ? <ResultCards resp={item.response} onChip={onChip} onOpenPane={(m) => setPdfPane({ url: m.pdf_url, source: m.source })} />
                   : item.error ? <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
                   : <span className="typing"><span /><span /><span /></span>}
               </div>
@@ -229,6 +234,20 @@ export default function Search({ module }) {
           </div>
         ))}
         <div style={{ height: 10 }} />
+      </div>
+
+        {pdfPane && (
+          <aside className="pdf-pane anim-fade">
+            <div className="pdf-pane-head">
+              <span className="pdf-pane-title" title={pdfPane.source}><i className="fas fa-file-pdf" /> {pdfPane.source}</span>
+              <span className="pdf-pane-actions">
+                <a className="pdf-pane-btn" href={pdfPane.url} target="_blank" rel="noreferrer" title="Open in new tab"><i className="fas fa-arrow-up-right-from-square" /></a>
+                <button className="pdf-pane-btn" onClick={() => setPdfPane(null)} title="Close pane" aria-label="Close PDF pane"><i className="fas fa-xmark" /></button>
+              </span>
+            </div>
+            <iframe className="pdf-pane-frame" src={pdfPane.url} title={pdfPane.source} />
+          </aside>
+        )}
       </div>
 
       <div className="input-area">
