@@ -31,19 +31,19 @@
   --ink-soft: #334155;
   --muted: #64748b;
   --faint: #94a3b8;
-  --line: #e2e8f0;
-  --line-strong: #cbd5e1;
-  --paper: #eef2fb;          /* app background (blue-tinted) */
-  --paper-2: #e6ecf9;
+  --line: #e6e8ec;
+  --line-strong: #d3d7de;
+  --paper: #f5f6f8;          /* app background (near-neutral) */
+  --paper-2: #eceef2;
   --card: #ffffff;
-  --card-glass: rgba(255, 255, 255, 0.72);
+  --card-glass: rgba(255, 255, 255, 0.85);
 
-  /* Signature gradients */
-  --grad-brand: linear-gradient(135deg, #1a237e 0%, #2563eb 52%, #06b6d4 100%);
-  --grad-brand-soft: linear-gradient(135deg, #283593 0%, #3b82f6 60%, #38bdf8 100%);
-  --grad-sheen: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
-  --grad-app-glow: radial-gradient(1200px 600px at 12% -8%, rgba(56, 189, 248, 0.18), transparent 60%),
-                   radial-gradient(900px 500px at 100% 0%, rgba(37, 99, 235, 0.14), transparent 55%);
+  /* Signature gradients — restrained, navy/indigo (no cyan sparkle) */
+  --grad-brand: linear-gradient(135deg, #1a237e 0%, #283593 55%, #3949ab 100%);
+  --grad-wordmark: linear-gradient(115deg, #0f1747 0%, #1a237e 45%, #2f3aa3 100%);
+  --grad-primary: linear-gradient(180deg, #283593 0%, #1a237e 100%);
+  --grad-sheen: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+  --grad-app-glow: none;
 
   /* Typography */
   --serif: 'Fraunces', Georgia, serif;
@@ -54,7 +54,7 @@
   --sh-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.05);
   --sh-2: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.05);
   --sh-3: 0 12px 32px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
-  --sh-brand: 0 10px 28px rgba(37, 99, 235, 0.30);
+  --sh-brand: 0 6px 16px rgba(26, 35, 126, 0.16);
 
   /* Radii / layout */
   --r-sm: 8px;
