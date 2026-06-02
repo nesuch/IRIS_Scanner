@@ -15,9 +15,9 @@ analytics, auth/admin) with a modern **React (Vite) single-page frontend**.
 - **React SPA:** `frontend/` is a Vite + React + React Router app that consumes
   `/api/*`. It is the frontend for every page (search, health/life, data explorer,
   compliance, analytics, admin, profile, feedback, auth).
-- **Serving:** when `frontend/dist` exists, Flask serves the built SPA shell for all
-  browser navigations and the hashed assets at `/assets/*`. The original Jinja
-  templates remain in `templates/` and can be restored instantly (see Rollback).
+- **Serving:** Flask serves the built SPA shell (`frontend/dist`) for all non-API
+  browser navigations and the hashed assets at `/assets/*`. The React app is the
+  only UI; the legacy Jinja templates have been removed.
 
 ## Develop
 
@@ -40,11 +40,6 @@ and `/static` to Flask):
 Under gunicorn (as in `Procfile`) nothing changes — Flask serves `frontend/dist`
 directly, so **no Node is required on the server**. The built `frontend/dist` is
 committed (see `.gitignore`) so deploys need only the existing Python stack.
-
-## Rollback to the legacy Jinja UI
-
-Set `IRIS_LEGACY_UI=1` (or remove `frontend/dist`) and the original server-rendered
-templates are served exactly as before. Nothing was deleted in the migration.
 
 ## Default admin
 

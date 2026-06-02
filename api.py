@@ -115,12 +115,11 @@ def api_forgot_password():
         if user and user.is_active:
             import secrets
             from datetime import timedelta
-            from flask import url_for
             raw_token = secrets.token_urlsafe(32)
             user.reset_token = _app._hash_reset_token(raw_token)
             user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
             _app.db.session.commit()
-            reset_link = url_for("reset_password", token=raw_token, _external=True)
+            reset_link = request.host_url.rstrip("/") + "/reset-password/" + raw_token
             try:
                 _app.db.session.add(_app.PasswordResetAudit(
                     email=email, reset_link=reset_link,
@@ -634,13 +633,12 @@ def api_admin_trigger_reset(user_id):
     m = _app
     import secrets
     from datetime import timedelta
-    from flask import url_for
     user = m.User.query.get_or_404(user_id)
     raw_token = secrets.token_urlsafe(32)
     user.reset_token = m._hash_reset_token(raw_token)
     user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
     m.db.session.commit()
-    reset_link = url_for("reset_password", token=raw_token, _external=True)
+    reset_link = request.host_url.rstrip("/") + "/reset-password/" + raw_token
     try:
         m.db.session.add(m.PasswordResetAudit(
             email=user.email.lower(), reset_link=reset_link,
