@@ -9,7 +9,7 @@
 .pdf-pane { flex: 0 0 46%; min-width: 300px; display: flex; flex-direction: column; background: #f1f3f7; }
 .pane-resizer { flex: 0 0 6px; cursor: col-resize; background: var(--line); position: relative; transition: background 0.15s; }
 .pane-resizer::after { content: ''; position: absolute; inset: 0 -4px; }
-.pane-resizer:hover, .pane-resizer.dragging { background: var(--azure-500); }
+.pane-resizer:hover, .pane-resizer.dragging { background: var(--accent); }
 .search-main.dragging { cursor: col-resize; }
 .search-main.dragging iframe, .search-main.dragging .pdfv-scroll { pointer-events: none; }
 .pdf-pane-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
@@ -17,7 +17,7 @@
 .pdf-pane-title i { color: var(--accent-red); }
 .pdf-pane-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 .pdf-pane-btn { width: 30px; height: 30px; border: 1px solid var(--line-strong); background: #fff; border-radius: var(--r-sm); color: var(--ink-soft); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; transition: 0.15s; }
-.pdf-pane-btn:hover { border-color: var(--azure-500); color: var(--navy-700); }
+.pdf-pane-btn:hover { border-color: var(--accent); color: var(--navy-700); }
 /* pdf.js viewer inside the pane */
 .pdfv { flex: 1; display: flex; flex-direction: column; min-height: 0; background: #525659; position: relative; }
 .pdfv-toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 6px; background: #3a3f44; color: #e2e8f0; }
@@ -29,12 +29,12 @@
 .pdfv-page canvas { display: block; }
 .pdfv-page .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; opacity: 1; z-index: 2; text-align: left; }
 .pdfv-page .textLayer span, .pdfv-page .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
-.pdfv-page .textLayer ::selection { background: rgba(37, 99, 235, 0.35); }
+.pdfv-page .textLayer ::selection { background: rgba(13, 148, 136, 0.35); }
 .pdfv-msg { position: absolute; top: 60px; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #e2e8f0; font-size: 14px; pointer-events: none; }
 .chat-window.is-empty { justify-content: center; overflow: hidden; }
 
 .chat-empty { text-align: center; color: var(--muted); }
-.chat-empty i { font-size: 30px; color: var(--azure-500); margin-bottom: 14px; display: block; }
+.chat-empty i { font-size: 30px; color: var(--accent); margin-bottom: 14px; display: block; }
 .chat-empty p { font-size: 15px; line-height: 1.6; }
 .chat-empty strong { color: var(--ink); }
 
@@ -60,7 +60,7 @@
 .clause-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 7px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .clause-meta .sep { color: var(--line-strong); }
 .clause-source { font-weight: 700; color: var(--ink); }
-.clause-header { color: var(--azure-600); }
+.clause-header { color: var(--accent); }
 .clause-id { color: var(--muted); }
 .clause-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
 .pdf-btn { font-size: 10px; font-weight: 700; color: var(--accent-red); border: 1px solid var(--accent-red); padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; transition: 0.15s; }
@@ -68,7 +68,7 @@
 .pane-btn { font-size: 10px; font-weight: 700; color: var(--navy-700); border: 1px solid var(--line-strong); background: #fff; padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; transition: 0.15s; }
 .pane-btn:hover { border-color: var(--navy-700); background: rgba(26,35,126,0.06); }
 .copy-btn { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 14px; padding: 2px 4px; transition: 0.15s; }
-.copy-btn:hover { color: var(--azure-600); }
+.copy-btn:hover { color: var(--accent); }
 
 .clause-body { font-size: 14px; line-height: 1.55; color: var(--ink); }
 .clause-line { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -83,24 +83,24 @@
 .deep-chips-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { font-size: 11.5px; padding: 6px 13px; border-radius: var(--r-pill); cursor: pointer; border: 1px solid; transition: 0.15s; font-weight: 500; }
 .chip:hover { transform: translateY(-1px); box-shadow: var(--sh-1); }
-.chip-keyword { background: rgba(37,99,235,0.08); border-color: rgba(37,99,235,0.4); color: var(--navy-700); }
+.chip-keyword { background: rgba(13,148,136,0.08); border-color: rgba(13,148,136,0.4); color: var(--navy-700); }
 .chip-phrase { background: rgba(6,182,212,0.10); border-color: rgba(6,182,212,0.5); color: #0e7490; font-weight: 700; }
 .chip-all { background: #fff; border-color: var(--line-strong); color: var(--muted); }
 
 /* ---- Input area ---- */
 .input-area { flex: 0 0 auto; padding: 16px 38px 26px; background: linear-gradient(180deg, transparent, var(--paper) 30%); }
 .input-inner { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-2); padding: 12px 14px; position: relative; transition: box-shadow 0.2s, border-color 0.2s; }
-.input-inner:focus-within { border-color: var(--azure-500); box-shadow: 0 0 0 3px rgba(37,99,235,0.12), var(--sh-2); }
+.input-inner:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(13,148,136,0.12), var(--sh-2); }
 .search-wrapper { position: relative; display: flex; align-items: flex-end; gap: 10px; }
 
 /* ---- Source-document filter ---- */
 .doc-filter { position: relative; flex: 0 0 auto; }
 .doc-filter-btn { position: relative; width: 40px; height: 40px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: #fff; color: var(--ink-soft); cursor: pointer; font-size: 15px; transition: 0.15s; display: inline-flex; align-items: center; justify-content: center; }
-.doc-filter-btn:hover { border-color: var(--azure-500); color: var(--navy-700); background: var(--paper); }
+.doc-filter-btn:hover { border-color: var(--accent); color: var(--navy-700); background: var(--paper); }
 .doc-filter-btn.is-active { border-color: var(--navy-700); color: var(--navy-700); background: rgba(26,35,126,0.06); }
 .doc-filter-badge { position: absolute; top: -7px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--navy-700); color: #fff; font-family: var(--mono); font-size: 9.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .doc-filter-panel { position: absolute; bottom: calc(100% + 12px); left: 0; width: 360px; max-width: 80vw; max-height: 60vh; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-3); z-index: 200; overflow: hidden; animation: slideUp 0.16s ease both; }
-.doc-filter-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--azure-600); font-weight: 600; }
+.doc-filter-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .doc-filter-close { background: none; border: none; font-size: 18px; line-height: 1; color: var(--faint); cursor: pointer; }
 .doc-filter-close:hover { color: var(--bad); }
 .doc-filter-body { overflow-y: auto; padding: 6px 0; }
@@ -121,7 +121,7 @@
 .suggestion-item { padding: 11px 16px; cursor: pointer; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .suggestion-item:last-child { border-bottom: none; }
 .suggestion-item:hover { background: var(--paper); }
-.badge-concept { background: rgba(37,99,235,0.12); color: var(--azure-600); }
+.badge-concept { background: rgba(13,148,136,0.12); color: var(--accent); }
 
 @media (max-width: 900px) {
   .search-shell { height: 100dvh; }

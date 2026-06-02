@@ -12,9 +12,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-a { color: var(--azure-600); text-decoration: none; }
+a { color: var(--accent); text-decoration: none; }
 button { font-family: inherit; }
-::selection { background: rgba(37, 99, 235, 0.22); }
+::selection { background: rgba(13, 148, 136, 0.22); }
 
 /* Scrollbars */
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }

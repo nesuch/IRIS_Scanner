@@ -600,10 +600,17 @@ def api_admin_delete_user(user_id):
     user = m.User.query.get_or_404(user_id)
     if user.id == m.current_user.id:
         return jsonify({"ok": False, "message": "Cannot delete yourself."}), 400
-    m._deactivate_all_user_sessions(user.id)
-    m._record_admin_audit(user.email, "user_delete", "success")
-    m.db.session.delete(user)
-    m.db.session.commit()
+    try:
+        # Clear FK-dependent rows first so the delete succeeds on Postgres too.
+        m._purge_user_dependents(user.id)
+        email = user.email
+        m.db.session.delete(user)
+        m.db.session.commit()
+        m._record_admin_audit(email, "user_delete", "success")
+    except Exception as e:
+        m.db.session.rollback()
+        print(f"user delete error: {e}")
+        return jsonify({"ok": False, "message": "Could not delete user."}), 500
     return jsonify({"ok": True})
 
 

@@ -18,6 +18,13 @@
   --accent-red: #ef4444;
   --accent-red-deep: #c1121f;
 
+  /* Secondary UI accent — teal. Distinct from the navy brand for contrast;
+     replaces the old bright light-blue accent across icons/links/focus. */
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
+  --accent-soft: rgba(13, 148, 136, 0.12);
+  --accent-ring: rgba(13, 148, 136, 0.18);
+
   /* Semantic */
   --good: #15803d;
   --good-bg: #dcfce7;

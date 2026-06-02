@@ -14,16 +14,16 @@
 .filter-cats { width: 160px; flex-shrink: 0; background: var(--paper); border-right: 1px solid var(--line); overflow-y: auto; }
 .cat-item { padding: 13px 16px; font-size: 13px; font-weight: 600; color: var(--ink-soft); cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; justify-content: space-between; transition: 0.12s; }
 .cat-item:hover { background: var(--paper-2); }
-.cat-item.active { background: var(--card); border-left-color: var(--azure-600); color: var(--azure-600); }
-.cat-count { font-family: var(--mono); font-size: 10px; background: var(--azure-600); color: #fff; border-radius: 9px; padding: 1px 7px; }
+.cat-item.active { background: var(--card); border-left-color: var(--accent); color: var(--accent); }
+.cat-count { font-family: var(--mono); font-size: 10px; background: var(--accent); color: #fff; border-radius: 9px; padding: 1px 7px; }
 .filter-options-pane { flex: 1; padding: 16px; overflow-y: auto; }
 .entity-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
 .chip-btn { background: var(--paper); border: 1px solid var(--line-strong); padding: 5px 12px; border-radius: var(--r-pill); font-size: 11.5px; cursor: pointer; color: var(--navy-700); transition: 0.15s; user-select: none; }
-.chip-btn:hover { background: rgba(37,99,235,0.08); border-color: var(--azure-500); }
+.chip-btn:hover { background: rgba(13,148,136,0.08); border-color: var(--accent); }
 .chip-btn.danger { color: var(--accent-red); border-color: #fecaca; }
 .checkbox-item { display: flex; align-items: center; gap: 10px; padding: 7px 4px; cursor: pointer; font-size: 14px; color: var(--ink-soft); border-radius: 6px; }
 .checkbox-item:hover { background: var(--paper); }
-.checkbox-item input { width: 16px; height: 16px; accent-color: var(--azure-600); cursor: pointer; }
+.checkbox-item input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .no-data-msg { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 12px; font-style: italic; }
 .filter-count-note { margin-top: 12px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); text-align: right; }
 

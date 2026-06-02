@@ -341,6 +341,17 @@ def _get_active_device_count(user_id: int) -> int:
     return int(count or 0)
 
 
+def _purge_user_dependents(user_id: int):
+    """Remove rows that FK-reference a user so the user can be hard-deleted.
+
+    SQLite ignores foreign keys by default (delete "just works"), but Postgres
+    (cloud) enforces them — deleting a user with sessions/feedback raises an
+    IntegrityError. Clear the child rows first so delete works on both.
+    """
+    UserSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    FeedbackEntry.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+
 def _record_admin_audit(email: str, action_type: str, status: str):
     try:
         db.session.add(
@@ -1072,7 +1083,7 @@ def admin_delete_user(user_id):
     user = User.query.get_or_404(user_id)
     if user.id == current_user.id:
         return redirect(url_for("admin_panel"))
-    _deactivate_all_user_sessions(user.id)
+    _purge_user_dependents(user.id)
     _record_admin_audit(user.email, "user_delete", "success")
     db.session.delete(user)
     db.session.commit()
