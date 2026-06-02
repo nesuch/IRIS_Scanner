@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session, send_from_directory
 from typing import List
 import re
 import pandas as pd
@@ -47,6 +47,14 @@ login_manager.login_view = "login"
 login_manager.login_message = "Please sign in to continue."
 
 ALLOWED_EMAIL_DOMAIN = "@irdai.gov.in"
+
+# --- React SPA serving (additive, reversible) -------------------------------
+# The Vite build is emitted to frontend/dist. When present (and not disabled via
+# IRIS_LEGACY_UI=1), Flask serves the SPA shell for browser navigations while the
+# original Jinja templates remain untouched in the repo as an instant rollback.
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
+SPA_INDEX = os.path.join(FRONTEND_DIST, "index.html")
+SPA_ENABLED = os.path.exists(SPA_INDEX) and (os.getenv("IRIS_LEGACY_UI", "").lower() not in {"1", "true", "yes"})
 
 
 class User(UserMixin, db.Model):
@@ -372,7 +380,34 @@ def inject_device_count():
 
 @app.before_request
 def iris_auth_gatekeeper():
-    if request.path.startswith("/static") or request.path == "/favicon.ico":
+    if request.path.startswith(("/static", "/assets")) or request.path == "/favicon.ico":
+        return None
+
+    # --- React SPA shell (additive; serves the built Vite app) ---------------
+    # For top-level browser navigations (GET text/html) outside /api, /static and
+    # /assets, return the SPA shell so React Router + /api handle the page. Auth
+    # is enforced inside the SPA (via /api/me) and on every /api/* call below.
+    if (SPA_ENABLED and request.method == "GET"
+            and not request.path.startswith(("/api/", "/static", "/assets"))
+            and "text/html" in (request.headers.get("Accept") or "")):
+        return send_file(SPA_INDEX)
+
+    # --- JSON API gate (additive; SPA layer) ---------------------------------
+    # The React SPA talks to /api/*. Unauthenticated/invalid sessions get a 401
+    # JSON response (instead of an HTML redirect) so the SPA can route to login.
+    if request.path.startswith("/api/"):
+        public_api = {"/api/login", "/api/logout", "/api/me", "/api/forgot-password"}
+        if request.path in public_api or request.path.startswith("/api/reset-password/"):
+            return None
+        if not current_user.is_authenticated:
+            return jsonify({"error": "auth_required"}), 401
+        expected_version = getattr(current_user, "session_version", 0)
+        current_version = session.get("session_version", 0)
+        session_token = session.get("auth_token")
+        if current_version != expected_version or not _is_session_active(current_user.id, session_token):
+            logout_user()
+            session.clear()
+            return jsonify({"error": "session_invalid"}), 401
         return None
 
     if request.path in PUBLIC_AUTH_PATHS or request.path.startswith("/reset-password/"):
@@ -1516,6 +1551,23 @@ def build_results_html(matches, keywords):
         
         html += f"""<div style="margin-bottom:6px; font-size:11px; color:#555;"><span style="font-weight:800; color:#333;">{m['source']}</span> | <span style="color:#0056b3;">{m['header']}</span> | Clause: {m['id']} {pdf_btn} {copy_btn}</div><div id="{content_id}" style="line-height:1.5; color:#222; font-size:14px;">{formatted_body}</div>"""
     return html
+
+# ==========================================
+# REACT SPA — additive JSON API blueprint
+# ==========================================
+# Registers /api/* endpoints that wrap the same brain/auth logic used above.
+# Injects this module so api.py can reach the models/helpers without a circular
+# import or re-executing app.py as a second module.
+import sys
+import api as iris_api
+iris_api.init_api(sys.modules[__name__])
+app.register_blueprint(iris_api.api_bp)
+
+
+# Serve the Vite build's hashed assets (JS/CSS) when the SPA is enabled.
+@app.route("/assets/<path:filename>")
+def spa_assets(filename):
+    return send_from_directory(os.path.join(FRONTEND_DIST, "assets"), filename)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', debug=True, port=8080)

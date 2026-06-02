@@ -1,0 +1,66 @@
+/* ============================================================
+   IRIS design tokens — blue brand (logo-derived), iris_web DNA
+   Logo: deep-navy → azure → cyan gradient triangle + red sphere.
+   ============================================================ */
+:root {
+  /* Brand blues */
+  --navy-900: #0b1437;
+  --navy-800: #0f1747;
+  --navy-700: #1a237e;   /* core brand (legacy primary) */
+  --indigo-600: #283593;
+  --azure-600: #2563eb;
+  --azure-500: #3b82f6;
+  --sky-400: #38bdf8;
+  --cyan-500: #06b6d4;
+  --cyan-400: #22d3ee;
+
+  /* Red sphere accent (from logo) */
+  --accent-red: #ef4444;
+  --accent-red-deep: #c1121f;
+
+  /* Semantic */
+  --good: #15803d;
+  --good-bg: #dcfce7;
+  --warn: #b45309;
+  --warn-bg: #fef3c7;
+  --bad: #b91c1c;
+  --bad-bg: #fee2e2;
+
+  /* Neutrals / surfaces */
+  --ink: #0f172a;
+  --ink-soft: #334155;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --paper: #eef2fb;          /* app background (blue-tinted) */
+  --paper-2: #e6ecf9;
+  --card: #ffffff;
+  --card-glass: rgba(255, 255, 255, 0.72);
+
+  /* Signature gradients */
+  --grad-brand: linear-gradient(135deg, #1a237e 0%, #2563eb 52%, #06b6d4 100%);
+  --grad-brand-soft: linear-gradient(135deg, #283593 0%, #3b82f6 60%, #38bdf8 100%);
+  --grad-sheen: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  --grad-app-glow: radial-gradient(1200px 600px at 12% -8%, rgba(56, 189, 248, 0.18), transparent 60%),
+                   radial-gradient(900px 500px at 100% 0%, rgba(37, 99, 235, 0.14), transparent 55%);
+
+  /* Typography */
+  --serif: 'Fraunces', Georgia, serif;
+  --mono: 'Spline Sans Mono', ui-monospace, monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Elevation */
+  --sh-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --sh-2: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.05);
+  --sh-3: 0 12px 32px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --sh-brand: 0 10px 28px rgba(37, 99, 235, 0.30);
+
+  /* Radii / layout */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+  --sidebar-w: 268px;
+  --sidebar-w-collapsed: 76px;
+}
