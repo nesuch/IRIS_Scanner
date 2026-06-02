@@ -3,6 +3,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { api } from '../api.js';
 import { TYPE_STYLES, ClauseBody, groupByType } from './search/clauseRender.jsx';
+import PdfViewer from './search/PdfViewer.jsx';
 import './search/search.css';
 
 const MODULE_META = {
@@ -245,7 +246,7 @@ export default function Search({ module }) {
                 <button className="pdf-pane-btn" onClick={() => setPdfPane(null)} title="Close pane" aria-label="Close PDF pane"><i className="fas fa-xmark" /></button>
               </span>
             </div>
-            <iframe className="pdf-pane-frame" src={pdfPane.url} title={pdfPane.source} />
+            <PdfViewer url={pdfPane.url} />
           </aside>
         )}
       </div>
