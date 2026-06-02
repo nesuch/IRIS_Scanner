@@ -36,7 +36,7 @@ export default function Login() {
         <div className="auth-brand">
           <img src="/static/iris_logo.png" alt="IRIS" />
           <span className="wm grad-text">IRIS</span>
-          <span className="wm-sub">Insurance Regulatory<br />Intelligence System</span>
+          <span className="wm-sub">IRDAI&rsquo;s Regulatory<br />Intelligence System</span>
         </div>
 
         {error && <div className="auth-error"><i className="fas fa-circle-exclamation" /> {error}</div>}

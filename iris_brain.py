@@ -326,18 +326,28 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):
 # ==========================================
 # 5. EARLY WARNING SYSTEM (RISK LOGIC - TRENDS)
 # ==========================================
-def _analyze_risk(selected_entities, dimension):
+def _analyze_risk(selected_entities, dimension, selected_years=None):
     """
     Applies thresholds AND trend analysis for Data Explorer alerts.
     Only applicable if Dimension is 'Insurer'.
+
+    Alerts are strictly scoped to the user's current selection: only the chosen
+    entities (companies) are analyzed, and when specific financial years are
+    selected the analysis window is restricted to those years too.
     """
     if UNIFIED_DF.empty or not selected_entities: return []
     if dimension != "Insurer": return []
-    
+
     alerts = []
-    # Filter by specific Entities (Insurers)
+    # Filter by specific Entities (Insurers) — scope EWS to the selected companies only.
     df = UNIFIED_DF[UNIFIED_DF['Entity'].isin(selected_entities)].copy()
-    
+
+    # Scope to the selected financial years when the user has filtered them.
+    if selected_years:
+        df = df[df['Financial_Year'].isin(selected_years)]
+    if df.empty:
+        return []
+
     # Ensure correct sorting for trend analysis
     df['Sortable_Year'] = df['Financial_Year'].astype(str).str.extract(r'(\d+)').astype(float)
     df = df.sort_values(by=['Entity', 'Metric', 'Sortable_Year', 'Quarter'])
@@ -729,8 +739,8 @@ def _create_pivoted_view(filters):
     
     # 3. Risk Analysis
     risk_alerts = []
-    if filters.get('entities'): 
-        risk_alerts = _analyze_risk(filters['entities'], target_dim)
+    if filters.get('entities'):
+        risk_alerts = _analyze_risk(filters['entities'], target_dim, filters.get('years'))
 
     try:
         # --- KEY UPDATE: Include Source_File in Index to separate duplicates ---

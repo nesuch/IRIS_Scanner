@@ -21,6 +21,9 @@ import iris_brain as brain
 
 app = Flask(__name__)
 app.secret_key = os.getenv("IRIS_SESSION_SECRET", "iris-dev-session-secret")
+# Session cookie lifetime — server-side backstop for idle auto-logout. The SPA
+# enforces a shorter inactivity timeout client-side; this caps the absolute age.
+app.permanent_session_lifetime = timedelta(hours=int(os.getenv("IRIS_SESSION_HOURS", "8")))
 DB_NAME = os.path.abspath(os.getenv("IRIS_DB_PATH", "iris.db"))
 os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
 IRIS_AUTH_DATABASE_URL = (os.getenv("IRIS_AUTH_DATABASE_URL") or "").strip()
@@ -129,6 +132,36 @@ class FeedbackEntry(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("auth_users.id"), nullable=False, index=True)
     category = db.Column(db.String(32), nullable=False, default="Suggestion")
     message = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(16), nullable=False, default="Open")  # Open | Done | Ignored
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class SearchLog(db.Model):
+    """Records each knowledge-base search query for admin usage visibility."""
+    __tablename__ = "search_logs"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_email = db.Column(db.String(255), nullable=True, index=True)
+    module = db.Column(db.String(32), nullable=True)
+    # NB: attribute is `query_text` (not `query`) — a `query` attribute would
+    # shadow Flask-SQLAlchemy's Model.query and break SearchLog.query reads.
+    query_text = db.Column("query", db.Text, nullable=True)
+    result_count = db.Column(db.Integer, nullable=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class Announcement(db.Model):
+    """Team → user communications (updates, notices) shown in the SPA bell menu."""
+    __tablename__ = "announcements"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    level = db.Column(db.String(16), nullable=False, default="info")  # info | success | warning
+    created_by = db.Column(db.String(255), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 # ==========================================
@@ -234,6 +267,7 @@ def _start_user_session(user: User):
         )
     )
     db.session.commit()
+    session.permanent = True
     session["auth_token"] = session_token
     session["session_version"] = user.session_version
 
@@ -322,6 +356,26 @@ def _record_admin_audit(email: str, action_type: str, status: str):
         app.logger.warning("Unable to record admin audit log: %s", e)
 
 
+def _record_search(email: str, module: str, query: str, result_count: int = None):
+    """Best-effort logging of a search query for admin usage visibility."""
+    q = (query or "").strip()
+    if not q or q.startswith("__DEEP_SCAN__"):
+        return
+    try:
+        db.session.add(
+            SearchLog(
+                user_email=(email or "").strip().lower() or None,
+                module=(module or "")[:32],
+                query_text=q[:1000],
+                result_count=result_count,
+                timestamp=datetime.utcnow(),
+            )
+        )
+        db.session.commit()
+    except Exception as e:
+        app.logger.warning("Unable to record search log: %s", e)
+
+
 @login_manager.user_loader
 def load_user(user_id: str):
     if not user_id.isdigit():
@@ -350,6 +404,9 @@ def _ensure_database_schema():
             "active": "BOOLEAN NOT NULL DEFAULT 1",
             "created_at": "DATETIME",
             "last_seen_at": "DATETIME",
+        },
+        "feedback_entries": {
+            "status": "VARCHAR(16) NOT NULL DEFAULT 'Open'",
         },
     }
 

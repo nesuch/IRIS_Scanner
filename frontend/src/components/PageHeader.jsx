@@ -1,7 +1,8 @@
 import { useOutletContext } from 'react-router-dom';
+import Notifications from './Notifications.jsx';
 
 // Sticky page header with the sidebar toggle, title, optional full-form label,
-// scope indicator, and right-aligned actions slot.
+// scope indicator, the global notifications bell, and a right-aligned actions slot.
 export default function PageHeader({ fullForm, title, scope, children }) {
   const ctx = useOutletContext();
   return (
@@ -14,7 +15,10 @@ export default function PageHeader({ fullForm, title, scope, children }) {
         <h1>{title}</h1>
         {scope && <span className="scope"><span className="scope-dot" />{scope}</span>}
       </div>
-      {children && <div className="header-actions">{children}</div>}
+      <div className="header-actions">
+        {children}
+        <Notifications />
+      </div>
     </header>
   );
 }

@@ -255,6 +255,13 @@ def api_search():
     tag_matches = _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module))
     highlight_kws = [raw for (raw, clean) in kw_tuples if clean in brain.ALL_UNIQUE_TAGS]
 
+    # Record the query for admin usage visibility (best-effort, non-blocking).
+    try:
+        email = _app.current_user.email if _app.current_user.is_authenticated else None
+        _app._record_search(email, module, query, len(tag_matches))
+    except Exception:
+        pass
+
     note = None
     if not tag_matches:
         if module == "life":
@@ -512,11 +519,31 @@ def api_admin_overview():
              .order_by(m.FeedbackEntry.id.desc()))
         if feedback_filter in {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}:
             q = q.filter(m.FeedbackEntry.category == feedback_filter)
-        feedback_rows = [{"created_at": m._format_dt_local(e.created_at), "user_email": ue,
-                          "category": e.category, "message": e.message}
+        feedback_rows = [{"id": e.id, "created_at": m._format_dt_local(e.created_at), "user_email": ue,
+                          "category": e.category, "message": e.message,
+                          "status": getattr(e, "status", "Open") or "Open"}
                          for e, ue in q.limit(200).all()]
     except Exception as e:
         print(f"feedback load error: {e}")
+
+    search_logs = []
+    try:
+        rows = (m.SearchLog.query
+                .order_by(m.SearchLog.id.desc()).limit(100).all())
+        search_logs = [{"user_email": r.user_email, "module": r.module, "query": r.query_text,
+                        "result_count": r.result_count, "timestamp": m._format_dt_local(r.timestamp)}
+                       for r in rows]
+    except Exception as e:
+        print(f"search log load error: {e}")
+
+    announcements = []
+    try:
+        rows = m.Announcement.query.order_by(m.Announcement.id.desc()).limit(50).all()
+        announcements = [{"id": a.id, "title": a.title, "body": a.body, "level": a.level,
+                          "active": a.active, "created_by": a.created_by,
+                          "created_at": m._format_dt_local(a.created_at)} for a in rows]
+    except Exception as e:
+        print(f"announcement load error: {e}")
 
     return jsonify({
         "sync_state": m.SYNC_STATE,
@@ -526,6 +553,8 @@ def api_admin_overview():
         "audit_logs": audit_logs,
         "feedback_rows": feedback_rows,
         "feedback_filter": feedback_filter,
+        "search_logs": search_logs,
+        "announcements": announcements,
     })
 
 
@@ -730,6 +759,97 @@ def api_feedback():
     if len(message) < 5:
         return jsonify({"ok": False, "message": "Please enter at least 5 characters."}), 400
     m.db.session.add(m.FeedbackEntry(user_id=m.current_user.id, category=category,
-                                     message=message, created_at=datetime.utcnow()))
+                                     message=message, status="Open", created_at=datetime.utcnow()))
     m.db.session.commit()
     return jsonify({"ok": True, "message": "Thanks! Your feedback has been submitted."})
+
+
+@api_bp.post("/admin/feedback/<int:fid>/status")
+def api_admin_feedback_status(fid):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    data = request.get_json(silent=True) or request.form
+    status = (data.get("status") or "").strip().capitalize()
+    if status not in {"Open", "Done", "Ignored"}:
+        return jsonify({"ok": False, "message": "Invalid status."}), 400
+    entry = m.FeedbackEntry.query.get_or_404(fid)
+    entry.status = status
+    m.db.session.commit()
+    return jsonify({"ok": True, "status": status})
+
+
+@api_bp.post("/admin/feedback/<int:fid>/delete")
+def api_admin_feedback_delete(fid):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    entry = m.FeedbackEntry.query.get_or_404(fid)
+    m.db.session.delete(entry)
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ----------------------------------------------------------------------------
+# ANNOUNCEMENTS / COMMUNICATION
+# ----------------------------------------------------------------------------
+@api_bp.get("/announcements")
+def api_announcements():
+    """Active announcements for the logged-in user's notification bell."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"announcements": []}), 401
+    m = _app
+    items = []
+    try:
+        rows = (m.Announcement.query.filter_by(active=True)
+                .order_by(m.Announcement.id.desc()).limit(30).all())
+        items = [{"id": a.id, "title": a.title, "body": a.body, "level": a.level,
+                  "created_at": m._format_dt_local(a.created_at)} for a in rows]
+    except Exception as e:
+        print(f"announcement feed error: {e}")
+    return jsonify({"announcements": items})
+
+
+@api_bp.post("/admin/announcement")
+def api_admin_announcement_create():
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    data = request.get_json(silent=True) or request.form
+    title = (data.get("title") or "").strip()
+    body = (data.get("body") or "").strip()
+    level = (data.get("level") or "info").strip().lower()
+    if level not in {"info", "success", "warning"}:
+        level = "info"
+    if len(title) < 3:
+        return jsonify({"ok": False, "message": "Title must be at least 3 characters."}), 400
+    if len(body) < 3:
+        return jsonify({"ok": False, "message": "Message must be at least 3 characters."}), 400
+    m.db.session.add(m.Announcement(title=title[:200], body=body, level=level,
+                                    created_by=m.current_user.email, active=True,
+                                    created_at=datetime.utcnow()))
+    m.db.session.commit()
+    m._record_admin_audit(m.current_user.email, "announcement_create", "success")
+    return jsonify({"ok": True}), 201
+
+
+@api_bp.post("/admin/announcement/<int:aid>/toggle")
+def api_admin_announcement_toggle(aid):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    a = m.Announcement.query.get_or_404(aid)
+    a.active = not a.active
+    m.db.session.commit()
+    return jsonify({"ok": True, "active": a.active})
+
+
+@api_bp.post("/admin/announcement/<int:aid>/delete")
+def api_admin_announcement_delete(aid):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    a = m.Announcement.query.get_or_404(aid)
+    m.db.session.delete(a)
+    m.db.session.commit()
+    return jsonify({"ok": True})

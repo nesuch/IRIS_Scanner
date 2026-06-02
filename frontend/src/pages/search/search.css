@@ -45,7 +45,7 @@
 .chat-block.user .chat-label { text-align: right; }
 
 .bubble { display: inline-block; padding: 14px 18px; border-radius: 14px; text-align: left; font-size: 15px; line-height: 1.6; box-shadow: var(--sh-1); }
-.user-bubble { background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(56,189,248,0.10)); color: var(--navy-700); border: 1px solid rgba(37,99,235,0.25); border-bottom-right-radius: 3px; font-weight: 500; }
+.user-bubble { background: rgba(26,35,126,0.06); color: var(--navy-700); border: 1px solid rgba(26,35,126,0.16); border-bottom-right-radius: 3px; font-weight: 500; }
 .iris-bubble { background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 3px; width: 100%; box-sizing: border-box; }
 
 .iris-msg { margin: 0; font-size: 15px; line-height: 1.6; color: var(--ink-soft); }
@@ -75,7 +75,7 @@
 .clause-body .hl { background: linear-gradient(180deg, rgba(56,189,248,0.0) 55%, rgba(56,189,248,0.5) 55%); color: inherit; font-weight: 700; padding: 0 1px; border-radius: 2px; }
 .clause-md-table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
 .clause-md-table th, .clause-md-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
-.clause-md-table th { background: #f4f7ff; font-weight: 600; }
+.clause-md-table th { background: var(--paper); font-weight: 600; }
 
 /* ---- Deep-scan chips ---- */
 .deep-chips { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }

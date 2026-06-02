@@ -123,6 +123,42 @@ function CreateUserForm({ onCreated }) {
   );
 }
 
+function AnnouncementForm({ onPosted }) {
+  const toast = useToast();
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [level, setLevel] = useState('info');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.post('/admin/announcement', { title, body, level });
+      toast.success('Announcement published');
+      setTitle(''); setBody(''); setLevel('info'); onPosted?.();
+    } catch (err) { toast.error(err.message || 'Could not publish.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <div className="admin-form-grid">
+        <div className="field"><label>Title</label><input className="input" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. New circulars added" /></div>
+        <div className="field"><label>Type</label>
+          <select className="select" value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="info">Info</option><option value="success">Update</option><option value="warning">Important</option>
+          </select>
+        </div>
+      </div>
+      <div className="field" style={{ marginTop: 12 }}><label>Message</label>
+        <textarea className="input" required rows={3} value={body} onChange={(e) => setBody(e.target.value)} placeholder="What do you want users to know?" />
+      </div>
+      <button className="btn btn-primary" type="submit" disabled={busy} style={{ marginTop: 14 }}><i className="fas fa-bullhorn" /> Publish to All Users</button>
+    </form>
+  );
+}
+
 export default function Admin() {
   const toast = useToast();
   const { user } = useAuth();
@@ -152,6 +188,20 @@ export default function Admin() {
     catch (e) { toast.error(e.message); }
   }
 
+  async function feedbackAction(id, action, payload) {
+    if (action === 'delete' && !window.confirm('Delete this feedback entry?')) return;
+    try {
+      await api.post(`/admin/feedback/${id}/${action}`, payload);
+      load();
+    } catch (e) { toast.error(e.message || 'Action failed'); }
+  }
+
+  async function announcementAction(id, action) {
+    if (action === 'delete' && !window.confirm('Delete this announcement?')) return;
+    try { await api.post(`/admin/announcement/${id}/${action}`); load(); }
+    catch (e) { toast.error(e.message || 'Action failed'); }
+  }
+
   if (loading) return (<><PageHeader fullForm="System Administration" title="Admin Console" scope="Manage Data & Configuration" /><div className="page-body"><PageLoading /></div></>);
 
   return (
@@ -164,7 +214,7 @@ export default function Admin() {
           <p className="admin-help">Create user accounts and manage access. Your active devices: <strong>{user?.device_count}</strong></p>
           <CreateUserForm onCreated={load} />
           <div className="table-wrap" style={{ marginTop: 20 }}>
-            <div className="table-scroll">
+            <div className="table-scroll users-scroll">
               <table className="data">
                 <thead><tr><th>Email</th><th>Active</th><th>Admin</th><th>Devices</th><th>Created</th><th>Actions</th></tr></thead>
                 <tbody>
@@ -202,6 +252,52 @@ export default function Admin() {
                 {data.usage_insights.users?.length ? data.usage_insights.users.map((r, i) => (
                   <tr key={i}><td>{r.email}</td><td>{r.total_requests}</td><td>{r.estimated_minutes}</td><td>{r.top_module}</td><td>{r.last_seen}</td></tr>
                 )) : <tr><td colSpan={5} className="muted-cell">No module usage tracked yet.</td></tr>}
+              </tbody>
+            </table>
+          </div></div>
+        </Section>
+
+        <Section icon="fa-bullhorn" title="Announcements & Communication">
+          <p className="admin-help">Publish updates and notices. Active announcements appear in every user&rsquo;s notification bell.</p>
+          <AnnouncementForm onPosted={load} />
+          <div className="table-wrap log-scroll" style={{ marginTop: 20 }}><div className="table-scroll">
+            <table className="data">
+              <thead><tr><th>Posted</th><th>Type</th><th>Title</th><th>Message</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {data.announcements?.length ? data.announcements.map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.created_at}</td>
+                    <td><span className={`badge badge-${a.level === 'warning' ? 'warn' : a.level === 'success' ? 'good' : 'navy'}`}>{a.level}</span></td>
+                    <td className="fw-bold">{a.title}</td>
+                    <td style={{ whiteSpace: 'normal', minWidth: 260 }}>{a.body}</td>
+                    <td>{a.active ? <span className="badge badge-good">Live</span> : <span className="badge badge-grey">Hidden</span>}</td>
+                    <td>
+                      <div className="row-actions">
+                        <button className="btn btn-ghost btn-sm" onClick={() => announcementAction(a.id, 'toggle')}>{a.active ? 'Hide' : 'Show'}</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => announcementAction(a.id, 'delete')}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                )) : <tr><td colSpan={6} className="muted-cell">No announcements yet.</td></tr>}
+              </tbody>
+            </table>
+          </div></div>
+        </Section>
+
+        <Section icon="fa-magnifying-glass" title="Recent Search Queries">
+          <p className="admin-help">What users are searching for across the knowledge base (latest 100).</p>
+          <div className="table-wrap log-scroll"><div className="table-scroll">
+            <table className="data">
+              <thead><tr><th>Time</th><th>User</th><th>Module</th><th>Query</th><th>Results</th></tr></thead>
+              <tbody>
+                {data.search_logs?.length ? data.search_logs.map((r, i) => (
+                  <tr key={i}>
+                    <td>{r.timestamp}</td><td>{r.user_email || '-'}</td>
+                    <td><span className="badge badge-navy">{r.module || '-'}</span></td>
+                    <td style={{ whiteSpace: 'normal', minWidth: 260 }} className="fw-bold">{r.query}</td>
+                    <td>{r.result_count ?? '-'}</td>
+                  </tr>
+                )) : <tr><td colSpan={5} className="muted-cell">No search activity recorded yet.</td></tr>}
               </tbody>
             </table>
           </div></div>
@@ -245,11 +341,27 @@ export default function Admin() {
           )}>
           <div className="table-wrap log-scroll"><div className="table-scroll">
             <table className="data">
-              <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Message</th></tr></thead>
+              <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Message</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
-                {data.feedback_rows.length ? data.feedback_rows.map((r, i) => (
-                  <tr key={i}><td>{r.created_at || '-'}</td><td>{r.user_email}</td><td>{r.category}</td><td style={{ whiteSpace: 'normal', minWidth: 320 }}>{r.message}</td></tr>
-                )) : <tr><td colSpan={4} className="muted-cell">No feedback submissions found.</td></tr>}
+                {data.feedback_rows.length ? data.feedback_rows.map((r) => {
+                  const st = r.status || 'Open';
+                  const stBadge = st === 'Done' ? 'badge-good' : st === 'Ignored' ? 'badge-grey' : 'badge-warn';
+                  return (
+                    <tr key={r.id} className={st !== 'Open' ? 'row-resolved' : ''}>
+                      <td>{r.created_at || '-'}</td><td>{r.user_email}</td><td>{r.category}</td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 300 }}>{r.message}</td>
+                      <td><span className={`badge ${stBadge}`}>{st}</span></td>
+                      <td>
+                        <div className="row-actions">
+                          <button className="btn btn-ghost btn-sm" disabled={st === 'Done'} onClick={() => feedbackAction(r.id, 'status', { status: 'Done' })}>Done</button>
+                          <button className="btn btn-ghost btn-sm" disabled={st === 'Ignored'} onClick={() => feedbackAction(r.id, 'status', { status: 'Ignored' })}>Ignore</button>
+                          {st !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => feedbackAction(r.id, 'status', { status: 'Open' })}>Reopen</button>}
+                          <button className="btn btn-danger btn-sm" onClick={() => feedbackAction(r.id, 'delete')}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }) : <tr><td colSpan={6} className="muted-cell">No feedback submissions found.</td></tr>}
               </tbody>
             </table>
           </div></div>
