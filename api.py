@@ -207,6 +207,14 @@ def api_search():
     data = request.get_json(silent=True) or request.form
     module = (data.get("module") or "universal").strip()
     query = (data.get("query") or "").strip()
+    # Optional source filter: None => all docs (default); a list => only those docs.
+    sources = data.get("sources")
+
+    def _scope(matches):
+        if sources is None:
+            return matches
+        allow = set(sources)
+        return [m for m in matches if m.get("source") in allow]
 
     KB_DF = brain.load_knowledge_base()
 
@@ -221,7 +229,7 @@ def api_search():
         display_kws = [t[0] for t in keyword_tuples]
         tag_matches = brain.search_tags_only(keyword_tuples, KB_DF, module=module)
         exclude_ids = [m["id"] for m in tag_matches]
-        matches = brain.deep_scan_brain(keyword_tuples, KB_DF, exclude_ids=exclude_ids, module=module)
+        matches = _scope(brain.deep_scan_brain(keyword_tuples, KB_DF, exclude_ids=exclude_ids, module=module))
         return jsonify({
             "ok": True, "module": module, "kind": "deep_scan",
             "query_label": "Deep Scan",
@@ -244,7 +252,7 @@ def api_search():
                         "query_label": query, "matches": [], "chips": [], "keywords": [],
                         "note": "Query rejected. Please use regulatory terms."})
 
-    tag_matches = brain.search_tags_only(kw_tuples, KB_DF, module=module)
+    tag_matches = _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module))
     highlight_kws = [raw for (raw, clean) in kw_tuples if clean in brain.ALL_UNIQUE_TAGS]
 
     note = None
@@ -271,6 +279,40 @@ def api_search():
 def api_vocab():
     brain.load_knowledge_base()
     return jsonify(brain.get_autocomplete_data())
+
+
+# Documents available to a module, grouped by doc type (for the search source filter).
+_DOC_TYPE_ORDER = ["ACT", "REGULATION", "MASTER", "CIRCULAR", "GUIDELINE", "UNKNOWN"]
+_DOC_TYPE_LABELS = {
+    "ACT": "Acts", "REGULATION": "Regulations", "MASTER": "Master Circulars",
+    "CIRCULAR": "Circulars", "GUIDELINE": "Guidelines", "UNKNOWN": "Other",
+}
+
+
+@api_bp.get("/docs")
+def api_docs():
+    module = (request.args.get("module") or "universal").strip()
+    df = brain.load_knowledge_base()
+    scoped = brain.filter_df_by_module(df, module)
+
+    src_type = {}
+    if scoped is not None and not scoped.empty:
+        for _, row in scoped.iterrows():
+            src = str(row.get("Source_Doc") or "").strip()
+            if not src:
+                continue
+            src_type.setdefault(src, str(row.get("Doc_Type") or "UNKNOWN").strip().upper() or "UNKNOWN")
+
+    by_type = {}
+    for src, typ in src_type.items():
+        by_type.setdefault(typ, []).append(src)
+    for docs in by_type.values():
+        docs.sort()
+
+    ordered_types = [t for t in _DOC_TYPE_ORDER if t in by_type]
+    ordered_types += [t for t in by_type if t not in _DOC_TYPE_ORDER]
+    groups = [{"type": t, "label": _DOC_TYPE_LABELS.get(t, t.title()), "docs": by_type[t]} for t in ordered_types]
+    return jsonify({"module": module, "groups": groups})
 
 
 # ----------------------------------------------------------------------------

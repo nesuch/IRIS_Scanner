@@ -92,15 +92,45 @@ export default function Search({ module }) {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [docGroups, setDocGroups] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+  const [docFilterOpen, setDocFilterOpen] = useState(false);
   const chatRef = useRef(null);
   const lastUserRef = useRef(null);
+  const docFilterRef = useRef(null);
 
   // Reset chat when switching modules (matches per-page server history reset).
-  useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); }, [module]);
+  useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); }, [module]);
 
   useEffect(() => {
     api.get('/vocab').then((d) => setVocab(d.CONCEPTS || [])).catch(() => {});
   }, []);
+
+  // Load the documents available to this module and select them all by default.
+  useEffect(() => {
+    api.get(`/docs?module=${module}`).then((d) => {
+      const groups = d.groups || [];
+      setDocGroups(groups);
+      const all = new Set();
+      groups.forEach((g) => g.docs.forEach((s) => all.add(s)));
+      setSelected(all);
+    }).catch(() => { setDocGroups([]); setSelected(new Set()); });
+  }, [module]);
+
+  // Close the doc-filter popover on outside click.
+  useEffect(() => {
+    if (!docFilterOpen) return undefined;
+    const onDown = (e) => { if (docFilterRef.current && !docFilterRef.current.contains(e.target)) setDocFilterOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [docFilterOpen]);
+
+  const allDocs = docGroups.flatMap((g) => g.docs);
+  const allSelected = allDocs.length > 0 && selected.size === allDocs.length;
+  const noneSelected = selected.size === 0;
+  const toggleDoc = (src) => setSelected((s) => { const n = new Set(s); n.has(src) ? n.delete(src) : n.add(src); return n; });
+  const toggleGroup = (g) => setSelected((s) => { const n = new Set(s); const allIn = g.docs.every((d) => n.has(d)); g.docs.forEach((d) => (allIn ? n.delete(d) : n.add(d))); return n; });
+  const toggleAll = () => setSelected((s) => (s.size === allDocs.length ? new Set() : new Set(allDocs)));
 
   useEffect(() => {
     // Scroll so the latest question sits near the top (jumpToLatestQuestionStart).
@@ -116,7 +146,10 @@ export default function Search({ module }) {
     setHistory((h) => [...h, entry]);
     setBusy(true);
     try {
-      const resp = await api.post('/search', { module, query: q });
+      const body = { module, query: q };
+      const total = docGroups.reduce((n, g) => n + g.docs.length, 0);
+      if (docGroups.length && selected.size < total) body.sources = [...selected]; // subset only; all => omit
+      const resp = await api.post('/search', body);
       setHistory((h) => h.map((x) => (x.id === entry.id ? { ...x, response: resp } : x)));
     } catch (err) {
       setHistory((h) => h.map((x) => (x.id === entry.id ? { ...x, error: err.message } : x)));
@@ -201,6 +234,51 @@ export default function Search({ module }) {
       <div className="input-area">
         <form className="input-inner" onSubmit={onSubmit} autoComplete="off">
           <div className="search-wrapper">
+            <div className="doc-filter" ref={docFilterRef}>
+              <button type="button" className={`doc-filter-btn ${!allSelected && allDocs.length ? 'is-active' : ''}`}
+                onClick={() => setDocFilterOpen((o) => !o)} title="Filter source documents" aria-label="Filter source documents">
+                <i className="fas fa-filter" />
+                {!allSelected && allDocs.length > 0 && <span className="doc-filter-badge">{selected.size}</span>}
+              </button>
+              {docFilterOpen && (
+                <div className="doc-filter-panel">
+                  <div className="doc-filter-head">
+                    <span>Search in documents</span>
+                    <button type="button" className="doc-filter-close" onClick={() => setDocFilterOpen(false)} aria-label="Close">&times;</button>
+                  </div>
+                  <label className="doc-row doc-row-all">
+                    <input type="checkbox" checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = !allSelected && !noneSelected; }} onChange={toggleAll} />
+                    <span>Select all</span>
+                    <span className="doc-group-count">{selected.size}/{allDocs.length}</span>
+                  </label>
+                  <div className="doc-filter-body">
+                    {docGroups.length === 0 && <div className="doc-empty">No documents in this module.</div>}
+                    {docGroups.map((g) => {
+                      const sel = g.docs.filter((d) => selected.has(d)).length;
+                      const groupAll = sel === g.docs.length;
+                      const groupSome = sel > 0 && !groupAll;
+                      return (
+                        <div className="doc-group" key={g.type}>
+                          <label className="doc-row doc-group-head">
+                            <input type="checkbox" checked={groupAll}
+                              ref={(el) => { if (el) el.indeterminate = groupSome; }} onChange={() => toggleGroup(g)} />
+                            <span className="doc-group-label">{g.label}</span>
+                            <span className="doc-group-count">{sel}/{g.docs.length}</span>
+                          </label>
+                          {g.docs.map((d) => (
+                            <label className="doc-row doc-item" key={d}>
+                              <input type="checkbox" checked={selected.has(d)} onChange={() => toggleDoc(d)} />
+                              <span>{d}</span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
             {suggestions.length > 0 && (
               <div className="suggestions-box">
                 {suggestions.map((s, i) => (
