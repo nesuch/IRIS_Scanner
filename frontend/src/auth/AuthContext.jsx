@@ -22,6 +22,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Any API call that gets a 401 (expired/invalid session) clears auth, which
+  // sends the user to the login screen via ProtectedRoute.
+  useEffect(() => {
+    const onUnauthorized = () => setUser(null);
+    window.addEventListener('iris:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('iris:unauthorized', onUnauthorized);
+  }, []);
+
   const login = useCallback(async (email, password, next) => {
     const data = await api.post('/login', { email, password, next });
     setUser(data.user);

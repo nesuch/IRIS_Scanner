@@ -9,6 +9,21 @@ export class ApiError extends Error {
   }
 }
 
+// Endpoints where a 401 is a normal, locally-handled outcome (not an expired
+// session) — these must NOT trigger the global "bounce to login" behaviour.
+function isAuthProbe(path) {
+  return path === '/me' || path === '/login' || path === '/logout'
+    || path === '/forgot-password' || path.startsWith('/reset-password');
+}
+
+// On any unexpected 401, notify the app so it can drop to the login screen
+// (handled in AuthContext) instead of surfacing a raw "auth_required" error.
+function handleUnauthorized(path) {
+  if (!isAuthProbe(path) && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('iris:unauthorized'));
+  }
+}
+
 async function request(method, path, body, opts = {}) {
   const headers = {};
   let payload;
@@ -30,6 +45,7 @@ async function request(method, path, body, opts = {}) {
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) data = await res.json().catch(() => null);
   if (!res.ok) {
+    if (res.status === 401) handleUnauthorized(path);
     const msg = (data && (data.message || data.error)) || res.statusText;
     throw new ApiError(msg, res.status, data);
   }
@@ -48,6 +64,7 @@ export const api = {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
+      if (res.status === 401) handleUnauthorized(p);
       const data = await res.json().catch(() => null);
       throw new ApiError((data && data.message) || 'Download failed', res.status, data);
     }
