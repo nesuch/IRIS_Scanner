@@ -51,16 +51,35 @@ export function ClauseBody({ text, keywords }) {
   const blocks = [];
   let tableRows = [];
 
+  const isSeparator = (r) => /^\|[\s\-:|]+\|$/.test(r.trim());
+
   const flushTable = (key) => {
     if (!tableRows.length) return;
-    const rows = tableRows.filter((r) => !/^\|[\s\-:|]+\|$/.test(r.trim()));
+    // Derive per-column alignment from the GFM separator row (the one with
+    // dashes): `:---` left, `---:` right, `:--:` center. Pure Markdown — applied
+    // as a CSS text-align (no HTML), so unaligned tables render exactly as before.
+    const sep = tableRows.find((r) => isSeparator(r) && r.includes('-'));
+    const aligns = sep
+      ? sep.trim().replace(/^\||\|$/g, '').split('|').map((seg) => {
+          const s = seg.trim();
+          const l = s.startsWith(':'); const rt = s.endsWith(':');
+          return l && rt ? 'center' : rt ? 'right' : l ? 'left' : null;
+        })
+      : [];
+    const rows = tableRows.filter((r) => !isSeparator(r));
     blocks.push(
       <table className="clause-md-table" key={`t-${key}`}>
         <tbody>
           {rows.map((row, ri) => {
             const cells = row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
             const Tag = ri === 0 ? 'th' : 'td';
-            return <tr key={ri}>{cells.map((c, ci) => <Tag key={ci}>{c}</Tag>)}</tr>;
+            return (
+              <tr key={ri}>
+                {cells.map((c, ci) => (
+                  <Tag key={ci} style={aligns[ci] ? { textAlign: aligns[ci] } : undefined}>{c}</Tag>
+                ))}
+              </tr>
+            );
           })}
         </tbody>
       </table>
