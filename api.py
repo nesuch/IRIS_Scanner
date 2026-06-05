@@ -507,6 +507,7 @@ def api_admin_overview():
     users = m.User.query.order_by(m.User.created_at.desc()).all()
     user_rows = [{"id": u.id, "email": u.email, "is_active": u.is_active,
                   "is_admin": u.is_admin, "created_at": m._format_dt_local(u.created_at),
+                  "display_name": getattr(u, "display_name", None),
                   "device_count": m._get_active_device_count(u.id)} for u in users]
 
     audit_logs = []

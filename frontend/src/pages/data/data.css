@@ -16,7 +16,7 @@
 .cat-item:hover { background: var(--paper-2); }
 .cat-item.active { background: var(--card); border-left-color: var(--accent); color: var(--accent); }
 .cat-count { font-family: var(--mono); font-size: 10px; background: var(--accent); color: #fff; border-radius: 9px; padding: 1px 7px; }
-.filter-options-pane { flex: 1; padding: 16px; overflow-y: auto; }
+.filter-options-pane { flex: 1; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
 .entity-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
 .chip-btn { background: var(--paper); border: 1px solid var(--line-strong); padding: 5px 12px; border-radius: var(--r-pill); font-size: 11.5px; cursor: pointer; color: var(--navy-700); transition: 0.15s; user-select: none; }
 .chip-btn:hover { background: rgba(13,148,136,0.08); border-color: var(--accent); }

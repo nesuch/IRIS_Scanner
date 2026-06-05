@@ -3,12 +3,12 @@
    ============================================================ */
 
 /* ---------- App shell / layout ---------- */
-.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; transition: grid-template-columns 0.24s cubic-bezier(0.4,0,0.2,1); }
+.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; min-height: 100dvh; transition: grid-template-columns 0.24s cubic-bezier(0.4,0,0.2,1); }
 .app-shell.collapsed { grid-template-columns: var(--sidebar-w-collapsed) 1fr; }
 
 /* ---------- Sidebar ---------- */
 .sidebar {
-  position: sticky; top: 0; height: 100vh; overflow-y: auto; overflow-x: hidden;
+  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 4px; padding: 20px 14px 24px;
   background: #ffffff;
   border-right: 1px solid var(--line);
@@ -48,7 +48,7 @@
 .page-header .full-form { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--indigo-600); font-weight: 600; }
 .page-header h1 { margin: 0; font-family: var(--serif); font-weight: 600; font-size: 25px; color: var(--ink); letter-spacing: -0.01em; }
 .page-header .scope { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
-.scope-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px rgba(21,128,61,0.15); display: inline-block; }
+.scope-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px rgba(21,128,61,0.15); display: inline-block; flex: 0 0 auto; }
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
 /* ---------- Notifications bell ---------- */
@@ -58,7 +58,7 @@
 .notif-dot { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--accent-red); color: #fff; font-family: var(--mono); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fff; }
 .notif-panel { position: absolute; right: 0; top: calc(100% + 10px); width: min(380px, 92vw); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-3); z-index: 50; overflow: hidden; animation: popIn 0.18s ease; }
 .notif-head { padding: 13px 16px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--paper); }
-.notif-body { max-height: 60vh; overflow-y: auto; }
+.notif-body { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; }
 .notif-empty { padding: 30px 16px; text-align: center; color: var(--faint); font-size: 13px; }
 .notif-empty i { display: block; font-size: 26px; margin-bottom: 10px; }
 .notif-item { display: flex; gap: 11px; padding: 13px 16px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--indigo-600); }
@@ -126,7 +126,7 @@
 
 /* ---------- Tables ---------- */
 .table-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-1); }
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; overscroll-behavior: contain; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.data th { background: var(--paper); text-align: left; padding: 12px 15px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong); white-space: nowrap; position: sticky; top: 0; }
 table.data td { padding: 11px 15px; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
@@ -141,7 +141,7 @@ table.data tbody tr:hover { background: var(--paper); }
 .modal-head h3 { margin: 0; font-family: var(--serif); font-size: 18px; color: var(--ink); }
 .modal-close { background: none; border: none; font-size: 20px; color: var(--faint); cursor: pointer; line-height: 1; }
 .modal-close:hover { color: var(--bad); }
-.modal-body { padding: 20px; overflow: auto; }
+.modal-body { padding: 20px; overflow: auto; overscroll-behavior: contain; }
 .modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line); }
 
 /* ---------- Empty state ---------- */

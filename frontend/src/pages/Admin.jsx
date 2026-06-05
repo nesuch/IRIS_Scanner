@@ -227,10 +227,11 @@ export default function Admin() {
           <div className="table-wrap" style={{ marginTop: 20 }}>
             <div className="table-scroll users-scroll">
               <table className="data">
-                <thead><tr><th>Email</th><th>Active</th><th>Admin</th><th>Devices</th><th>Created</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Active</th><th>Admin</th><th>Devices</th><th>Created</th><th>Actions</th></tr></thead>
                 <tbody>
                   {data.users.length ? data.users.map((u) => (
                     <tr key={u.id}>
+                      <td>{u.display_name || <span style={{ color: 'var(--faint)' }}>—</span>}</td>
                       <td>{u.email}</td>
                       <td>{u.is_active ? 'Yes' : 'No'}</td>
                       <td>{u.is_admin ? 'Yes' : 'No'}</td>
@@ -247,7 +248,7 @@ export default function Admin() {
                         </div>
                       </td>
                     </tr>
-                  )) : <tr><td colSpan={6} className="muted-cell">No users available.</td></tr>}
+                  )) : <tr><td colSpan={7} className="muted-cell">No users available.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -256,7 +257,7 @@ export default function Admin() {
 
         <Section icon="fa-user-clock" title="Usage Insights">
           <p className="admin-help">Logged-in user behavior across modules.</p>
-          <div className="table-wrap"><div className="table-scroll">
+          <div className="table-wrap"><div className="table-scroll users-scroll">
             <table className="data">
               <thead><tr><th>User</th><th>Requests</th><th>Est. Time (min)</th><th>Top Module</th><th>Last Seen</th></tr></thead>
               <tbody>

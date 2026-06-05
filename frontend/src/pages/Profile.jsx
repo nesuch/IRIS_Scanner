@@ -5,25 +5,8 @@ import { PageLoading, Spinner } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api.js';
+import AvatarCropper from './profile/AvatarCropper.jsx';
 import './profile/profile.css';
-
-// Resize an image file to a small square JPEG data URL (keeps avatars tiny so
-// they fit in the DB and replicate cheaply).
-function fileToAvatar(file, size = 160) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size; canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const s = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
 
 function Avatar({ src, name, email, size = 64 }) {
   const initials = (name || email || '?').trim().slice(0, 1).toUpperCase();
@@ -44,6 +27,7 @@ export default function Profile() {
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [busy, setBusy] = useState(false);
   const [savingId, setSavingId] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
   const fileRef = useRef(null);
 
   const load = () => api.get('/profile').then((p) => {
@@ -51,14 +35,16 @@ export default function Profile() {
   }).catch((e) => toast.error(e.message));
   useEffect(() => { load(); }, []);
 
-  async function pickPhoto(e) {
+  function pickPhoto(e) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const dataUrl = await fileToAvatar(file);
-      if (dataUrl.length > 200000) { toast.error('Image too large — try a smaller photo.'); return; }
-      setAvatar(dataUrl);
-    } catch { toast.error('Could not read that image.'); }
+    if (file) setCropFile(file);   // open the cropper to position/zoom
+    e.target.value = '';            // allow re-picking the same file
+  }
+
+  function onCropped(dataUrl) {
+    setCropFile(null);
+    if (dataUrl.length > 240000) { toast.error('Image too large — try zooming out or a smaller photo.'); return; }
+    setAvatar(dataUrl);
   }
 
   async function saveIdentity(e) {
@@ -107,6 +93,7 @@ export default function Profile() {
         {/* Identity */}
         <div className="card pad anim-rise">
           <h3 className="section-title"><i className="fas fa-id-badge" /> Your Profile</h3>
+          {name && <div className="profile-greeting">Signed in as <strong>{name}</strong></div>}
           <form onSubmit={saveIdentity} className="profile-identity">
             <div className="profile-photo">
               <Avatar src={avatar} name={name} email={profile.email} size={96} />
@@ -129,7 +116,7 @@ export default function Profile() {
         {/* Change password */}
         <div className="card pad anim-rise">
           <h3 className="section-title"><i className="fas fa-lock" /> Change Password</h3>
-          <form onSubmit={changePassword}>
+          <form onSubmit={changePassword} className="pw-form">
             <div className="admin-form-grid">
               <div className="field"><label>Current password</label><input className="input" type="password" required value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} /></div>
               <div className="field"><label>New password</label><input className="input" type="password" required minLength={8} value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} /></div>
@@ -190,6 +177,7 @@ export default function Profile() {
           </div></div>
         </div>
       </div>
+      {cropFile && <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onDone={onCropped} />}
     </>
   );
 }
