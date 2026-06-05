@@ -30,15 +30,21 @@ IRIS_AUTH_DATABASE_URL = (os.getenv("IRIS_AUTH_DATABASE_URL") or "").strip()
 DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
 AUTH_DATABASE_URL = IRIS_AUTH_DATABASE_URL or DATABASE_URL
 running_in_cloud = any(os.getenv(flag) for flag in ("K_SERVICE", "GAE_ENV", "GOOGLE_CLOUD_PROJECT"))
+# Opt-in: SQLite is durable in the cloud when Litestream replicates the DB file
+# to object storage (restore-on-boot + continuous WAL replication; see Dockerfile
+# / docker-entrypoint.sh). This keeps SQLite's in-process speed without losing
+# data on redeploy. Without it, a cloud deploy still requires a Postgres URL.
+persistent_sqlite = os.getenv("IRIS_PERSIST_SQLITE", "").lower() in {"1", "true", "yes"}
 
 if AUTH_DATABASE_URL:
     if AUTH_DATABASE_URL.startswith("postgres://"):
         AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = AUTH_DATABASE_URL
-elif running_in_cloud:
+elif running_in_cloud and not persistent_sqlite:
     raise RuntimeError(
-        "Persistent auth database is required in cloud deployments. "
-        "Set IRIS_AUTH_DATABASE_URL (preferred) or DATABASE_URL."
+        "Persistent storage is required in cloud deployments. Either set "
+        "IRIS_AUTH_DATABASE_URL (Postgres), or set IRIS_PERSIST_SQLITE=1 to run "
+        "SQLite with Litestream replication (see Dockerfile)."
     )
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_NAME}"

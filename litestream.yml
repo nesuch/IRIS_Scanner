@@ -1,0 +1,15 @@
+# Litestream — continuously replicates the SQLite DB to a GCS bucket and restores
+# it on container start, so data survives Cloud Run redeploys/restarts/scale events.
+#
+# Auth: Litestream uses the Cloud Run service account's Application Default
+# Credentials (no key file). Grant that SA roles/storage.objectAdmin on the bucket.
+#
+# Env vars (set on the Cloud Run service):
+#   IRIS_DB_PATH      absolute path of the live SQLite DB (e.g. /data/iris.db)
+#   LITESTREAM_BUCKET name of the GCS bucket (same region as Cloud Run)
+dbs:
+  - path: ${IRIS_DB_PATH}
+    replicas:
+      - type: gcs
+        bucket: ${LITESTREAM_BUCKET}
+        path: iris.db
