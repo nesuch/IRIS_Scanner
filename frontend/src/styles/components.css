@@ -129,7 +129,7 @@
 .table-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-1); }
 .table-scroll { overflow-x: auto; overscroll-behavior: contain; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-table.data th { background: var(--paper); text-align: left; padding: 12px 15px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong); white-space: nowrap; position: sticky; top: 0; }
+table.data th { background: var(--paper); text-align: left; padding: 12px 15px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong); white-space: nowrap; position: sticky; top: 0; z-index: 3; }
 table.data td { padding: 11px 15px; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
 table.data tr:last-child td { border-bottom: none; }
 table.data tbody tr { transition: background 0.12s; }
