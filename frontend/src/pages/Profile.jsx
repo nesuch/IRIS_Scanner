@@ -84,6 +84,18 @@ export default function Profile() {
     catch (err) { toast.error(err.message || 'Could not post comment'); }
   }
 
+  async function deleteFeedback(id) {
+    if (!window.confirm('Delete this feedback? This cannot be undone.')) return;
+    try { await api.post(`/feedback/${id}/delete`); toast.success('Feedback deleted'); load(); }
+    catch (err) { toast.error(err.message || 'Could not delete'); }
+  }
+
+  async function deleteFlag(id) {
+    if (!window.confirm('Retract this flag?')) return;
+    try { await api.post(`/flag/${id}/delete`); toast.success('Flag retracted'); load(); }
+    catch (err) { toast.error(err.message || 'Could not retract'); }
+  }
+
   if (!profile) return (<><PageHeader fullForm="User Profile" title="Account Settings" scope="Your profile, devices and feedback" /><div className="page-body"><PageLoading /></div></>);
 
   return (
@@ -137,6 +149,7 @@ export default function Profile() {
                     <span className="badge badge-navy">{f.category}</span>
                     <span className={`badge ${ST_BADGE[f.status] || 'badge-warn'}`}>{f.status}</span>
                     <span className="fb-date">{f.created_at}</span>
+                    <button className="fb-del" title="Delete feedback" onClick={() => deleteFeedback(f.id)}><i className="fas fa-trash-can" /></button>
                   </div>
                   <div className="fb-msg">{f.message}</div>
                   {f.comments?.length > 0 && (
@@ -155,6 +168,31 @@ export default function Profile() {
               ))}
             </div>
           ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t submitted any feedback yet.</p>}
+        </div>
+
+        {/* My flags */}
+        <div className="card pad anim-rise">
+          <h3 className="section-title"><i className="fas fa-flag" /> My Flagged Items</h3>
+          {profile.flags?.length ? (
+            <div className="fb-list">
+              {profile.flags.map((f) => {
+                const stB = f.status === 'Resolved' ? 'badge-good' : f.status === 'Dismissed' ? 'badge-grey' : 'badge-warn';
+                return (
+                  <div key={f.id} className="fb-card">
+                    <div className="fb-card-head">
+                      <span className="badge badge-navy">{f.kind === 'financial' ? 'Financial' : 'Clause'}</span>
+                      <span className="badge badge-grey">{f.reason}</span>
+                      <span className={`badge ${stB}`}>{f.status}</span>
+                      <span className="fb-date">{f.created_at}</span>
+                      <button className="fb-del" title="Retract flag" onClick={() => deleteFlag(f.id)}><i className="fas fa-trash-can" /></button>
+                    </div>
+                    {f.target && <div className="fb-target"><i className="fas fa-location-dot" /> {f.target}</div>}
+                    {f.description && <div className="fb-msg">{f.description}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t flagged anything yet.</p>}
         </div>
 
         {/* Active devices */}

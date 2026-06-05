@@ -65,13 +65,17 @@
 
 /* ---- Mobile: stack the filter modal so it isn't cramped ---- */
 @media (max-width: 640px) {
-  .filter-modal-body { flex-direction: column; max-height: 64vh; min-height: 0; }
+  /* Single scroll: only .modal-body scrolls (no nested inner scroll), so there's
+     just one scrollbar. The category tabs stick to the top while options scroll. */
+  .modal { max-height: 90vh; }
+  .filter-modal-body { flex-direction: column; max-height: none; min-height: 0; overflow: visible; }
   .filter-cats { width: 100%; flex-shrink: 0; display: flex; overflow-x: auto; overflow-y: hidden;
-    border-right: none; border-bottom: 1px solid var(--line); -webkit-overflow-scrolling: touch; }
+    border-right: none; border-bottom: 1px solid var(--line); -webkit-overflow-scrolling: touch;
+    position: sticky; top: -1px; z-index: 5; }
   .cat-item { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; padding: 11px 14px; }
   .cat-item.active { border-left: none; border-bottom-color: var(--accent); }
   /* extra bottom room so the last option isn't clipped at the scroll end */
-  .filter-options-pane { padding: 14px 12px 28px; }
+  .filter-options-pane { overflow: visible; max-height: none; padding: 14px 12px 28px; }
   .checkbox-item { font-size: 13.5px; }
   .dim-select { margin-bottom: 12px; }
   /* compact action bar so it doesn't dominate the page */

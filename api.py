@@ -747,6 +747,14 @@ def api_profile():
     if not _app.current_user.is_authenticated:
         return jsonify({"authenticated": False}), 401
     cu = _app.current_user
+    flags = []
+    try:
+        rows = _app.Flag.query.filter_by(user_email=cu.email).order_by(_app.Flag.id.desc()).limit(100).all()
+        flags = [{"id": f.id, "kind": f.kind, "reason": f.reason, "description": f.description,
+                  "target": f.target, "status": f.status,
+                  "created_at": _app._format_dt_local(f.created_at)} for f in rows]
+    except Exception as e:
+        print(f"profile flags load error: {e}")
     return jsonify({
         "email": cu.email,
         "display_name": getattr(cu, "display_name", None),
@@ -754,6 +762,7 @@ def api_profile():
         "is_admin": bool(getattr(cu, "is_admin", False)),
         "sessions": _app._list_user_sessions(cu.id),
         "feedback": _feedback_with_comments(cu.id),
+        "flags": flags,
     })
 
 
@@ -861,6 +870,37 @@ def api_admin_feedback_delete(fid):
     entry = m.FeedbackEntry.query.get_or_404(fid)
     m.FeedbackComment.query.filter_by(feedback_id=fid).delete(synchronize_session=False)
     m.db.session.delete(entry)
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.post("/feedback/<int:fid>/delete")
+def api_feedback_self_delete(fid):
+    """A user may retract/delete their own feedback (admins may delete any)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    entry = m.FeedbackEntry.query.get_or_404(fid)
+    is_admin = bool(getattr(m.current_user, "is_admin", False))
+    if entry.user_id != m.current_user.id and not is_admin:
+        return jsonify({"ok": False, "message": "Not allowed."}), 403
+    m.FeedbackComment.query.filter_by(feedback_id=fid).delete(synchronize_session=False)
+    m.db.session.delete(entry)
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.post("/flag/<int:flag_id>/delete")
+def api_flag_self_delete(flag_id):
+    """A user may retract/delete their own flag (admins may delete any)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    flag = m.Flag.query.get_or_404(flag_id)
+    is_admin = bool(getattr(m.current_user, "is_admin", False))
+    if (flag.user_email or "") != m.current_user.email and not is_admin:
+        return jsonify({"ok": False, "message": "Not allowed."}), 403
+    m.db.session.delete(flag)
     m.db.session.commit()
     return jsonify({"ok": True})
 
