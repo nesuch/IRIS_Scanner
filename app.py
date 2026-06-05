@@ -79,6 +79,8 @@ class User(UserMixin, db.Model):
     reset_token = db.Column(db.String(64), nullable=True)
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
     session_version = db.Column(db.Integer, nullable=False, default=0)
+    display_name = db.Column(db.String(120), nullable=True)
+    avatar = db.Column(db.Text, nullable=True)  # small base64 data-URL (resized client-side)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class SystemLog(db.Model):
@@ -171,6 +173,35 @@ class Announcement(db.Model):
     active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+
+class FeedbackComment(db.Model):
+    """Follow-up thread on a feedback entry (user follow-ups + admin replies)."""
+    __tablename__ = "feedback_comments"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    feedback_id = db.Column(db.Integer, db.ForeignKey("feedback_entries.id"), nullable=False, index=True)
+    author_email = db.Column(db.String(255), nullable=True)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class Flag(db.Model):
+    """User-reported issue on a specific clause or financial data row."""
+    __tablename__ = "flags"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_email = db.Column(db.String(255), nullable=True, index=True)
+    kind = db.Column(db.String(16), nullable=False, default="clause")  # clause | financial
+    reason = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    target = db.Column(db.String(300), nullable=True)   # source/clause id or report context
+    detail = db.Column(db.Text, nullable=True)          # snapshot (clause text / row json)
+    status = db.Column(db.String(16), nullable=False, default="Open")  # Open | Resolved | Dismissed
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
 # ==========================================
@@ -189,13 +220,16 @@ CHAT_HISTORY = []
 JUST_REDIRECTED = False
 ADMIN_ONLY_PATHS = {"/admin", "/admin/sync_start", "/admin/sync_status", "/clear_logs"}
 PUBLIC_AUTH_PATHS = {"/login", "/logout", "/forgot-password"}
+# The SPA talks to /api/*, so usage/analytics is tracked on the API endpoints the
+# React pages actually hit (the old Jinja page routes are gone). /api/me and other
+# polling/auth calls are intentionally excluded so they don't inflate the numbers.
 TRACKED_MODULE_ENDPOINTS = {
-    "/": "Universal Search",
-    "/health": "Health Dept",
-    "/life": "Life Dept",
-    "/data": "Data Explorer",
-    "/compliance": "Compliance Cockpit",
-    "/admin": "Admin Panel",
+    "/api/search": "Knowledge Search",
+    "/api/data/filter": "Data Explorer",
+    "/api/data/download": "Data Export",
+    "/api/compliance": "Compliance Cockpit",
+    "/api/analytics": "System Analytics",
+    "/api/admin/overview": "Admin Panel",
 }
 DISPLAY_TZ = ZoneInfo("Asia/Kolkata")
 
@@ -279,17 +313,40 @@ def _start_user_session(user: User):
     session["session_version"] = user.session_version
 
 
+# A session idle longer than this is treated as logged-out (server-side expiry),
+# so the active-device count reflects reality instead of growing forever.
+SESSION_IDLE_MINUTES = int(os.getenv("IRIS_SESSION_IDLE_MIN", "720"))  # 12h default
+
+
+def _expire_stale_sessions(user_id: int = None):
+    """Deactivate sessions whose last activity is older than the idle window."""
+    cutoff = datetime.utcnow() - timedelta(minutes=SESSION_IDLE_MINUTES)
+    q = UserSession.query.filter(UserSession.active.is_(True), UserSession.last_seen_at < cutoff)
+    if user_id is not None:
+        q = q.filter(UserSession.user_id == user_id)
+    if q.update({"active": False}, synchronize_session=False):
+        db.session.commit()
+
+
 def _is_session_active(user_id: int, session_token: str) -> bool:
     if not session_token:
         return False
-    return (
-        UserSession.query.filter_by(
-            user_id=user_id,
-            session_token=session_token,
-            active=True,
-        ).first()
-        is not None
-    )
+    row = UserSession.query.filter_by(
+        user_id=user_id, session_token=session_token, active=True
+    ).first()
+    if row is None:
+        return False
+    now = datetime.utcnow()
+    # Idle too long → expire this session (server-side auto-logout).
+    if row.last_seen_at and row.last_seen_at < now - timedelta(minutes=SESSION_IDLE_MINUTES):
+        row.active = False
+        db.session.commit()
+        return False
+    # Keep-alive: refresh last_seen at most once a minute to limit writes.
+    if not row.last_seen_at or (now - row.last_seen_at).total_seconds() > 60:
+        row.last_seen_at = now
+        db.session.commit()
+    return True
 
 
 def _deactivate_session_token(user_id: int, session_token: str):
@@ -344,6 +401,7 @@ def _deactivate_all_user_sessions(user_id: int):
 
 
 def _get_active_device_count(user_id: int) -> int:
+    _expire_stale_sessions(user_id)  # drop idle sessions so the count is accurate
     count = UserSession.query.filter_by(user_id=user_id, active=True).count()
     return int(count or 0)
 
@@ -356,6 +414,11 @@ def _purge_user_dependents(user_id: int):
     IntegrityError. Clear the child rows first so delete works on both.
     """
     UserSession.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    # Delete comments on this user's feedback before the feedback rows (FK order).
+    fb_ids = [f.id for f in FeedbackEntry.query.with_entities(FeedbackEntry.id)
+              .filter_by(user_id=user_id).all()]
+    if fb_ids:
+        FeedbackComment.query.filter(FeedbackComment.feedback_id.in_(fb_ids)).delete(synchronize_session=False)
     FeedbackEntry.query.filter_by(user_id=user_id).delete(synchronize_session=False)
 
 
@@ -413,6 +476,8 @@ def _ensure_database_schema():
             "reset_token": "VARCHAR(64)",
             "reset_token_expiry": "DATETIME",
             "session_version": "INTEGER NOT NULL DEFAULT 0",
+            "display_name": "VARCHAR(120)",
+            "avatar": "TEXT",
             "created_at": "DATETIME",
         },
         "system_logs": {

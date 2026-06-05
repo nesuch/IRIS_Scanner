@@ -62,3 +62,16 @@
 .gaps-box { background: var(--warn-bg); color: #856404; border: 1px solid #ffeeba; border-radius: var(--r-md); padding: 13px 16px; margin-bottom: 18px; font-size: 13px; }
 .gaps-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .gaps-box ul { margin: 5px 0 0 22px; padding: 0; }
+
+/* ---- Mobile: stack the filter modal so it isn't cramped ---- */
+@media (max-width: 640px) {
+  .filter-modal-body { flex-direction: column; max-height: 64vh; min-height: 0; }
+  .filter-cats { width: 100%; flex-shrink: 0; display: flex; overflow-x: auto; overflow-y: hidden;
+    border-right: none; border-bottom: 1px solid var(--line); -webkit-overflow-scrolling: touch; }
+  .cat-item { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; padding: 11px 14px; }
+  .cat-item.active { border-left: none; border-bottom-color: var(--accent); }
+  .filter-options-pane { padding: 14px 12px; }
+  .checkbox-item { font-size: 13.5px; }
+  .dim-select { margin-bottom: 12px; }
+  .filter-actions-bar { gap: 10px; }
+}

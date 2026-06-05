@@ -43,6 +43,8 @@ def _user_payload():
         "email": cu.email,
         "is_admin": bool(getattr(cu, "is_admin", False)),
         "device_count": _app._get_active_device_count(cu.id),
+        "display_name": getattr(cu, "display_name", None),
+        "avatar": getattr(cu, "avatar", None),
     }
 
 
@@ -229,6 +231,12 @@ def api_search():
         tag_matches = brain.search_tags_only(keyword_tuples, KB_DF, module=module)
         exclude_ids = [m["id"] for m in tag_matches]
         matches = _scope(brain.deep_scan_brain(keyword_tuples, KB_DF, exclude_ids=exclude_ids, module=module))
+        # Record deep scans too (with a readable label + result count).
+        try:
+            email = _app.current_user.email if _app.current_user.is_authenticated else None
+            _app._record_search(email, module, "[Deep Scan] " + ", ".join(display_kws), len(matches))
+        except Exception:
+            pass
         return jsonify({
             "ok": True, "module": module, "kind": "deep_scan",
             "query_label": "Deep Scan",
@@ -265,6 +273,8 @@ def api_search():
     if not tag_matches:
         if module == "life":
             note = "Life Department: No documents currently loaded."
+        elif module == "nonlife":
+            note = "Non-Life Department: No documents currently loaded."
         elif module == "data":
             note = "Data Module: Text search is disabled here."
         else:
@@ -513,17 +523,18 @@ def api_admin_overview():
     feedback_filter = (request.args.get("feedback_type") or "ALL").strip()
     feedback_rows = []
     try:
-        q = (m.db.session.query(m.FeedbackEntry, m.User.email)
-             .join(m.User, m.User.id == m.FeedbackEntry.user_id)
-             .order_by(m.FeedbackEntry.id.desc()))
-        if feedback_filter in {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}:
-            q = q.filter(m.FeedbackEntry.category == feedback_filter)
-        feedback_rows = [{"id": e.id, "created_at": m._format_dt_local(e.created_at), "user_email": ue,
-                          "category": e.category, "message": e.message,
-                          "status": getattr(e, "status", "Open") or "Open"}
-                         for e, ue in q.limit(200).all()]
+        feedback_rows = _feedback_with_comments(category=feedback_filter)
     except Exception as e:
         print(f"feedback load error: {e}")
+
+    flags = []
+    try:
+        rows = m.Flag.query.order_by(m.Flag.id.desc()).limit(200).all()
+        flags = [{"id": f.id, "user_email": f.user_email, "kind": f.kind, "reason": f.reason,
+                  "description": f.description, "target": f.target, "detail": f.detail,
+                  "status": f.status, "created_at": m._format_dt_local(f.created_at)} for f in rows]
+    except Exception as e:
+        print(f"flags load error: {e}")
 
     search_logs = []
     try:
@@ -554,6 +565,7 @@ def api_admin_overview():
         "feedback_filter": feedback_filter,
         "search_logs": search_logs,
         "announcements": announcements,
+        "flags": flags,
     })
 
 
@@ -698,14 +710,70 @@ def api_admin_sync_status():
 # ----------------------------------------------------------------------------
 # PROFILE
 # ----------------------------------------------------------------------------
+def _feedback_with_comments(user_id=None, category=None):
+    """Serialize feedback rows (optionally one user / category) with comment threads."""
+    m = _app
+    q = (m.db.session.query(m.FeedbackEntry, m.User.email)
+         .join(m.User, m.User.id == m.FeedbackEntry.user_id)
+         .order_by(m.FeedbackEntry.id.desc()))
+    if user_id is not None:
+        q = q.filter(m.FeedbackEntry.user_id == user_id)
+    if category in {"Bug", "Suggestion", "UI Issue", "Other (please specify)"}:
+        q = q.filter(m.FeedbackEntry.category == category)
+    pairs = q.limit(200).all()
+    rows = [f for f, _ in pairs]
+    ids = [f.id for f in rows]
+    comments_by_fid = {}
+    if ids:
+        for c in (m.FeedbackComment.query
+                  .filter(m.FeedbackComment.feedback_id.in_(ids))
+                  .order_by(m.FeedbackComment.id.asc()).all()):
+            comments_by_fid.setdefault(c.feedback_id, []).append({
+                "author_email": c.author_email, "is_admin": bool(c.is_admin),
+                "body": c.body, "created_at": m._format_dt_local(c.created_at),
+            })
+    return [{
+        "id": f.id, "category": f.category, "message": f.message,
+        "user_email": ue,
+        "status": getattr(f, "status", "Open") or "Open",
+        "created_at": m._format_dt_local(f.created_at),
+        "comments": comments_by_fid.get(f.id, []),
+    } for f, ue in pairs]
+
+
 @api_bp.get("/profile")
 def api_profile():
     if not _app.current_user.is_authenticated:
         return jsonify({"authenticated": False}), 401
+    cu = _app.current_user
     return jsonify({
-        "email": _app.current_user.email,
-        "sessions": _app._list_user_sessions(_app.current_user.id),
+        "email": cu.email,
+        "display_name": getattr(cu, "display_name", None),
+        "avatar": getattr(cu, "avatar", None),
+        "is_admin": bool(getattr(cu, "is_admin", False)),
+        "sessions": _app._list_user_sessions(cu.id),
+        "feedback": _feedback_with_comments(cu.id),
     })
+
+
+@api_bp.post("/profile")
+def api_profile_update():
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    data = request.get_json(silent=True) or request.form
+    user = m.db.session.get(m.User, m.current_user.id)
+    if "display_name" in data:
+        name = (data.get("display_name") or "").strip()
+        user.display_name = name[:120] or None
+    if "avatar" in data:
+        avatar = data.get("avatar") or ""
+        # Small avatars only (client resizes/compresses to a data URL). Cap size.
+        if avatar and not (avatar.startswith("data:image/") and len(avatar) <= 200000):
+            return jsonify({"ok": False, "message": "Image too large. Please use a smaller photo."}), 400
+        user.avatar = avatar or None
+    m.db.session.commit()
+    return jsonify({"ok": True, "user": _user_payload()})
 
 
 @api_bp.post("/profile/password")
@@ -790,7 +858,84 @@ def api_admin_feedback_delete(fid):
         return jsonify({"message": "Admin access required"}), 403
     m = _app
     entry = m.FeedbackEntry.query.get_or_404(fid)
+    m.FeedbackComment.query.filter_by(feedback_id=fid).delete(synchronize_session=False)
     m.db.session.delete(entry)
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.post("/feedback/<int:fid>/comment")
+def api_feedback_comment(fid):
+    """Follow-up comment on a feedback entry. Owners and admins may post."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    entry = m.FeedbackEntry.query.get_or_404(fid)
+    is_admin = bool(getattr(m.current_user, "is_admin", False))
+    if entry.user_id != m.current_user.id and not is_admin:
+        return jsonify({"ok": False, "message": "Not allowed."}), 403
+    data = request.get_json(silent=True) or request.form
+    body = (data.get("body") or "").strip()
+    if len(body) < 2:
+        return jsonify({"ok": False, "message": "Please enter a comment."}), 400
+    m.db.session.add(m.FeedbackComment(feedback_id=fid, author_email=m.current_user.email,
+                                       is_admin=is_admin, body=body[:2000],
+                                       created_at=datetime.utcnow()))
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ----------------------------------------------------------------------------
+# FLAGS  (user-reported issues on a clause or a financial data row)
+# ----------------------------------------------------------------------------
+_FLAG_REASONS = {"Wrong information", "Outdated / superseded", "Wrong document/source",
+                 "Formatting issue", "Other"}
+
+
+@api_bp.post("/flag")
+def api_flag_create():
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    data = request.get_json(silent=True) or request.form
+    kind = (data.get("kind") or "clause").strip()
+    if kind not in {"clause", "financial"}:
+        kind = "clause"
+    reason = (data.get("reason") or "Other").strip()
+    if reason not in _FLAG_REASONS:
+        reason = "Other"
+    description = (data.get("description") or "").strip()[:2000] or None
+    target = (data.get("target") or "").strip()[:300] or None
+    detail = (data.get("detail") or "").strip()[:4000] or None
+    m.db.session.add(m.Flag(user_email=m.current_user.email, kind=kind, reason=reason,
+                            description=description, target=target, detail=detail,
+                            status="Open", created_at=datetime.utcnow()))
+    m.db.session.commit()
+    return jsonify({"ok": True, "message": "Thanks — flag submitted for review."}), 201
+
+
+@api_bp.post("/admin/flag/<int:flag_id>/status")
+def api_admin_flag_status(flag_id):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    data = request.get_json(silent=True) or request.form
+    status = (data.get("status") or "").strip().capitalize()
+    if status not in {"Open", "Resolved", "Dismissed"}:
+        return jsonify({"ok": False, "message": "Invalid status."}), 400
+    flag = m.Flag.query.get_or_404(flag_id)
+    flag.status = status
+    m.db.session.commit()
+    return jsonify({"ok": True, "status": status})
+
+
+@api_bp.post("/admin/flag/<int:flag_id>/delete")
+def api_admin_flag_delete(flag_id):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    flag = m.Flag.query.get_or_404(flag_id)
+    m.db.session.delete(flag)
     m.db.session.commit()
     return jsonify({"ok": True})
 

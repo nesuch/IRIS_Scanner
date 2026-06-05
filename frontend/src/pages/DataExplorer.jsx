@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Modal, EmptyState, TypingDots } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
+import FlagModal from '../components/FlagModal.jsx';
 import { api } from '../api.js';
 import './data/data.css';
 
@@ -113,7 +114,7 @@ function FilterModal({ options, initial, onApply, onClose }) {
   );
 }
 
-function ReportTable({ report, onExport }) {
+function ReportTable({ report, onExport, onFlag }) {
   const toast = useToast();
   const cols = report.columns || [];
 
@@ -132,6 +133,7 @@ function ReportTable({ report, onExport }) {
         <div className="dt-title"><strong>Financial Report</strong><span className="dt-rows">{report.rows.length} rows</span></div>
         <div className="dt-actions">
           <button className="btn btn-ghost btn-sm" onClick={copyData}><i className="fas fa-copy" /> Copy Data</button>
+          <button className="btn btn-ghost btn-sm" onClick={onFlag}><i className="fas fa-flag" /> Flag</button>
           <button className="btn btn-sm dt-excel" onClick={onExport}><i className="fas fa-file-excel" /> Export Excel</button>
         </div>
       </div>
@@ -162,6 +164,7 @@ export default function DataExplorer() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false);
+  const [flagOpen, setFlagOpen] = useState(false);
 
   useEffect(() => {
     api.get('/data/options').then(setOptions).catch(() => toast.error('Could not load filter options'));
@@ -238,7 +241,7 @@ export default function DataExplorer() {
             {!report.rows?.length ? (
               <EmptyState icon="fa-folder-open">No matching records found.</EmptyState>
             ) : (
-              <ReportTable report={report} onExport={exportExcel} />
+              <ReportTable report={report} onExport={exportExcel} onFlag={() => setFlagOpen(true)} />
             )}
           </>
         )}
@@ -246,6 +249,13 @@ export default function DataExplorer() {
 
       {modal && options && (
         <FilterModal options={options} initial={filters} onApply={applyFilters} onClose={() => setModal(false)} />
+      )}
+
+      {flagOpen && (
+        <FlagModal kind="financial"
+          target={`${filters.dimension} View · ${filters.entities.join(', ').slice(0, 120) || 'report'}`}
+          detail={JSON.stringify({ filters, columns: report?.columns })}
+          onClose={() => setFlagOpen(false)} />
       )}
     </>
   );

@@ -179,12 +179,49 @@ table.data tbody tr:hover { background: var(--paper); }
 .auth-bg-glow.g1 { width: 420px; height: 420px; background: rgba(26,35,126,0.35); top: -140px; left: -100px; }
 .auth-bg-glow.g2 { width: 360px; height: 360px; background: rgba(13,148,136,0.22); bottom: -140px; right: -80px; }
 
+/* ---------- Header avatar bubble ---------- */
+.header-avatar { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: #fff; }
+.header-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.header-avatar-fallback { width: 100%; height: 100%; display: inline-flex; align-items: center; justify-content: center; background: var(--grad-primary); color: #fff; font-family: var(--serif); font-weight: 700; font-size: 16px; }
+.header-avatar:hover { border-color: var(--indigo-600); }
+
+/* ---------- Notifications head/clear/dismiss ---------- */
+.notif-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.notif-clear { background: none; border: none; color: var(--accent); font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; font-weight: 700; }
+.notif-item { position: relative; }
+.notif-dismiss { position: absolute; top: 8px; right: 10px; background: none; border: none; color: var(--faint); font-size: 16px; line-height: 1; cursor: pointer; }
+.notif-dismiss:hover { color: var(--bad); }
+
+/* ---------- Flag modal target ---------- */
+.flag-target { font-size: 12px; color: var(--muted); background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 11px; margin-bottom: 14px; word-break: break-word; }
+.flag-target i { color: var(--accent); margin-right: 6px; }
+
+/* ---------- Feedback thread (shared: admin + profile) ---------- */
+.fb-thread { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--line-strong); padding-left: 10px; }
+.fb-comment { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+.fb-author { font-weight: 700; color: var(--accent-strong); }
+.fb-comment.admin .fb-author { color: var(--navy-700); }
+.fb-reply { margin-top: 8px; font-size: 13px; max-width: 360px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .app-shell, .app-shell.collapsed { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 80%; max-width: 300px; transform: translateX(-100%); transition: transform 0.24s; box-shadow: var(--sh-3); }
+  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 80%; max-width: 300px; transform: translateX(-100%); transition: transform 0.24s; box-shadow: var(--sh-3); -webkit-overflow-scrolling: touch; padding-bottom: 32px; }
   .sidebar.open { transform: translateX(0); }
+  /* Let the nav scroll naturally and keep Logout reachable at the end. */
+  .sidebar .nav-spacer { flex: 0 0 12px; }
   .app-shell.collapsed .sidebar-brand .wm, .app-shell.collapsed .nav-item span, .app-shell.collapsed .sidebar-tagline, .app-shell.collapsed .nav-label { display: revert; }
   .page-header, .page-body { padding-left: 16px; padding-right: 16px; }
   .scrim { position: fixed; inset: 0; background: rgba(11,20,55,0.4); z-index: 25; }
+}
+
+/* Compact, single-line header strip on phones */
+@media (max-width: 640px) {
+  .page-header { padding: 11px 14px; gap: 10px; }
+  .page-header-titles { gap: 1px; min-width: 0; flex: 1; }
+  .page-header .full-form { font-size: 8.5px; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-header h1 { font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-header .scope { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-actions { gap: 7px; }
+  .collapse-btn, .notif-btn, .header-avatar { width: 34px; height: 34px; }
 }

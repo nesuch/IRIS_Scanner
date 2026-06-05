@@ -4,15 +4,17 @@ import { useToast } from '../components/Toast.jsx';
 import { api } from '../api.js';
 import { TYPE_STYLES, ClauseBody, groupByType } from './search/clauseRender.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
+import FlagModal from '../components/FlagModal.jsx';
 import './search/search.css';
 
 const MODULE_META = {
   universal: { title: 'Universal Search', icon: 'fa-magnifying-glass', scope: 'Unified Search (All Departments)' },
   health: { title: 'Health Department', icon: 'fa-heart-pulse', scope: 'Acts, Regulations & Master Circulars (Health)' },
   life: { title: 'Life Department', icon: 'fa-umbrella', scope: 'Regulatory Framework (Life Insurance)' },
+  nonlife: { title: 'Non-Life Department', icon: 'fa-shield-halved', scope: 'Regulatory Framework (General Insurance)' },
 };
 
-function ResultCards({ resp, onChip, onOpenPane }) {
+function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
   const copy = async (text) => {
     try { await navigator.clipboard.writeText(text); toast.success('Clause text copied!'); }
@@ -65,6 +67,7 @@ function ResultCards({ resp, onChip, onOpenPane }) {
                       <a className="pdf-btn" href={m.pdf_url} target="_blank" rel="noreferrer"><i className="fas fa-file-pdf" /> PDF</a>
                     )}
                     <button className="copy-btn" title="Copy clause" onClick={() => copy(m.raw_text)}><i className="far fa-copy" /></button>
+                    <button className="flag-btn" title="Flag this clause" onClick={() => onFlag(m)}><i className="fas fa-flag" /></button>
                   </span>
                 </div>
                 <ClauseBody text={m.raw_text} keywords={resp.highlight || []} />
@@ -100,6 +103,7 @@ export default function Search({ module }) {
   const [selected, setSelected] = useState(() => new Set());
   const [docFilterOpen, setDocFilterOpen] = useState(false);
   const [pdfPane, setPdfPane] = useState(null); // { url, source }
+  const [flagClause, setFlagClause] = useState(null); // clause being flagged
   const [paneWidth, setPaneWidth] = useState(46); // % width of the PDF pane
   const [dragging, setDragging] = useState(false);
   const chatRef = useRef(null);
@@ -255,7 +259,7 @@ export default function Search({ module }) {
             <div className="chat-block iris">
               <div className="chat-label">IRIS</div>
               <div className="bubble iris-bubble">
-                {item.response ? <ResultCards resp={item.response} onChip={onChip} onOpenPane={(m) => setPdfPane({ url: m.pdf_url, source: m.source })} />
+                {item.response ? <ResultCards resp={item.response} onChip={onChip} onOpenPane={(m) => setPdfPane({ url: m.pdf_url, source: m.source })} onFlag={(m) => setFlagClause(m)} />
                   : item.error ? <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
                   : <span className="typing"><span /><span /><span /></span>}
               </div>
@@ -345,6 +349,13 @@ export default function Search({ module }) {
           </div>
         </form>
       </div>
+
+      {flagClause && (
+        <FlagModal kind="clause"
+          target={`${flagClause.source} · ${flagClause.header} · Clause ${flagClause.id}`}
+          detail={flagClause.raw_text}
+          onClose={() => setFlagClause(null)} />
+      )}
     </div>
   );
 }

@@ -69,6 +69,8 @@
 .pane-btn:hover { border-color: var(--navy-700); background: rgba(26,35,126,0.06); }
 .copy-btn { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 14px; padding: 2px 4px; transition: 0.15s; }
 .copy-btn:hover { color: var(--accent); }
+.flag-btn { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 12.5px; padding: 2px 4px; transition: 0.15s; }
+.flag-btn:hover { color: var(--accent-red); }
 
 .clause-body { font-size: 14px; line-height: 1.55; color: var(--ink); }
 .clause-line { white-space: pre-wrap; overflow-wrap: anywhere; }

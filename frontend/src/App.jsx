@@ -33,6 +33,7 @@ export default function App() {
         <Route index element={<Suspense fallback={<PageLoading />}><Search module="universal" /></Suspense>} />
         <Route path="health" element={<Suspense fallback={<PageLoading />}><Search module="health" /></Suspense>} />
         <Route path="life" element={<Suspense fallback={<PageLoading />}><Search module="life" /></Suspense>} />
+        <Route path="nonlife" element={<Suspense fallback={<PageLoading />}><Search module="nonlife" /></Suspense>} />
         <Route path="data" element={<Suspense fallback={<PageLoading />}><DataExplorer /></Suspense>} />
         <Route path="compliance" element={<Suspense fallback={<PageLoading />}><Compliance /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<PageLoading />}><Analytics /></Suspense>} />

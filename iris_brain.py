@@ -184,6 +184,7 @@ def filter_df_by_module(df, module) -> pd.DataFrame:
     if df.empty: return df
     if module == "health": return df[df["Doc_Category"] == "HEALTH"]
     elif module == "life": return df[df["Doc_Category"] == "LIFE"]
+    elif module == "nonlife": return df[df["Doc_Category"] == "NONLIFE"]
     elif module == "data": return pd.DataFrame(columns=df.columns)
     else: return df
 
@@ -420,14 +421,20 @@ def _get_doc_category_from_path(file_path, clean_filename):
 
     if "health" in normalized_parts:
         return "HEALTH"
+    if {"nonlife", "non-life", "non_life", "general"} & normalized_parts:
+        return "NONLIFE"
     if "life" in normalized_parts:
         return "LIFE"
 
     tokens = set(re.split(r"[^A-Z0-9]+", clean_filename.upper()))
     health_hints = {"HEALTH", "PRODUCT", "PPHI", "HOSPITAL", "MEDICLAIM"}
     life_hints = {"LIFE", "ULIP", "ANNUITY", "PENSION"}
+    nonlife_hints = {"MOTOR", "FIRE", "MARINE", "GENERAL", "MISCELLANEOUS",
+                     "LIABILITY", "ENGINEERING", "PROPERTY", "NONLIFE"}
     if tokens & health_hints:
         return "HEALTH"
+    if tokens & nonlife_hints:
+        return "NONLIFE"
     if tokens & life_hints:
         return "LIFE"
     return "OTHER"

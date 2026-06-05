@@ -8,6 +8,7 @@ const SECTIONS = [
       { to: '/', icon: 'fa-magnifying-glass', text: 'Universal Search', end: true },
       { to: '/health', icon: 'fa-heart-pulse', text: 'Health Dept' },
       { to: '/life', icon: 'fa-umbrella', text: 'Life Dept' },
+      { to: '/nonlife', icon: 'fa-shield-halved', text: 'Non-Life Dept' },
     ],
   },
   {

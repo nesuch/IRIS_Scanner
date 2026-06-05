@@ -1,21 +1,76 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
-import { PageLoading } from '../components/UI.jsx';
+import { PageLoading, Spinner } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api.js';
+import './profile/profile.css';
+
+// Resize an image file to a small square JPEG data URL (keeps avatars tiny so
+// they fit in the DB and replicate cheaply).
+function fileToAvatar(file, size = 160) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const s = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function Avatar({ src, name, email, size = 64 }) {
+  const initials = (name || email || '?').trim().slice(0, 1).toUpperCase();
+  return src
+    ? <img className="avatar" src={src} alt="avatar" style={{ width: size, height: size }} />
+    : <span className="avatar avatar-fallback" style={{ width: size, height: size, fontSize: size * 0.4 }}>{initials}</span>;
+}
+
+const ST_BADGE = { Done: 'badge-good', Ignored: 'badge-grey', Open: 'badge-warn' };
 
 export default function Profile() {
   const toast = useToast();
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { setUser, refresh } = useAuth();
   const [profile, setProfile] = useState(null);
+  const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState(null);
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [busy, setBusy] = useState(false);
+  const [savingId, setSavingId] = useState(false);
+  const fileRef = useRef(null);
 
-  const load = () => api.get('/profile').then(setProfile).catch((e) => toast.error(e.message));
+  const load = () => api.get('/profile').then((p) => {
+    setProfile(p); setName(p.display_name || ''); setAvatar(p.avatar || null);
+  }).catch((e) => toast.error(e.message));
   useEffect(() => { load(); }, []);
+
+  async function pickPhoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToAvatar(file);
+      if (dataUrl.length > 200000) { toast.error('Image too large — try a smaller photo.'); return; }
+      setAvatar(dataUrl);
+    } catch { toast.error('Could not read that image.'); }
+  }
+
+  async function saveIdentity(e) {
+    e.preventDefault();
+    setSavingId(true);
+    try {
+      const res = await api.post('/profile', { display_name: name, avatar: avatar || '' });
+      if (res.user) setUser(res.user); else refresh();
+      toast.success('Profile updated');
+    } catch (err) { toast.error(err.message || 'Could not save profile.'); }
+    finally { setSavingId(false); }
+  }
 
   async function changePassword(e) {
     e.preventDefault();
@@ -25,9 +80,8 @@ export default function Profile() {
       toast.success('Password changed. Please sign in again.');
       setUser(null);
       navigate('/login', { replace: true });
-    } catch (err) {
-      toast.error(err.message || 'Could not change password.');
-    } finally { setBusy(false); }
+    } catch (err) { toast.error(err.message || 'Could not change password.'); }
+    finally { setBusy(false); }
   }
 
   async function killSession(id) {
@@ -38,12 +92,41 @@ export default function Profile() {
     } catch (err) { toast.error(err.message); }
   }
 
-  if (!profile) return (<><PageHeader fullForm="User Profile" title="Account Settings" scope="Password and device management" /><div className="page-body"><PageLoading /></div></>);
+  async function addComment(id, value) {
+    if (!value.trim()) return;
+    try { await api.post(`/feedback/${id}/comment`, { body: value.trim() }); load(); }
+    catch (err) { toast.error(err.message || 'Could not post comment'); }
+  }
+
+  if (!profile) return (<><PageHeader fullForm="User Profile" title="Account Settings" scope="Your profile, devices and feedback" /><div className="page-body"><PageLoading /></div></>);
 
   return (
     <>
-      <PageHeader fullForm="User Profile" title="Account Settings" scope="Password and device management" />
+      <PageHeader fullForm="User Profile" title="Account Settings" scope="Your profile, devices and feedback" />
       <div className="page-body" style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 980 }}>
+        {/* Identity */}
+        <div className="card pad anim-rise">
+          <h3 className="section-title"><i className="fas fa-id-badge" /> Your Profile</h3>
+          <form onSubmit={saveIdentity} className="profile-identity">
+            <div className="profile-photo">
+              <Avatar src={avatar} name={name} email={profile.email} size={96} />
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} />
+              <div className="profile-photo-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}><i className="fas fa-camera" /> Change photo</button>
+                {avatar && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAvatar(null)}>Remove</button>}
+              </div>
+            </div>
+            <div className="profile-fields">
+              <div className="field"><label>Display name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" maxLength={120} /></div>
+              <div className="field"><label>Email</label><input className="input" value={profile.email} disabled /></div>
+              <button className="btn btn-primary" type="submit" disabled={savingId} style={{ marginTop: 4, alignSelf: 'flex-start' }}>
+                {savingId ? <Spinner size={14} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save Profile
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Change password */}
         <div className="card pad anim-rise">
           <h3 className="section-title"><i className="fas fa-lock" /> Change Password</h3>
           <form onSubmit={changePassword}>
@@ -56,6 +139,38 @@ export default function Profile() {
           </form>
         </div>
 
+        {/* My feedback */}
+        <div className="card pad anim-rise">
+          <h3 className="section-title"><i className="fas fa-comment-dots" /> My Feedback &amp; Reports</h3>
+          {profile.feedback?.length ? (
+            <div className="fb-list">
+              {profile.feedback.map((f) => (
+                <div key={f.id} className="fb-card">
+                  <div className="fb-card-head">
+                    <span className="badge badge-navy">{f.category}</span>
+                    <span className={`badge ${ST_BADGE[f.status] || 'badge-warn'}`}>{f.status}</span>
+                    <span className="fb-date">{f.created_at}</span>
+                  </div>
+                  <div className="fb-msg">{f.message}</div>
+                  {f.comments?.length > 0 && (
+                    <div className="fb-thread">
+                      {f.comments.map((c, i) => (
+                        <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
+                          <span className="fb-author">{c.is_admin ? 'IRIS Team' : 'You'}</span> {c.body}
+                          <span className="fb-cdate">{c.created_at}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <input className="input fb-reply" placeholder="Add a follow-up…"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { addComment(f.id, e.target.value); e.target.value = ''; } }} />
+                </div>
+              ))}
+            </div>
+          ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t submitted any feedback yet.</p>}
+        </div>
+
+        {/* Active devices */}
         <div className="card pad anim-rise">
           <h3 className="section-title"><i className="fas fa-laptop" /> Active Devices</h3>
           <div className="table-wrap"><div className="table-scroll">

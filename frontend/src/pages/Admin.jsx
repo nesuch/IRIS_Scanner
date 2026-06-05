@@ -202,6 +202,17 @@ export default function Admin() {
     catch (e) { toast.error(e.message || 'Action failed'); }
   }
 
+  async function flagAction(id, action, payload) {
+    if (action === 'delete' && !window.confirm('Delete this flag?')) return;
+    try { await api.post(`/admin/flag/${id}/${action}`, payload); load(); }
+    catch (e) { toast.error(e.message || 'Action failed'); }
+  }
+
+  async function replyFeedback(id, body) {
+    try { await api.post(`/feedback/${id}/comment`, { body }); load(); }
+    catch (e) { toast.error(e.message || 'Could not post reply'); }
+  }
+
   if (loading) return (<><PageHeader fullForm="System Administration" title="Admin Console" scope="Manage Data & Configuration" /><div className="page-body"><PageLoading /></div></>);
 
   return (
@@ -349,7 +360,20 @@ export default function Admin() {
                   return (
                     <tr key={r.id} className={st !== 'Open' ? 'row-resolved' : ''}>
                       <td>{r.created_at || '-'}</td><td>{r.user_email}</td><td>{r.category}</td>
-                      <td style={{ whiteSpace: 'normal', minWidth: 300 }}>{r.message}</td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 300 }}>
+                        {r.message}
+                        {r.comments?.length > 0 && (
+                          <div className="fb-thread">
+                            {r.comments.map((c, i) => (
+                              <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
+                                <span className="fb-author">{c.is_admin ? 'IRIS Team' : c.author_email}</span> {c.body}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <input className="input fb-reply" placeholder="Reply to user…"
+                          onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { replyFeedback(r.id, e.target.value.trim()); e.target.value = ''; } }} />
+                      </td>
                       <td><span className={`badge ${stBadge}`}>{st}</span></td>
                       <td>
                         <div className="row-actions">
@@ -362,6 +386,38 @@ export default function Admin() {
                     </tr>
                   );
                 }) : <tr><td colSpan={6} className="muted-cell">No feedback submissions found.</td></tr>}
+              </tbody>
+            </table>
+          </div></div>
+        </Section>
+
+        <Section icon="fa-flag" title="Flagged Content">
+          <p className="admin-help">Issues users reported on clauses and financial reports.</p>
+          <div className="table-wrap log-scroll"><div className="table-scroll">
+            <table className="data">
+              <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Reason</th><th>Target</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {data.flags?.length ? data.flags.map((f) => {
+                  const st = f.status || 'Open';
+                  const stBadge = st === 'Resolved' ? 'badge-good' : st === 'Dismissed' ? 'badge-grey' : 'badge-warn';
+                  return (
+                    <tr key={f.id} className={st !== 'Open' ? 'row-resolved' : ''}>
+                      <td>{f.created_at}</td><td>{f.user_email}</td>
+                      <td><span className="badge badge-navy">{f.kind}</span></td>
+                      <td className="fw-bold">{f.reason}</td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 160 }}>{f.target || '-'}</td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 200 }}>{f.description || '-'}</td>
+                      <td><span className={`badge ${stBadge}`}>{st}</span></td>
+                      <td>
+                        <div className="row-actions">
+                          <button className="btn btn-ghost btn-sm" disabled={st === 'Resolved'} onClick={() => flagAction(f.id, 'status', { status: 'Resolved' })}>Resolve</button>
+                          <button className="btn btn-ghost btn-sm" disabled={st === 'Dismissed'} onClick={() => flagAction(f.id, 'status', { status: 'Dismissed' })}>Dismiss</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => flagAction(f.id, 'delete')}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }) : <tr><td colSpan={8} className="muted-cell">No flags submitted.</td></tr>}
               </tbody>
             </table>
           </div></div>
