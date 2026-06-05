@@ -343,8 +343,8 @@ export default function Search({ module }) {
             )}
             <textarea className="search-input" placeholder="Ask IRIS..." value={query}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
-            <button className="btn btn-primary" type="submit" disabled={busy}>
-              <i className="fas fa-magnifying-glass" /> Search
+            <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
+              <i className="fas fa-magnifying-glass" /> <span className="btn-label">Search</span>
             </button>
           </div>
         </form>

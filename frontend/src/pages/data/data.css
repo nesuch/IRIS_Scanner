@@ -70,8 +70,13 @@
     border-right: none; border-bottom: 1px solid var(--line); -webkit-overflow-scrolling: touch; }
   .cat-item { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; padding: 11px 14px; }
   .cat-item.active { border-left: none; border-bottom-color: var(--accent); }
-  .filter-options-pane { padding: 14px 12px; }
+  /* extra bottom room so the last option isn't clipped at the scroll end */
+  .filter-options-pane { padding: 14px 12px 28px; }
   .checkbox-item { font-size: 13.5px; }
   .dim-select { margin-bottom: 12px; }
-  .filter-actions-bar { gap: 10px; }
+  /* compact action bar so it doesn't dominate the page */
+  .filter-actions-bar { gap: 8px 10px; padding: 9px 12px; margin-bottom: 16px; }
+  .filter-main-btn { padding: 8px 12px; font-size: 13px; }
+  .reset-link { font-size: 12px; }
+  .active-filters-text { flex-basis: 100%; order: 3; font-size: 12px; }
 }
