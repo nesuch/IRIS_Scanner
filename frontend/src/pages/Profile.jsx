@@ -15,7 +15,13 @@ function Avatar({ src, name, email, size = 64 }) {
     : <span className="avatar avatar-fallback" style={{ width: size, height: size, fontSize: size * 0.4 }}>{initials}</span>;
 }
 
-const ST_BADGE = { Done: 'badge-good', Ignored: 'badge-grey', Open: 'badge-warn' };
+// User-facing status: "Ignored" reads as "No action required".
+const STATUS = {
+  Open: { label: 'Pending', cls: 'badge-warn' },
+  Resolved: { label: 'Resolved', cls: 'badge-good' },
+  Ignored: { label: 'No action required', cls: 'badge-grey' },
+};
+const stView = (s) => STATUS[s] || STATUS.Open;
 
 export default function Profile() {
   const toast = useToast();
@@ -78,9 +84,9 @@ export default function Profile() {
     } catch (err) { toast.error(err.message); }
   }
 
-  async function addComment(id, value) {
+  async function addComment(kind, id, value) {
     if (!value.trim()) return;
-    try { await api.post(`/feedback/${id}/comment`, { body: value.trim() }); load(); }
+    try { await api.post(`/${kind}/${id}/comment`, { body: value.trim() }); load(); }
     catch (err) { toast.error(err.message || 'Could not post comment'); }
   }
 
@@ -149,43 +155,37 @@ export default function Profile() {
           <h3 className="section-title"><i className="fas fa-comment-dots" /> My Reports &amp; Flags</h3>
           {reports.length ? (
             <div className="fb-list">
-              {reports.map((r) => (r._type === 'feedback' ? (
-                <div key={`f${r.id}`} className="fb-card">
-                  <div className="fb-card-head">
-                    <span className="badge badge-blue">Feedback</span>
-                    <span className="badge badge-navy">{r.category}</span>
-                    <span className={`badge ${ST_BADGE[r.status] || 'badge-warn'}`}>{r.status}</span>
-                    <span className="fb-date">{r.created_at}</span>
-                    <button className="fb-del" title="Delete feedback" onClick={() => deleteFeedback(r.id)}><i className="fas fa-trash-can" /></button>
-                  </div>
-                  <div className="fb-msg">{r.message}</div>
-                  {r.comments?.length > 0 && (
-                    <div className="fb-thread">
-                      {r.comments.map((c, i) => (
-                        <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
-                          <span className="fb-author">{c.is_admin ? 'IRIS Team' : 'You'}</span> {c.body}
-                          <span className="fb-cdate">{c.created_at}</span>
-                        </div>
-                      ))}
+              {reports.map((r) => {
+                const sv = stView(r.status);
+                const isFb = r._type === 'feedback';
+                return (
+                  <div key={`${r._type}${r.id}`} className="fb-card">
+                    <div className="fb-card-head">
+                      <span className={`badge ${isFb ? 'badge-blue' : 'badge-bad'}`}>{isFb ? 'Feedback' : 'Flag'}</span>
+                      <span className="badge badge-navy">{isFb ? r.category : (r.kind === 'financial' ? 'Financial' : 'Clause')}</span>
+                      {!isFb && <span className="badge badge-grey">{r.reason}</span>}
+                      <span className={`badge ${sv.cls}`}>{sv.label}</span>
+                      <span className="fb-date">{r.created_at}</span>
+                      <button className="fb-del" title={isFb ? 'Delete feedback' : 'Retract flag'}
+                        onClick={() => (isFb ? deleteFeedback(r.id) : deleteFlag(r.id))}><i className="fas fa-trash-can" /></button>
                     </div>
-                  )}
-                  <input className="input fb-reply" placeholder="Add a follow-up…"
-                    onKeyDown={(e) => { if (e.key === 'Enter') { addComment(r.id, e.target.value); e.target.value = ''; } }} />
-                </div>
-              ) : (
-                <div key={`g${r.id}`} className="fb-card">
-                  <div className="fb-card-head">
-                    <span className="badge badge-bad">Flag</span>
-                    <span className="badge badge-navy">{r.kind === 'financial' ? 'Financial' : 'Clause'}</span>
-                    <span className="badge badge-grey">{r.reason}</span>
-                    <span className={`badge ${r.status === 'Resolved' ? 'badge-good' : r.status === 'Dismissed' ? 'badge-grey' : 'badge-warn'}`}>{r.status}</span>
-                    <span className="fb-date">{r.created_at}</span>
-                    <button className="fb-del" title="Retract flag" onClick={() => deleteFlag(r.id)}><i className="fas fa-trash-can" /></button>
+                    {!isFb && r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
+                    {(isFb ? r.message : r.description) && <div className="fb-msg">{isFb ? r.message : r.description}</div>}
+                    {r.comments?.length > 0 && (
+                      <div className="fb-thread">
+                        {r.comments.map((c, i) => (
+                          <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
+                            <span className="fb-author">{c.is_admin ? 'IRIS Team' : 'You'}</span> {c.body}
+                            <span className="fb-cdate">{c.created_at}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <input className="input fb-reply" placeholder="Add a follow-up…"
+                      onKeyDown={(e) => { if (e.key === 'Enter') { addComment(isFb ? 'feedback' : 'flag', r.id, e.target.value); e.target.value = ''; } }} />
                   </div>
-                  {r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
-                  {r.description && <div className="fb-msg">{r.description}</div>}
-                </div>
-              )))}
+                );
+              })}
             </div>
           ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t submitted any feedback or flags yet.</p>}
         </div>

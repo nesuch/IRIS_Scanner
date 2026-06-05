@@ -530,10 +530,7 @@ def api_admin_overview():
 
     flags = []
     try:
-        rows = m.Flag.query.order_by(m.Flag.id.desc()).limit(200).all()
-        flags = [{"id": f.id, "user_email": f.user_email, "kind": f.kind, "reason": f.reason,
-                  "description": f.description, "target": f.target, "detail": f.detail,
-                  "status": f.status, "created_at": m._format_dt_local(f.created_at)} for f in rows]
+        flags = _flags_with_comments()
     except Exception as e:
         print(f"flags load error: {e}")
 
@@ -736,10 +733,44 @@ def _feedback_with_comments(user_id=None, category=None):
     return [{
         "id": f.id, "category": f.category, "message": f.message,
         "user_email": ue,
-        "status": getattr(f, "status", "Open") or "Open",
+        "status": _norm_status(getattr(f, "status", "Open")),
         "created_at": m._format_dt_local(f.created_at),
         "comments": comments_by_fid.get(f.id, []),
     } for f, ue in pairs]
+
+
+# Canonical statuses are Open / Resolved / Ignored (shared by feedback + flags).
+# Map legacy values so old rows display consistently.
+def _norm_status(s):
+    s = (s or "Open").strip()
+    return {"Done": "Resolved", "Dismissed": "Ignored"}.get(s, s) or "Open"
+
+
+def _flags_with_comments(user_email=None):
+    """Serialize flags (optionally one user's) with comment threads + normalized status."""
+    m = _app
+    q = m.Flag.query.order_by(m.Flag.id.desc())
+    if user_email is not None:
+        q = q.filter(m.Flag.user_email == user_email)
+    rows = q.limit(200).all()
+    ids = [f.id for f in rows]
+    comments_by_id = {}
+    if ids:
+        try:
+            for c in (m.FlagComment.query.filter(m.FlagComment.flag_id.in_(ids))
+                      .order_by(m.FlagComment.id.asc()).all()):
+                comments_by_id.setdefault(c.flag_id, []).append({
+                    "author_email": c.author_email, "is_admin": bool(c.is_admin),
+                    "body": c.body, "created_at": m._format_dt_local(c.created_at)})
+        except Exception as e:
+            print(f"flag comments load error: {e}")
+    return [{
+        "id": f.id, "user_email": f.user_email, "kind": f.kind, "reason": f.reason,
+        "description": f.description, "target": f.target,
+        "status": _norm_status(f.status),
+        "created_at": m._format_dt_local(f.created_at),
+        "comments": comments_by_id.get(f.id, []),
+    } for f in rows]
 
 
 @api_bp.get("/profile")
@@ -749,10 +780,7 @@ def api_profile():
     cu = _app.current_user
     flags = []
     try:
-        rows = _app.Flag.query.filter_by(user_email=cu.email).order_by(_app.Flag.id.desc()).limit(100).all()
-        flags = [{"id": f.id, "kind": f.kind, "reason": f.reason, "description": f.description,
-                  "target": f.target, "status": f.status,
-                  "created_at": _app._format_dt_local(f.created_at)} for f in rows]
+        flags = _flags_with_comments(user_email=cu.email)
     except Exception as e:
         print(f"profile flags load error: {e}")
     return jsonify({
@@ -854,7 +882,7 @@ def api_admin_feedback_status(fid):
     m = _app
     data = request.get_json(silent=True) or request.form
     status = (data.get("status") or "").strip().capitalize()
-    if status not in {"Open", "Done", "Ignored"}:
+    if status not in {"Open", "Resolved", "Ignored"}:
         return jsonify({"ok": False, "message": "Invalid status."}), 400
     entry = m.FeedbackEntry.query.get_or_404(fid)
     entry.status = status
@@ -900,6 +928,7 @@ def api_flag_self_delete(flag_id):
     is_admin = bool(getattr(m.current_user, "is_admin", False))
     if (flag.user_email or "") != m.current_user.email and not is_admin:
         return jsonify({"ok": False, "message": "Not allowed."}), 403
+    m.FlagComment.query.filter_by(flag_id=flag_id).delete(synchronize_session=False)
     m.db.session.delete(flag)
     m.db.session.commit()
     return jsonify({"ok": True})
@@ -962,7 +991,7 @@ def api_admin_flag_status(flag_id):
     m = _app
     data = request.get_json(silent=True) or request.form
     status = (data.get("status") or "").strip().capitalize()
-    if status not in {"Open", "Resolved", "Dismissed"}:
+    if status not in {"Open", "Resolved", "Ignored"}:
         return jsonify({"ok": False, "message": "Invalid status."}), 400
     flag = m.Flag.query.get_or_404(flag_id)
     flag.status = status
@@ -976,7 +1005,28 @@ def api_admin_flag_delete(flag_id):
         return jsonify({"message": "Admin access required"}), 403
     m = _app
     flag = m.Flag.query.get_or_404(flag_id)
+    m.FlagComment.query.filter_by(flag_id=flag_id).delete(synchronize_session=False)
     m.db.session.delete(flag)
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.post("/flag/<int:flag_id>/comment")
+def api_flag_comment(flag_id):
+    """Follow-up comment on a flag. The flag's owner and admins may post."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    flag = m.Flag.query.get_or_404(flag_id)
+    is_admin = bool(getattr(m.current_user, "is_admin", False))
+    if (flag.user_email or "") != m.current_user.email and not is_admin:
+        return jsonify({"ok": False, "message": "Not allowed."}), 403
+    data = request.get_json(silent=True) or request.form
+    body = (data.get("body") or "").strip()
+    if len(body) < 2:
+        return jsonify({"ok": False, "message": "Please enter a comment."}), 400
+    m.db.session.add(m.FlagComment(flag_id=flag_id, author_email=m.current_user.email,
+                                   is_admin=is_admin, body=body[:2000], created_at=datetime.utcnow()))
     m.db.session.commit()
     return jsonify({"ok": True})
 

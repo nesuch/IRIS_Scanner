@@ -1,4 +1,4 @@
-var po=Object.defineProperty;var mo=(i,t,e)=>t in i?po(i,t,{enumerable:!0,configurable:!0,writable:!0,value:e}):i[t]=e;var C=(i,t,e)=>mo(i,typeof t!="symbol"?t+"":t,e);import{r as et,j as k,u as bo,P as _o,b as oi,a as Ui}from"./index-DKFW3wlT.js";import{P as Xi}from"./PageHeader-j4jLagfr.js";/*!
+var po=Object.defineProperty;var mo=(i,t,e)=>t in i?po(i,t,{enumerable:!0,configurable:!0,writable:!0,value:e}):i[t]=e;var C=(i,t,e)=>mo(i,typeof t!="symbol"?t+"":t,e);import{r as et,j as k,u as bo,P as _o,b as oi,a as Ui}from"./index-D3fGYl8J.js";import{P as Xi}from"./PageHeader-h_yHT0Tp.js";/*!
  * @kurkle/color v0.3.4
  * https://github.com/kurkle/color#readme
  * (c) 2024 Jukka Kurkela

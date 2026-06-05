@@ -214,6 +214,11 @@ export default function Admin() {
     catch (e) { toast.error(e.message || 'Could not post reply'); }
   }
 
+  async function replyFlag(id, body) {
+    try { await api.post(`/flag/${id}/comment`, { body }); load(); }
+    catch (e) { toast.error(e.message || 'Could not post reply'); }
+  }
+
   if (loading) return (<><PageHeader fullForm="System Administration" title="Admin Console" scope="Manage Data & Configuration" /><div className="page-body"><PageLoading /></div></>);
 
   return (
@@ -361,49 +366,42 @@ export default function Admin() {
                     ...(reportFilter === 'Feedback' ? [] : (data.flags || []).map((r) => ({ ...r, _type: 'flag' }))),
                   ].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
                   if (!rows.length) return <tr><td colSpan={6} className="muted-cell">No reports or flags found.</td></tr>;
-                  return rows.map((r) => (r._type === 'feedback' ? (
-                    <tr key={`f${r.id}`} className={(r.status || 'Open') !== 'Open' ? 'row-resolved' : ''}>
-                      <td>{r.created_at || '-'}</td><td>{r.user_email}</td>
-                      <td><span className="badge badge-blue">Feedback</span><div className="rf-sub">{r.category}</div></td>
-                      <td style={{ whiteSpace: 'normal', minWidth: 280 }}>
-                        {r.message}
-                        {r.comments?.length > 0 && (
-                          <div className="fb-thread">
-                            {r.comments.map((c, i) => (
-                              <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
-                                <span className="fb-author">{c.is_admin ? 'IRIS Team' : c.author_email}</span> {c.body}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <input className="input fb-reply" placeholder="Reply to user…"
-                          onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { replyFeedback(r.id, e.target.value.trim()); e.target.value = ''; } }} />
-                      </td>
-                      <td><span className={`badge ${r.status === 'Done' ? 'badge-good' : r.status === 'Ignored' ? 'badge-grey' : 'badge-warn'}`}>{r.status || 'Open'}</span></td>
-                      <td><div className="row-actions">
-                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Done'} onClick={() => feedbackAction(r.id, 'status', { status: 'Done' })}>Done</button>
-                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Ignored'} onClick={() => feedbackAction(r.id, 'status', { status: 'Ignored' })}>Ignore</button>
-                        {(r.status || 'Open') !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => feedbackAction(r.id, 'status', { status: 'Open' })}>Reopen</button>}
-                        <button className="btn btn-danger btn-sm" onClick={() => feedbackAction(r.id, 'delete')}>Delete</button>
-                      </div></td>
-                    </tr>
-                  ) : (
-                    <tr key={`g${r.id}`} className={(r.status || 'Open') !== 'Open' ? 'row-resolved' : ''}>
-                      <td>{r.created_at || '-'}</td><td>{r.user_email}</td>
-                      <td><span className="badge badge-bad">Flag</span><div className="rf-sub">{r.kind} · {r.reason}</div></td>
-                      <td style={{ whiteSpace: 'normal', minWidth: 280 }}>
-                        {r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
-                        {r.description || <span style={{ color: 'var(--faint)' }}>—</span>}
-                      </td>
-                      <td><span className={`badge ${r.status === 'Resolved' ? 'badge-good' : r.status === 'Dismissed' ? 'badge-grey' : 'badge-warn'}`}>{r.status || 'Open'}</span></td>
-                      <td><div className="row-actions">
-                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Resolved'} onClick={() => flagAction(r.id, 'status', { status: 'Resolved' })}>Resolve</button>
-                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Dismissed'} onClick={() => flagAction(r.id, 'status', { status: 'Dismissed' })}>Dismiss</button>
-                        {(r.status || 'Open') !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => flagAction(r.id, 'status', { status: 'Open' })}>Reopen</button>}
-                        <button className="btn btn-danger btn-sm" onClick={() => flagAction(r.id, 'delete')}>Delete</button>
-                      </div></td>
-                    </tr>
-                  )));
+                  return rows.map((r) => {
+                    const isFb = r._type === 'feedback';
+                    const st = r.status || 'Open';
+                    const act = isFb ? feedbackAction : flagAction;
+                    const reply = isFb ? replyFeedback : replyFlag;
+                    const stCls = st === 'Resolved' ? 'badge-good' : st === 'Ignored' ? 'badge-grey' : 'badge-warn';
+                    return (
+                      <tr key={`${r._type}${r.id}`} className={st !== 'Open' ? 'row-resolved' : ''}>
+                        <td>{r.created_at || '-'}</td><td>{r.user_email}</td>
+                        <td><span className={`badge ${isFb ? 'badge-blue' : 'badge-bad'}`}>{isFb ? 'Feedback' : 'Flag'}</span>
+                          <div className="rf-sub">{isFb ? r.category : `${r.kind} · ${r.reason}`}</div></td>
+                        <td style={{ whiteSpace: 'normal', minWidth: 280 }}>
+                          {!isFb && r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
+                          {(isFb ? r.message : r.description) || <span style={{ color: 'var(--faint)' }}>—</span>}
+                          {r.comments?.length > 0 && (
+                            <div className="fb-thread">
+                              {r.comments.map((c, i) => (
+                                <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
+                                  <span className="fb-author">{c.is_admin ? 'IRIS Team' : c.author_email}</span> {c.body}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <input className="input fb-reply" placeholder="Reply to user…"
+                            onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { reply(r.id, e.target.value.trim()); e.target.value = ''; } }} />
+                        </td>
+                        <td><span className={`badge ${stCls}`}>{st}</span></td>
+                        <td><div className="row-actions">
+                          <button className="btn btn-ghost btn-sm" disabled={st === 'Resolved'} onClick={() => act(r.id, 'status', { status: 'Resolved' })}>Resolve</button>
+                          <button className="btn btn-ghost btn-sm" disabled={st === 'Ignored'} onClick={() => act(r.id, 'status', { status: 'Ignored' })}>Ignore</button>
+                          {st !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => act(r.id, 'status', { status: 'Open' })}>Reopen</button>}
+                          <button className="btn btn-danger btn-sm" onClick={() => act(r.id, 'delete')}>Delete</button>
+                        </div></td>
+                      </tr>
+                    );
+                  });
                 })()}
               </tbody>
             </table>

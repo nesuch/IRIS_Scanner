@@ -187,6 +187,19 @@ class FeedbackComment(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
+class FlagComment(db.Model):
+    """Follow-up thread on a flag (user follow-ups + admin replies)."""
+    __tablename__ = "flag_comments"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    flag_id = db.Column(db.Integer, db.ForeignKey("flags.id"), nullable=False, index=True)
+    author_email = db.Column(db.String(255), nullable=True)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Flag(db.Model):
     """User-reported issue on a specific clause or financial data row."""
     __tablename__ = "flags"
