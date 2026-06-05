@@ -172,8 +172,8 @@ table.data tbody tr:hover { background: var(--paper); }
   background: var(--grad-wordmark); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
 .auth-brand .wm-sub { font-family: var(--sans); font-weight: 600; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-soft); text-align: center; line-height: 1.5; }
 .auth-form { display: flex; flex-direction: column; gap: 16px; }
-.auth-error { background: var(--bad-bg); border: 1px solid #fca5a5; color: var(--bad); padding: 10px 14px; border-radius: var(--r-sm); font-size: 13px; }
-.auth-ok { background: var(--good-bg); border: 1px solid #86efac; color: var(--good); padding: 10px 14px; border-radius: var(--r-sm); font-size: 13px; }
+.auth-error { background: var(--bad-bg); border: 1px solid #fca5a5; color: var(--bad); padding: 10px 14px; border-radius: var(--r-sm); font-size: 13px; margin-bottom: 18px; }
+.auth-ok { background: var(--good-bg); border: 1px solid #86efac; color: var(--good); padding: 10px 14px; border-radius: var(--r-sm); font-size: 13px; margin-bottom: 18px; }
 .auth-link { font-size: 13px; color: var(--muted); text-align: center; }
 .auth-link a { font-weight: 600; }
 .auth-bg-glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.18; z-index: 1; }
