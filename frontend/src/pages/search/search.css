@@ -49,6 +49,8 @@
 .iris-bubble { background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 3px; width: 100%; box-sizing: border-box; }
 
 .iris-msg { margin: 0; font-size: 15px; line-height: 1.6; color: var(--ink-soft); }
+.flag-link { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; padding: 2px 9px; font-size: 11.5px; font-weight: 600; color: var(--accent-red); background: #fff; border: 1px solid var(--accent-red); border-radius: var(--r-pill); cursor: pointer; transition: 0.15s; vertical-align: middle; }
+.flag-link:hover { background: var(--accent-red); color: #fff; }
 .iris-msg strong { color: var(--navy-700); }
 .iris-analysis, .iris-foundvia { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
 .iris-analysis strong, .iris-foundvia strong { color: var(--navy-700); }

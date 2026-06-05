@@ -21,6 +21,14 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
     catch { toast.error('Could not copy'); }
   };
 
+  // Lets users report a missing/incorrect "no results" outcome.
+  const flagNoResult = onFlag && (
+    <button className="flag-link" title="Report missing or wrong content"
+      onClick={() => onFlag({ _noresult: true, header: resp.query_label || 'search', id: resp.module || '', raw_text: resp.note || 'No matches found' })}>
+      <i className="fas fa-flag" /> Flag this
+    </button>
+  );
+
   if (resp.kind === 'greeting') {
     return (
       <p className="iris-msg">
@@ -30,7 +38,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
     );
   }
   if (resp.kind === 'rejected') {
-    return <p className="iris-msg">{resp.note}</p>;
+    return <p className="iris-msg">{resp.note} {flagNoResult}</p>;
   }
 
   const groups = groupByType(resp.matches || []);
@@ -44,7 +52,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
       {resp.kind === 'tags' && hasMatches && (
         <div className="iris-foundvia">Found via <strong>Tags</strong>: {(resp.keywords || []).join(', ')}</div>
       )}
-      {resp.note && !hasMatches && <p className="iris-msg">{resp.note}</p>}
+      {resp.note && !hasMatches && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
 
       {groups.map((g, gi) => {
         const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
@@ -352,7 +360,9 @@ export default function Search({ module }) {
 
       {flagClause && (
         <FlagModal kind="clause"
-          target={`${flagClause.source} · ${flagClause.header} · Clause ${flagClause.id}`}
+          target={flagClause._noresult
+            ? `No result · "${flagClause.header}" · ${flagClause.id || 'all'} module`
+            : `${flagClause.source} · ${flagClause.header} · Clause ${flagClause.id}`}
           detail={flagClause.raw_text}
           onClose={() => setFlagClause(null)} />
       )}

@@ -216,13 +216,14 @@ table.data tbody tr:hover { background: var(--paper); }
   .scrim { position: fixed; inset: 0; background: rgba(11,20,55,0.4); z-index: 25; }
 }
 
-/* Compact, single-line header strip on phones */
+/* Clean, uncluttered header on phones: drop the long org full-form line and keep
+   a prominent title + a single scope line. */
 @media (max-width: 640px) {
-  .page-header { padding: 11px 14px; gap: 10px; }
-  .page-header-titles { gap: 1px; min-width: 0; flex: 1; }
-  .page-header .full-form { font-size: 8.5px; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .page-header h1 { font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .page-header .scope { font-size: 11px; }
-  .header-actions { gap: 7px; }
-  .collapse-btn, .notif-btn, .header-avatar { width: 34px; height: 34px; }
+  .page-header { padding: 12px 14px; gap: 12px; }
+  .page-header-titles { gap: 3px; min-width: 0; flex: 1; }
+  .page-header .full-form { display: none; }
+  .page-header h1 { font-size: 21px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-header .scope { font-size: 11.5px; }
+  .header-actions { gap: 8px; }
+  .collapse-btn, .notif-btn, .header-avatar { width: 36px; height: 36px; }
 }
