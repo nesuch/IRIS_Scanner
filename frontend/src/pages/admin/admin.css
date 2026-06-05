@@ -33,3 +33,6 @@
 .fw-bold { font-weight: 600; color: var(--ink); }
 .row-resolved td { opacity: 0.62; }
 .row-resolved td.fw-bold { opacity: 0.8; }
+.rf-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
+.fb-target { font-size: 12px; color: var(--muted); margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+.fb-target i { color: var(--accent); font-size: 11px; }

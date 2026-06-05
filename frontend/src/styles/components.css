@@ -142,7 +142,7 @@ table.data tbody tr:hover { background: var(--paper); }
 .modal-head h3 { margin: 0; font-family: var(--serif); font-size: 18px; color: var(--ink); }
 .modal-close { background: none; border: none; font-size: 20px; color: var(--faint); cursor: pointer; line-height: 1; }
 .modal-close:hover { color: var(--bad); }
-.modal-body { padding: 20px; overflow: auto; overscroll-behavior: contain; }
+.modal-body { padding: 20px; overflow: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
 .modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line); }
 
 /* ---------- Empty state ---------- */

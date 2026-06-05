@@ -98,6 +98,12 @@ export default function Profile() {
 
   if (!profile) return (<><PageHeader fullForm="User Profile" title="Account Settings" scope="Your profile, devices and feedback" /><div className="page-body"><PageLoading /></div></>);
 
+  // Feedback + flags merged into one chronological list.
+  const reports = [
+    ...(profile.feedback || []).map((f) => ({ ...f, _type: 'feedback' })),
+    ...(profile.flags || []).map((f) => ({ ...f, _type: 'flag' })),
+  ].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+
   return (
     <>
       <PageHeader fullForm="User Profile" title="Account Settings" scope="Your profile, devices and feedback" />
@@ -138,23 +144,24 @@ export default function Profile() {
           </form>
         </div>
 
-        {/* My feedback */}
+        {/* My reports & flags (feedback + flags in one place) */}
         <div className="card pad anim-rise">
-          <h3 className="section-title"><i className="fas fa-comment-dots" /> My Feedback &amp; Reports</h3>
-          {profile.feedback?.length ? (
+          <h3 className="section-title"><i className="fas fa-comment-dots" /> My Reports &amp; Flags</h3>
+          {reports.length ? (
             <div className="fb-list">
-              {profile.feedback.map((f) => (
-                <div key={f.id} className="fb-card">
+              {reports.map((r) => (r._type === 'feedback' ? (
+                <div key={`f${r.id}`} className="fb-card">
                   <div className="fb-card-head">
-                    <span className="badge badge-navy">{f.category}</span>
-                    <span className={`badge ${ST_BADGE[f.status] || 'badge-warn'}`}>{f.status}</span>
-                    <span className="fb-date">{f.created_at}</span>
-                    <button className="fb-del" title="Delete feedback" onClick={() => deleteFeedback(f.id)}><i className="fas fa-trash-can" /></button>
+                    <span className="badge badge-blue">Feedback</span>
+                    <span className="badge badge-navy">{r.category}</span>
+                    <span className={`badge ${ST_BADGE[r.status] || 'badge-warn'}`}>{r.status}</span>
+                    <span className="fb-date">{r.created_at}</span>
+                    <button className="fb-del" title="Delete feedback" onClick={() => deleteFeedback(r.id)}><i className="fas fa-trash-can" /></button>
                   </div>
-                  <div className="fb-msg">{f.message}</div>
-                  {f.comments?.length > 0 && (
+                  <div className="fb-msg">{r.message}</div>
+                  {r.comments?.length > 0 && (
                     <div className="fb-thread">
-                      {f.comments.map((c, i) => (
+                      {r.comments.map((c, i) => (
                         <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
                           <span className="fb-author">{c.is_admin ? 'IRIS Team' : 'You'}</span> {c.body}
                           <span className="fb-cdate">{c.created_at}</span>
@@ -163,36 +170,24 @@ export default function Profile() {
                     </div>
                   )}
                   <input className="input fb-reply" placeholder="Add a follow-up…"
-                    onKeyDown={(e) => { if (e.key === 'Enter') { addComment(f.id, e.target.value); e.target.value = ''; } }} />
+                    onKeyDown={(e) => { if (e.key === 'Enter') { addComment(r.id, e.target.value); e.target.value = ''; } }} />
                 </div>
-              ))}
-            </div>
-          ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t submitted any feedback yet.</p>}
-        </div>
-
-        {/* My flags */}
-        <div className="card pad anim-rise">
-          <h3 className="section-title"><i className="fas fa-flag" /> My Flagged Items</h3>
-          {profile.flags?.length ? (
-            <div className="fb-list">
-              {profile.flags.map((f) => {
-                const stB = f.status === 'Resolved' ? 'badge-good' : f.status === 'Dismissed' ? 'badge-grey' : 'badge-warn';
-                return (
-                  <div key={f.id} className="fb-card">
-                    <div className="fb-card-head">
-                      <span className="badge badge-navy">{f.kind === 'financial' ? 'Financial' : 'Clause'}</span>
-                      <span className="badge badge-grey">{f.reason}</span>
-                      <span className={`badge ${stB}`}>{f.status}</span>
-                      <span className="fb-date">{f.created_at}</span>
-                      <button className="fb-del" title="Retract flag" onClick={() => deleteFlag(f.id)}><i className="fas fa-trash-can" /></button>
-                    </div>
-                    {f.target && <div className="fb-target"><i className="fas fa-location-dot" /> {f.target}</div>}
-                    {f.description && <div className="fb-msg">{f.description}</div>}
+              ) : (
+                <div key={`g${r.id}`} className="fb-card">
+                  <div className="fb-card-head">
+                    <span className="badge badge-bad">Flag</span>
+                    <span className="badge badge-navy">{r.kind === 'financial' ? 'Financial' : 'Clause'}</span>
+                    <span className="badge badge-grey">{r.reason}</span>
+                    <span className={`badge ${r.status === 'Resolved' ? 'badge-good' : r.status === 'Dismissed' ? 'badge-grey' : 'badge-warn'}`}>{r.status}</span>
+                    <span className="fb-date">{r.created_at}</span>
+                    <button className="fb-del" title="Retract flag" onClick={() => deleteFlag(r.id)}><i className="fas fa-trash-can" /></button>
                   </div>
-                );
-              })}
+                  {r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
+                  {r.description && <div className="fb-msg">{r.description}</div>}
+                </div>
+              )))}
             </div>
-          ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t flagged anything yet.</p>}
+          ) : <p style={{ color: 'var(--faint)' }}>You haven&rsquo;t submitted any feedback or flags yet.</p>}
         </div>
 
         {/* Active devices */}

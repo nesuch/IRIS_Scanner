@@ -164,6 +164,7 @@ export default function Admin() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [feedbackFilter, setFeedbackFilter] = useState('ALL');
+  const [reportFilter, setReportFilter] = useState('ALL'); // ALL | Feedback | Flags
   const [loading, setLoading] = useState(true);
 
   const load = (filter = feedbackFilter) => {
@@ -343,25 +344,28 @@ export default function Admin() {
           </div></div>
         </Section>
 
-        <Section icon="fa-comment-dots" title="User Feedback"
+        <Section icon="fa-comment-dots" title="User Reports & Flags"
           action={(
-            <select className="select" style={{ width: 'auto' }} value={feedbackFilter}
-              onChange={(e) => { setFeedbackFilter(e.target.value); setLoading(false); load(e.target.value); }}>
-              <option value="ALL">All</option><option value="Bug">Bug</option><option value="Suggestion">Suggestion</option>
-              <option value="UI Issue">UI Issue</option><option value="Other (please specify)">Other</option>
+            <select className="select" style={{ width: 'auto' }} value={reportFilter} onChange={(e) => setReportFilter(e.target.value)}>
+              <option value="ALL">All</option><option value="Feedback">Feedback</option><option value="Flags">Flags</option>
             </select>
           )}>
+          <p className="admin-help">Feedback and flagged content from users — reply, set status, reopen or delete.</p>
           <div className="table-wrap log-scroll"><div className="table-scroll">
             <table className="data">
-              <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Message</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Details</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
-                {data.feedback_rows.length ? data.feedback_rows.map((r) => {
-                  const st = r.status || 'Open';
-                  const stBadge = st === 'Done' ? 'badge-good' : st === 'Ignored' ? 'badge-grey' : 'badge-warn';
-                  return (
-                    <tr key={r.id} className={st !== 'Open' ? 'row-resolved' : ''}>
-                      <td>{r.created_at || '-'}</td><td>{r.user_email}</td><td>{r.category}</td>
-                      <td style={{ whiteSpace: 'normal', minWidth: 300 }}>
+                {(() => {
+                  const rows = [
+                    ...(reportFilter === 'Flags' ? [] : (data.feedback_rows || []).map((r) => ({ ...r, _type: 'feedback' }))),
+                    ...(reportFilter === 'Feedback' ? [] : (data.flags || []).map((r) => ({ ...r, _type: 'flag' }))),
+                  ].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+                  if (!rows.length) return <tr><td colSpan={6} className="muted-cell">No reports or flags found.</td></tr>;
+                  return rows.map((r) => (r._type === 'feedback' ? (
+                    <tr key={`f${r.id}`} className={(r.status || 'Open') !== 'Open' ? 'row-resolved' : ''}>
+                      <td>{r.created_at || '-'}</td><td>{r.user_email}</td>
+                      <td><span className="badge badge-blue">Feedback</span><div className="rf-sub">{r.category}</div></td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 280 }}>
                         {r.message}
                         {r.comments?.length > 0 && (
                           <div className="fb-thread">
@@ -375,50 +379,32 @@ export default function Admin() {
                         <input className="input fb-reply" placeholder="Reply to user…"
                           onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { replyFeedback(r.id, e.target.value.trim()); e.target.value = ''; } }} />
                       </td>
-                      <td><span className={`badge ${stBadge}`}>{st}</span></td>
-                      <td>
-                        <div className="row-actions">
-                          <button className="btn btn-ghost btn-sm" disabled={st === 'Done'} onClick={() => feedbackAction(r.id, 'status', { status: 'Done' })}>Done</button>
-                          <button className="btn btn-ghost btn-sm" disabled={st === 'Ignored'} onClick={() => feedbackAction(r.id, 'status', { status: 'Ignored' })}>Ignore</button>
-                          {st !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => feedbackAction(r.id, 'status', { status: 'Open' })}>Reopen</button>}
-                          <button className="btn btn-danger btn-sm" onClick={() => feedbackAction(r.id, 'delete')}>Delete</button>
-                        </div>
-                      </td>
+                      <td><span className={`badge ${r.status === 'Done' ? 'badge-good' : r.status === 'Ignored' ? 'badge-grey' : 'badge-warn'}`}>{r.status || 'Open'}</span></td>
+                      <td><div className="row-actions">
+                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Done'} onClick={() => feedbackAction(r.id, 'status', { status: 'Done' })}>Done</button>
+                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Ignored'} onClick={() => feedbackAction(r.id, 'status', { status: 'Ignored' })}>Ignore</button>
+                        {(r.status || 'Open') !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => feedbackAction(r.id, 'status', { status: 'Open' })}>Reopen</button>}
+                        <button className="btn btn-danger btn-sm" onClick={() => feedbackAction(r.id, 'delete')}>Delete</button>
+                      </div></td>
                     </tr>
-                  );
-                }) : <tr><td colSpan={6} className="muted-cell">No feedback submissions found.</td></tr>}
-              </tbody>
-            </table>
-          </div></div>
-        </Section>
-
-        <Section icon="fa-flag" title="Flagged Content">
-          <p className="admin-help">Issues users reported on clauses and financial reports.</p>
-          <div className="table-wrap log-scroll"><div className="table-scroll">
-            <table className="data">
-              <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Reason</th><th>Target</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>
-                {data.flags?.length ? data.flags.map((f) => {
-                  const st = f.status || 'Open';
-                  const stBadge = st === 'Resolved' ? 'badge-good' : st === 'Dismissed' ? 'badge-grey' : 'badge-warn';
-                  return (
-                    <tr key={f.id} className={st !== 'Open' ? 'row-resolved' : ''}>
-                      <td>{f.created_at}</td><td>{f.user_email}</td>
-                      <td><span className="badge badge-navy">{f.kind}</span></td>
-                      <td className="fw-bold">{f.reason}</td>
-                      <td style={{ whiteSpace: 'normal', minWidth: 160 }}>{f.target || '-'}</td>
-                      <td style={{ whiteSpace: 'normal', minWidth: 200 }}>{f.description || '-'}</td>
-                      <td><span className={`badge ${stBadge}`}>{st}</span></td>
-                      <td>
-                        <div className="row-actions">
-                          <button className="btn btn-ghost btn-sm" disabled={st === 'Resolved'} onClick={() => flagAction(f.id, 'status', { status: 'Resolved' })}>Resolve</button>
-                          <button className="btn btn-ghost btn-sm" disabled={st === 'Dismissed'} onClick={() => flagAction(f.id, 'status', { status: 'Dismissed' })}>Dismiss</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => flagAction(f.id, 'delete')}>Delete</button>
-                        </div>
+                  ) : (
+                    <tr key={`g${r.id}`} className={(r.status || 'Open') !== 'Open' ? 'row-resolved' : ''}>
+                      <td>{r.created_at || '-'}</td><td>{r.user_email}</td>
+                      <td><span className="badge badge-bad">Flag</span><div className="rf-sub">{r.kind} · {r.reason}</div></td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 280 }}>
+                        {r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
+                        {r.description || <span style={{ color: 'var(--faint)' }}>—</span>}
                       </td>
+                      <td><span className={`badge ${r.status === 'Resolved' ? 'badge-good' : r.status === 'Dismissed' ? 'badge-grey' : 'badge-warn'}`}>{r.status || 'Open'}</span></td>
+                      <td><div className="row-actions">
+                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Resolved'} onClick={() => flagAction(r.id, 'status', { status: 'Resolved' })}>Resolve</button>
+                        <button className="btn btn-ghost btn-sm" disabled={r.status === 'Dismissed'} onClick={() => flagAction(r.id, 'status', { status: 'Dismissed' })}>Dismiss</button>
+                        {(r.status || 'Open') !== 'Open' && <button className="btn btn-ghost btn-sm" onClick={() => flagAction(r.id, 'status', { status: 'Open' })}>Reopen</button>}
+                        <button className="btn btn-danger btn-sm" onClick={() => flagAction(r.id, 'delete')}>Delete</button>
+                      </div></td>
                     </tr>
-                  );
-                }) : <tr><td colSpan={8} className="muted-cell">No flags submitted.</td></tr>}
+                  )));
+                })()}
               </tbody>
             </table>
           </div></div>
