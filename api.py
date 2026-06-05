@@ -959,7 +959,12 @@ def api_feedback_comment(fid):
 # FLAGS  (user-reported issues on a clause or a financial data row)
 # ----------------------------------------------------------------------------
 _FLAG_REASONS = {"Wrong information", "Outdated / superseded", "Wrong document/source",
-                 "Formatting issue", "Other"}
+                 "Formatting issue", "Other",
+                 # No-result (no clauses found) reasons:
+                 "Relevant clause exists but was not found",
+                 "Content missing from the knowledge base",
+                 "Document not loaded for this module",
+                 "Searched the wrong department/module"}
 
 
 @api_bp.post("/flag")

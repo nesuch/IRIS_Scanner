@@ -7,6 +7,16 @@ import PdfViewer from './search/PdfViewer.jsx';
 import FlagModal from '../components/FlagModal.jsx';
 import './search/search.css';
 
+// Reasons tailored to a "no clauses found" outcome (the default flag reasons
+// assume a clause exists and is wrong).
+const NO_RESULT_REASONS = [
+  'Relevant clause exists but was not found',
+  'Content missing from the knowledge base',
+  'Document not loaded for this module',
+  'Searched the wrong department/module',
+  'Other',
+];
+
 const MODULE_META = {
   universal: { title: 'Universal Search', icon: 'fa-magnifying-glass', scope: 'Unified Search (All Departments)' },
   health: { title: 'Health Department', icon: 'fa-heart-pulse', scope: 'Acts, Regulations & Master Circulars (Health)' },
@@ -360,6 +370,8 @@ export default function Search({ module }) {
 
       {flagClause && (
         <FlagModal kind="clause"
+          title={flagClause._noresult ? 'Report a missing result' : undefined}
+          reasons={flagClause._noresult ? NO_RESULT_REASONS : undefined}
           target={flagClause._noresult
             ? `No result · "${flagClause.header}" · ${flagClause.id || 'all'} module`
             : `${flagClause.source} · ${flagClause.header} · Clause ${flagClause.id}`}

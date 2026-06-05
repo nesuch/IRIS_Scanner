@@ -12,10 +12,12 @@ const REASONS = [
 ];
 
 // Report an issue on a clause or a financial data row.
-// props: kind ('clause'|'financial'), target (id/context), detail (snapshot), onClose
-export default function FlagModal({ kind = 'clause', target, detail, onClose }) {
+// props: kind ('clause'|'financial'), target (id/context), detail (snapshot),
+//        reasons (optional list to override the default), title (optional), onClose
+export default function FlagModal({ kind = 'clause', target, detail, onClose, reasons, title }) {
   const toast = useToast();
-  const [reason, setReason] = useState(REASONS[0]);
+  const reasonList = reasons && reasons.length ? reasons : REASONS;
+  const [reason, setReason] = useState(reasonList[0]);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +35,7 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose }) 
   }
 
   return (
-    <Modal title={kind === 'financial' ? 'Flag this data' : 'Flag this clause'} width="520px" onClose={onClose}
+    <Modal title={title || (kind === 'financial' ? 'Flag this data' : 'Flag this clause')} width="520px" onClose={onClose}
       footer={(
         <>
           <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
@@ -46,7 +48,7 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose }) 
       <div className="field" style={{ marginBottom: 14 }}>
         <label>What's wrong?</label>
         <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
-          {REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+          {reasonList.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
       <div className="field">
