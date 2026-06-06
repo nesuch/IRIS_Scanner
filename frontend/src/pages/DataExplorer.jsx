@@ -3,6 +3,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import { Modal, EmptyState, TypingDots } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import FlagModal from '../components/FlagModal.jsx';
+import ReportCharts from './data/ReportCharts.jsx';
 import { api } from '../api.js';
 import './data/data.css';
 
@@ -12,10 +13,19 @@ const ENTITY_GROUPS = [
   { name: 'Life', keys: ['LIC', 'HDFC Life', 'SBI Life', 'ICICI Prudential'] },
 ];
 
+// Filter steps, in the cascade order the user picks them. Each step is scoped
+// to the selections made in the steps before it (see combosMatching below).
 const CATEGORIES = [
-  ['entities', 'Entities'], ['metrics', 'Metrics'], ['classes', 'Class of Biz'],
-  ['years', 'Fin Year'], ['quarters', 'Quarter'], ['lobs', 'Line of Biz'],
+  ['entities', 'Entity'], ['lobs', 'Line of Biz'], ['classes', 'Class of Biz'],
+  ['metrics', 'Metric'], ['years', 'Fin Year'], ['quarters', 'Quarter'],
 ];
+const CASCADE_ORDER = ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters'];
+const KEY_TO_COL = {
+  entities: 'Entity', lobs: 'Line_of_Business', classes: 'Class_of_Business',
+  metrics: 'Metric', years: 'Financial_Year', quarters: 'Quarter',
+};
+// What the "Entity" step is called per report view.
+const entityNoun = (dim) => (dim === 'Insurer' ? 'Insurers' : dim === 'Industry' ? 'Sectors' : `${dim}s`);
 
 const blankFilters = (dim = 'Insurer') => ({
   dimension: dim, entities: [], metrics: [], classes: [], years: [], quarters: [], lobs: [],
@@ -35,31 +45,89 @@ function FilterModal({ options, initial, onApply, onClose }) {
   const [search, setSearch] = useState('');
 
   const entityList = options.entities?.[draft.dimension] || [];
-  // Scope option lists to the selected dimension (e.g. Industry vs Insurer
-  // metrics don't overlap), falling back to global lists for older payloads.
   const dimOpts = options.by_dim?.[draft.dimension] || {};
-  const optionsFor = {
-    entities: entityList,
-    metrics: dimOpts.metrics || options.metrics,
-    classes: dimOpts.classes || options.classes,
-    years: dimOpts.years || options.years,
-    quarters: dimOpts.quarters || options.quarters,
-    lobs: dimOpts.lobs || options.lobs,
+  const cascade = dimOpts.cascade;   // combo tuple column order
+  const combos = dimOpts.combos;     // distinct valid combinations
+
+  const colIndex = (key) => (cascade ? cascade.indexOf(KEY_TO_COL[key]) : -1);
+
+  // Combos consistent with every selection made *before* `uptoKey` in the cascade.
+  const combosMatching = (d, uptoKey) => {
+    if (!combos) return [];
+    const upto = CASCADE_ORDER.indexOf(uptoKey);
+    return combos.filter((row) => {
+      for (let i = 0; i < upto; i += 1) {
+        const k = CASCADE_ORDER[i];
+        const sel = d[k];
+        const ci = colIndex(k);
+        if (sel?.length && ci >= 0 && !sel.includes(row[ci])) return false;
+      }
+      return true;
+    });
+  };
+
+  // Valid options for one step, scoped to the earlier steps' selections.
+  const optionsForCat = (d, key) => {
+    if (!combos) return dimOpts[key] || options[key] || [];
+    const ci = colIndex(key);
+    if (ci < 0) return dimOpts[key] || [];
+    return [...new Set(combosMatching(d, key).map((r) => r[ci]))].sort();
+  };
+
+  // After any change, drop downstream selections that are no longer valid.
+  const prune = (d) => {
+    if (!combos) return d;
+    const nd = { ...d };
+    CASCADE_ORDER.forEach((key) => {
+      if (key === 'entities' || !nd[key]?.length) return;
+      const valid = new Set(optionsForCat(nd, key));
+      nd[key] = nd[key].filter((v) => valid.has(v));
+    });
+    return nd;
   };
 
   const toggle = (key, value) => setDraft((d) => {
     const set = new Set(d[key]);
     set.has(value) ? set.delete(value) : set.add(value);
-    return { ...d, [key]: [...set] };
+    return prune({ ...d, [key]: [...set] });
   });
-  const setEntities = (vals) => setDraft((d) => ({ ...d, entities: vals }));
+  const setEntities = (vals) => setDraft((d) => prune({ ...d, entities: vals }));
+  // Select-all / clear for the active step (selects the full option list, not
+  // just the search-filtered subset).
+  const selectAllCat = (key) => setDraft((d) => {
+    const all = combos ? optionsForCat(d, key) : (key === 'entities' ? entityList : (dimOpts[key] || options[key] || []));
+    return prune({ ...d, [key]: [...all] });
+  });
+  const clearCat = (key) => setDraft((d) => prune({ ...d, [key]: [] }));
   // Switching dimension clears prior selections (they belong to the old dimension).
   const changeDim = (dim) => setDraft((d) => ({
     ...d, dimension: dim, entities: [], metrics: [], years: [], quarters: [], lobs: [], classes: [],
   }));
 
+  // Gated stepper: a step stays locked until every prior step has a selection,
+  // so the user must follow the cascade order (steps with no available options
+  // for the current selections are auto-skipped rather than blocking forever).
+  let firstOpen = -1;
+  for (let i = 0; i < CASCADE_ORDER.length; i += 1) {
+    const k = CASCADE_ORDER[i];
+    if (draft[k]?.length) continue;
+    if (combos && optionsForCat(draft, k).length === 0) continue; // empty step → skip
+    firstOpen = i;
+    break;
+  }
+  const isLocked = (i) => firstOpen !== -1 && i > firstOpen;
+
+  // Never leave the active tab on a locked step (e.g. after clearing a step).
+  useEffect(() => {
+    const ci = CASCADE_ORDER.indexOf(cat);
+    if (isLocked(ci)) { setCat(CASCADE_ORDER[firstOpen]); setSearch(''); }
+  }, [firstOpen]);
+
   const count = draft.entities.length + draft.metrics.length;
-  const list = (optionsFor[cat] || []).filter((o) => o.toLowerCase().includes(search.toLowerCase()));
+  const baseList = combos
+    ? optionsForCat(draft, cat)
+    : (cat === 'entities' ? entityList : (dimOpts[cat] || options[cat] || []));
+  const list = baseList.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
 
   function apply() {
     if (!draft.entities.length || !draft.metrics.length) {
@@ -90,29 +158,38 @@ function FilterModal({ options, initial, onApply, onClose }) {
 
       <div className="filter-modal-body">
         <div className="filter-cats">
-          {CATEGORIES.map(([key, label]) => (
-            <div key={key} className={`cat-item ${cat === key ? 'active' : ''}`} onClick={() => { setCat(key); setSearch(''); }}>
-              {key === 'entities' ? (draft.dimension === 'Insurer' ? 'Insurers' : draft.dimension + 's') : label}
-              {draft[key]?.length > 0 && <span className="cat-count">{draft[key].length}</span>}
-            </div>
-          ))}
+          {CATEGORIES.map(([key, label], i) => {
+            const locked = isLocked(i);
+            const done = draft[key]?.length > 0;
+            return (
+              <div key={key}
+                className={`cat-item ${cat === key ? 'active' : ''} ${locked ? 'locked' : ''}`}
+                onClick={() => { if (!locked) { setCat(key); setSearch(''); } }}>
+                <span className="cat-label">
+                  <span className="cat-step">{locked ? <i className="fas fa-lock" /> : done ? <i className="fas fa-check" /> : i + 2}</span>
+                  {key === 'entities' ? entityNoun(draft.dimension) : label}
+                </span>
+                {done && <span className="cat-count">{draft[key].length}</span>}
+              </div>
+            );
+          })}
         </div>
 
         <div className="filter-options-pane">
           <input className="input" placeholder="Search options…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 12 }} />
 
-          {cat === 'entities' && (
-            <div className="entity-chips">
-              <span className="chip-btn" onClick={() => setEntities([...entityList])}>All {draft.dimension}s</span>
-              {draft.dimension === 'Insurer' && ENTITY_GROUPS.map((g) => (
-                <span key={g.name} className="chip-btn" onClick={() => setEntities(entityList.filter((e) => g.keys.some((k) => e.toLowerCase().includes(k.toLowerCase()))))}>{g.name}</span>
-              ))}
-              <span className="chip-btn danger" onClick={() => setEntities([])}>Clear</span>
-            </div>
-          )}
+          <div className="entity-chips">
+            <span className="chip-btn" onClick={() => selectAllCat(cat)}><i className="fas fa-check-double" /> Select all</span>
+            {cat === 'entities' && draft.dimension === 'Insurer' && ENTITY_GROUPS.map((g) => (
+              <span key={g.name} className="chip-btn" onClick={() => setEntities(entityList.filter((e) => g.keys.some((k) => e.toLowerCase().includes(k.toLowerCase()))))}>{g.name}</span>
+            ))}
+            <span className="chip-btn danger" onClick={() => clearCat(cat)}>Clear</span>
+          </div>
 
           {list.length === 0 ? (
-            <div className="no-data-msg">{cat === 'entities' ? '⚠️ No entity data for this view. Try Admin → Sync Data.' : 'No options found.'}</div>
+            <div className="no-data-msg">{cat === 'entities'
+              ? '⚠️ No entity data for this view. Try Admin → Sync Data.'
+              : (search ? 'No options found.' : 'No options for the earlier selections — adjust a previous step.')}</div>
           ) : list.map((opt) => (
             <label key={opt} className="checkbox-item">
               <input type="checkbox" checked={draft[cat].includes(opt)} onChange={() => toggle(cat, opt)} />
@@ -177,6 +254,7 @@ export default function DataExplorer() {
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [view, setView] = useState('chart');
 
   useEffect(() => {
     api.get('/data/options').then(setOptions).catch(() => toast.error('Could not load filter options'));
@@ -253,7 +331,27 @@ export default function DataExplorer() {
             {!report.rows?.length ? (
               <EmptyState icon="fa-folder-open">No matching records found.</EmptyState>
             ) : (
-              <ReportTable report={report} onExport={exportExcel} onFlag={() => setFlagOpen(true)} />
+              <>
+                <div className="view-toggle-bar">
+                  <div className="view-toggle">
+                    <button className={`vt-btn ${view === 'chart' ? 'active' : ''}`} onClick={() => setView('chart')}>
+                      <i className="fas fa-chart-line" /> Dashboard
+                    </button>
+                    <button className={`vt-btn ${view === 'table' ? 'active' : ''}`} onClick={() => setView('table')}>
+                      <i className="fas fa-table" /> Table
+                    </button>
+                  </div>
+                  {view === 'chart' && (
+                    <div className="dt-actions">
+                      <button className="btn btn-ghost btn-sm" onClick={() => setFlagOpen(true)}><i className="fas fa-flag" /> Flag</button>
+                      <button className="btn btn-sm dt-excel" onClick={exportExcel}><i className="fas fa-file-excel" /> Export Excel</button>
+                    </div>
+                  )}
+                </div>
+                {view === 'chart'
+                  ? <ReportCharts report={report} dimension={filters.dimension} />
+                  : <ReportTable report={report} onExport={exportExcel} onFlag={() => setFlagOpen(true)} />}
+              </>
             )}
           </>
         )}

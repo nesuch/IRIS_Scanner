@@ -31,6 +31,54 @@ SHEET_ENTITY = {
 YEAR_RE = re.compile(r"^\d{4}-\d{2}$")        # e.g. 2024-25
 DIMENSION = "Industry"
 QUARTER = "Annual"
+DEFAULT_LOB = "All Lines"
+DEFAULT_CLASS = "All Classes"
+# Contextless aggregate rows to drop entirely: a bare "Total" is just the sum of
+# the segment cells above it, so on its own (no context) it is meaningless.
+SKIP_PARTICULARS = {"total"}
+
+# Segment names that are Lines of Business (not metrics). When one of these
+# appears as a row under a LOB-breakdown section, the *section* is the metric
+# (e.g. "Incurred Claims Ratio") and the segment is the Line of Business.
+LOB_VOCAB = {
+    "fire", "marine", "marine cargo", "marine hull", "motor", "motor od",
+    "motor tp", "health", "engineering", "aviation", "liability",
+    "personal accident", "crop", "credit", "miscellaneous", "others",
+}
+
+# A section whose header matches one of these keys is a per-LOB breakdown; the
+# value maps the messy header to a clean metric name.
+LOB_SECTIONS = [
+    ("gross direct premium", "Gross Direct Premium"),
+    ("net retention", "Net Retention"),
+    ("incurred claims ratio", "Incurred Claims Ratio"),
+]
+
+# Sections whose children are members of a category (a channel, a region, a
+# fund) rather than distinct metrics. The child name is ambiguous on its own
+# (e.g. "Online", "Others if any"), so the metric is prefixed with this label.
+BREAKDOWN_SECTIONS = [
+    (("channel", "premium"), "New Business Premium by Channel"),
+    (("channel", "lives"), "New Business Lives Covered by Channel"),
+    (("region",), "Offices by Region"),
+    (("assets under management",), "Assets Under Management"),
+]
+
+
+def _lob_section_metric(section):
+    low = section.lower()
+    for key, name in LOB_SECTIONS:
+        if key in low:
+            return name
+    return None
+
+
+def _breakdown_label(section):
+    low = section.lower()
+    for keys, name in BREAKDOWN_SECTIONS:
+        if all(k in low for k in keys):
+            return name
+    return None
 
 
 def _clean_text(v):
@@ -44,6 +92,14 @@ def _clean_metric(particular, unit):
     if unit and unit.lower() not in {"none", "nan", "unit", ""}:
         name = f"{name} ({unit})"
     return name
+
+
+def _clean_section(particular):
+    """Tidy a section-header label, e.g. 'INCURRED CLAIMS RATIO' -> 'Incurred Claims Ratio'."""
+    s = _clean_text(particular).rstrip("#").strip()
+    # Drop trailing parentheticals/footnotes that add no meaning to the label.
+    s = re.sub(r"\s*\([^)]*\)\s*$", "", s).strip(" .")
+    return s.title() if s.isupper() else s
 
 
 def _to_number(v):
@@ -85,28 +141,67 @@ def convert_sheet(ws, entity, source):
         return []
     header_row, year_cols, p_col, unit_col = info
     rows = []
+    current_section = ""
+    section_metric = None  # set when the current section is a per-LOB breakdown
+    # Track which sections each (non-LOB) metric name appears under, so any name
+    # that recurs across sections can be disambiguated — otherwise duplicates
+    # collapse and the pivot SUMS them into a meaningless figure.
+    metric_sections = {}
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
         particular = row[p_col] if p_col < len(row) else None
         if not _clean_text(particular):
             continue
         unit = row[unit_col] if (unit_col is not None and unit_col < len(row)) else None
-        metric = _clean_metric(particular, unit)
-        for ci, fy in year_cols.items():
-            if ci >= len(row):
-                continue
-            value = _to_number(row[ci])
+        values = {fy: _to_number(row[ci]) for ci, fy in year_cols.items() if ci < len(row)}
+        has_data = any(v is not None for v in values.values())
+
+        # A section-header row has a label but no unit and no numeric values.
+        if not has_data and not _clean_text(unit):
+            current_section = _clean_section(particular)
+            section_metric = _lob_section_metric(current_section)
+            continue
+
+        p_clean = _clean_text(particular).rstrip("#").strip()
+        if p_clean.lower() in SKIP_PARTICULARS:
+            continue  # drop contextless "Total" aggregate rows
+
+        is_lob_row = section_metric and p_clean.lower() in LOB_VOCAB
+        if is_lob_row:
+            # The segment is the Line of Business; the section is the metric.
+            metric = _clean_metric(section_metric, unit)
+            lob = p_clean.title()
+        else:
+            breakdown = _breakdown_label(current_section)
+            if breakdown:
+                # Child is a category member (channel/region/fund) — prefix the
+                # section so e.g. "Online" reads "...by Channel — Online".
+                metric = _clean_metric(f"{breakdown} — {p_clean}", unit)
+            else:
+                metric = _clean_metric(particular, unit)
+                metric_sections.setdefault(metric, set()).add(current_section)
+            lob = DEFAULT_LOB
+
+        for fy, value in values.items():
             if value is None:
-                continue  # section headers / footnotes / blanks emit nothing
+                continue
             rows.append({
                 "dimension": DIMENSION,
                 "entity": entity,
                 "metric": metric,
+                "section": "" if is_lob_row else current_section,
                 "value": value,
                 "financial_year": fy,
                 "quarter": QUARTER,
-                "line_of_business": "General",
-                "class_of_business": "General",
+                "line_of_business": lob,
+                "class_of_business": DEFAULT_CLASS,
             })
+
+    # Disambiguate only the (non-LOB) metric names that genuinely collide across
+    # sections; unique metrics keep their clean "<Particular> (<Unit>)" name.
+    for r in rows:
+        sec = r.pop("section")
+        if sec and len(metric_sections.get(r["metric"], ())) > 1:
+            r["metric"] = f"{sec} — {r['metric']}"
     return rows
 
 

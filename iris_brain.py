@@ -716,11 +716,23 @@ def get_filter_options():
     # Per-dimension option sets — metrics/years/etc. differ by dimension (e.g.
     # Industry metrics and Insurer metrics don't overlap), so the UI must scope
     # options to the selected dimension to avoid empty "no data" combinations.
+    # Column -> position in the cascade tuple the UI sends as "combos".
+    CASCADE = ['Entity', 'Line_of_Business', 'Class_of_Business', 'Metric', 'Financial_Year', 'Quarter']
+
     by_dim = {}
     for dim in unique_dims:
         d = UNIFIED_DF[UNIFIED_DF['Dimension'] == dim]
         entities_by_dim[dim] = sorted(d['Entity'].unique().tolist())
+        # Distinct valid combinations drive a cascading filter in the UI: each
+        # step (Entity -> LOB -> Class -> Metric -> Year -> Quarter) only offers
+        # options consistent with earlier picks, so impossible "no data" combos
+        # can't be built (e.g. picking "Aviation" then a metric it doesn't have).
+        avail = [c for c in CASCADE if c in d.columns]
+        combos = d[avail].drop_duplicates().astype(str).values.tolist()
         by_dim[dim] = {
+            "cascade": avail,            # column order of each combo tuple
+            "combos": combos,            # distinct [Entity, LOB, Class, Metric, Year, Quarter]
+            # Plain per-dimension unions kept as a fallback for older clients.
             "metrics": _uniq(d, 'Metric'),
             "years": _uniq(d, 'Financial_Year'),
             "quarters": _uniq(d, 'Quarter'),
@@ -768,6 +780,7 @@ def _create_pivoted_view(filters):
     try:
         # --- KEY UPDATE: Include Source_File in Index to separate duplicates ---
         index_cols = ['Entity', 'Financial_Year']
+        if 'Line_of_Business' in df.columns: index_cols.append('Line_of_Business')
         if 'Class_of_Business' in df.columns: index_cols.append('Class_of_Business')
         if 'Quarter' in df.columns: index_cols.append('Quarter')
         if 'Source_File' in df.columns: index_cols.append('Source_File')
@@ -798,7 +811,7 @@ def filter_data(filters):
     target_dim = filters.get('dimension', 'Insurer')
     
     # 1. Define Standard Left-Side Columns
-    possible_headers = [target_dim, 'Financial_Year', 'Quarter', 'Class_of_Business']
+    possible_headers = [target_dim, 'Financial_Year', 'Line_of_Business', 'Class_of_Business', 'Quarter']
     
     # 2. Extract Base Columns that actually exist
     base_cols = [c for c in possible_headers if c in pivot_df.columns]
