@@ -35,8 +35,17 @@ function FilterModal({ options, initial, onApply, onClose }) {
   const [search, setSearch] = useState('');
 
   const entityList = options.entities?.[draft.dimension] || [];
-  const optionsFor = { entities: entityList, metrics: options.metrics, classes: options.classes,
-    years: options.years, quarters: options.quarters, lobs: options.lobs };
+  // Scope option lists to the selected dimension (e.g. Industry vs Insurer
+  // metrics don't overlap), falling back to global lists for older payloads.
+  const dimOpts = options.by_dim?.[draft.dimension] || {};
+  const optionsFor = {
+    entities: entityList,
+    metrics: dimOpts.metrics || options.metrics,
+    classes: dimOpts.classes || options.classes,
+    years: dimOpts.years || options.years,
+    quarters: dimOpts.quarters || options.quarters,
+    lobs: dimOpts.lobs || options.lobs,
+  };
 
   const toggle = (key, value) => setDraft((d) => {
     const set = new Set(d[key]);
@@ -44,7 +53,10 @@ function FilterModal({ options, initial, onApply, onClose }) {
     return { ...d, [key]: [...set] };
   });
   const setEntities = (vals) => setDraft((d) => ({ ...d, entities: vals }));
-  const changeDim = (dim) => setDraft((d) => ({ ...d, dimension: dim, entities: [] }));
+  // Switching dimension clears prior selections (they belong to the old dimension).
+  const changeDim = (dim) => setDraft((d) => ({
+    ...d, dimension: dim, entities: [], metrics: [], years: [], quarters: [], lobs: [], classes: [],
+  }));
 
   const count = draft.entities.length + draft.metrics.length;
   const list = (optionsFor[cat] || []).filter((o) => o.toLowerCase().includes(search.toLowerCase()));

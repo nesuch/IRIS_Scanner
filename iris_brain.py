@@ -710,18 +710,34 @@ def get_filter_options():
     entities_by_dim = {}
     unique_dims = sorted(UNIFIED_DF['Dimension'].unique().tolist())
 
+    def _uniq(d, col):
+        return sorted(d[col].dropna().unique().tolist()) if col in d.columns else []
+
+    # Per-dimension option sets — metrics/years/etc. differ by dimension (e.g.
+    # Industry metrics and Insurer metrics don't overlap), so the UI must scope
+    # options to the selected dimension to avoid empty "no data" combinations.
+    by_dim = {}
     for dim in unique_dims:
-        entities = sorted(UNIFIED_DF[UNIFIED_DF['Dimension'] == dim]['Entity'].unique().tolist())
-        entities_by_dim[dim] = entities
+        d = UNIFIED_DF[UNIFIED_DF['Dimension'] == dim]
+        entities_by_dim[dim] = sorted(d['Entity'].unique().tolist())
+        by_dim[dim] = {
+            "metrics": _uniq(d, 'Metric'),
+            "years": _uniq(d, 'Financial_Year'),
+            "quarters": _uniq(d, 'Quarter'),
+            "lobs": _uniq(d, 'Line_of_Business'),
+            "classes": _uniq(d, 'Class_of_Business'),
+        }
 
     return {
         "dimensions": unique_dims,
         "entities": entities_by_dim,
-        "metrics": sorted(UNIFIED_DF['Metric'].dropna().unique().tolist()) if 'Metric' in UNIFIED_DF else [],
-        "years": sorted(UNIFIED_DF['Financial_Year'].dropna().unique().tolist()) if 'Financial_Year' in UNIFIED_DF else [],
-        "quarters": sorted(UNIFIED_DF['Quarter'].dropna().unique().tolist()) if 'Quarter' in UNIFIED_DF else [],
-        "lobs": sorted(UNIFIED_DF['Line_of_Business'].dropna().unique().tolist()) if 'Line_of_Business' in UNIFIED_DF else [],
-        "classes": sorted(UNIFIED_DF['Class_of_Business'].dropna().unique().tolist()) if 'Class_of_Business' in UNIFIED_DF else []
+        "by_dim": by_dim,
+        # Global unions kept for backward compatibility.
+        "metrics": _uniq(UNIFIED_DF, 'Metric'),
+        "years": _uniq(UNIFIED_DF, 'Financial_Year'),
+        "quarters": _uniq(UNIFIED_DF, 'Quarter'),
+        "lobs": _uniq(UNIFIED_DF, 'Line_of_Business'),
+        "classes": _uniq(UNIFIED_DF, 'Class_of_Business'),
     }
 
 # --- PIVOT LOGIC ---
