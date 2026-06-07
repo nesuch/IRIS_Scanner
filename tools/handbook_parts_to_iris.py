@@ -131,6 +131,16 @@ PHASE10_CHANNEL_CLASS = [            # channel rows x (year > class > sub-metric
     ("Part V", "104", "Health"),
 ]
 
+# Phase-11: insurer rows x (category > year) -> Reports (category = line item).
+# (part, sheet, report name, unit)
+PHASE11_MEASURES = [
+    ("Part II", "47", "Investments (AUM) by Instrument", "₹Crore"),
+    ("Part I", "30", "Offices by Region", "Nos."),
+    ("Part V", "93", "Avg Individual Policies Sold per Agent", "Nos."),
+    ("Part V", "94", "Avg New Business Premium per Agent", "₹Lakh"),
+    ("Part V", "95", "Avg Premium per Policy", "₹"),
+]
+
 # Phase-6: more per-insurer transposed tables routed into the Statements &
 # Reports view as named reports. (part, sheet, report name, fallback unit)
 PHASE6_REPORTS = [
@@ -726,8 +736,11 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
 CHANNEL_DIMENSION = "Channel"
 
 
-def convert_channel_measures(ws, lob, fallback_unit="Nos."):
-    """Channel rows x (measure > year). e.g. 99/101 channel-wise new business."""
+def convert_channel_measures(ws, lob, fallback_unit="Nos.", dimension=CHANNEL_DIMENSION,
+                             class_of_business=DEFAULT_CLASS):
+    """Row-entity x (measure > year). e.g. 99/101 channel new business, and (for
+    dimension=Financials) AUM by instrument (47), offices by region (30),
+    agent productivity (93-95) — the measure becomes the line item."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     yr = next((i for i, r in enumerate(grid[:8])
@@ -755,9 +768,9 @@ def convert_channel_measures(ws, lob, fallback_unit="Nos."):
                     else "₹Crore" if ("premium" in low or "amount" in low) else fallback_unit)
             metric = f"{meas} ({unit})" if meas else "Value"
             out.append({
-                "dimension": CHANNEL_DIMENSION, "entity": ch, "metric": metric,
+                "dimension": dimension, "entity": ch, "metric": metric,
                 "value": value, "financial_year": fy, "quarter": QUARTER,
-                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+                "line_of_business": lob, "class_of_business": class_of_business,
             })
     return out
 
@@ -1137,6 +1150,17 @@ def main():
         rows = convert_insurer_periodic(wb[match], report, fallback_unit=fb_unit)
         print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
               f"line items={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, report, fb_unit in PHASE11_MEASURES:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_channel_measures(wb[match], report, fallback_unit=fb_unit,
+                                        dimension=FIN_DIMENSION, class_of_business="General")
+        print(f"   {part} t{sheet:>3} [Reports/{report[:24]}] -> {len(rows)} rows | "
+              f"entities={len(set(r['entity'] for r in rows))} | items={len(set(r['metric'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, report, fb_unit in PHASE9B_LIFE_HEALTH:
