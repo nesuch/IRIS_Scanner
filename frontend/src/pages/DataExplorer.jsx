@@ -7,25 +7,39 @@ import ReportCharts from './data/ReportCharts.jsx';
 import { api } from '../api.js';
 import './data/data.css';
 
+// Quick-pick groups for the Insurer view. PUBLIC_KEYS lists the state-owned
+// insurers/reinsurers; "Private" is simply everyone else. SAHI_KEYS are the
+// standalone health insurers. Chips apply to the LOB-scoped insurer list, and
+// only show when they'd actually match something.
+const PUBLIC_KEYS = ['Life Insurance Corporation', 'New India', 'Oriental Insurance',
+  'National Insurance', 'United India', 'GIC', 'Agriculture Insurance', 'ECGC'];
+const SAHI_KEYS = ['Star Health', 'Care Health', 'ManipalCigna', 'Niva Bupa',
+  'Aditya Birla Health', 'Galaxy Health', 'Narayana Health', 'Reliance Health', 'HDFC ERGO Health'];
+const matchesAny = (e, keys) => keys.some((k) => e.toLowerCase().includes(k.toLowerCase()));
 const ENTITY_GROUPS = [
-  { name: 'SAHIs', keys: ['Star', 'Care', 'Aditya Birla', 'Niva', 'Manipal', 'Galaxy', 'Narayana'] },
-  { name: 'PSUs', keys: ['New India', 'United India', 'Oriental', 'National'] },
-  { name: 'Life', keys: ['LIC', 'HDFC Life', 'SBI Life', 'ICICI Prudential'] },
+  { name: 'Public Sector', pick: (list) => list.filter((e) => matchesAny(e, PUBLIC_KEYS)) },
+  { name: 'Private', pick: (list) => list.filter((e) => !matchesAny(e, PUBLIC_KEYS)) },
+  { name: 'Standalone Health', pick: (list) => list.filter((e) => matchesAny(e, SAHI_KEYS)) },
 ];
 
-// Filter steps, in the cascade order the user picks them. Each step is scoped
-// to the selections made in the steps before it (see combosMatching below).
-const CATEGORIES = [
-  ['entities', 'Entity'], ['lobs', 'Line of Biz'], ['classes', 'Class of Biz'],
-  ['metrics', 'Metric'], ['years', 'Fin Year'], ['quarters', 'Quarter'],
-];
-const CASCADE_ORDER = ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters'];
+// Tab labels for each filter step.
+const STEP_LABELS = {
+  entities: 'Entity', lobs: 'Line of Biz', classes: 'Class of Biz',
+  metrics: 'Metric', years: 'Fin Year', quarters: 'Quarter',
+};
 const KEY_TO_COL = {
   entities: 'Entity', lobs: 'Line_of_Business', classes: 'Class_of_Business',
   metrics: 'Metric', years: 'Financial_Year', quarters: 'Quarter',
 };
+// The cascade order the user follows, per report view. In the Insurer view the
+// Line of Business comes first so the insurer list narrows to the relevant ones
+// (life vs general vs reinsurance); other views pick the entity first.
+const cascadeOrder = (dim) => (dim === 'Insurer'
+  ? ['lobs', 'entities', 'classes', 'metrics', 'years', 'quarters']
+  : ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters']);
 // What the "Entity" step is called per report view.
-const entityNoun = (dim) => (dim === 'Insurer' ? 'Insurers' : dim === 'Industry' ? 'Sectors' : `${dim}s`);
+const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries' };
+const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
 
 const blankFilters = (dim = 'Insurer') => ({
   dimension: dim, entities: [], metrics: [], classes: [], years: [], quarters: [], lobs: [],
@@ -41,23 +55,24 @@ function parseAlert(msg) {
 function FilterModal({ options, initial, onApply, onClose }) {
   const toast = useToast();
   const [draft, setDraft] = useState(initial);
-  const [cat, setCat] = useState('entities');
+  const [cat, setCat] = useState(() => cascadeOrder(initial.dimension)[0]);
   const [search, setSearch] = useState('');
 
   const entityList = options.entities?.[draft.dimension] || [];
   const dimOpts = options.by_dim?.[draft.dimension] || {};
   const cascade = dimOpts.cascade;   // combo tuple column order
   const combos = dimOpts.combos;     // distinct valid combinations
+  const order = cascadeOrder(draft.dimension);  // step order for this view
 
   const colIndex = (key) => (cascade ? cascade.indexOf(KEY_TO_COL[key]) : -1);
 
   // Combos consistent with every selection made *before* `uptoKey` in the cascade.
   const combosMatching = (d, uptoKey) => {
     if (!combos) return [];
-    const upto = CASCADE_ORDER.indexOf(uptoKey);
+    const upto = order.indexOf(uptoKey);
     return combos.filter((row) => {
       for (let i = 0; i < upto; i += 1) {
-        const k = CASCADE_ORDER[i];
+        const k = order[i];
         const sel = d[k];
         const ci = colIndex(k);
         if (sel?.length && ci >= 0 && !sel.includes(row[ci])) return false;
@@ -78,8 +93,9 @@ function FilterModal({ options, initial, onApply, onClose }) {
   const prune = (d) => {
     if (!combos) return d;
     const nd = { ...d };
-    CASCADE_ORDER.forEach((key) => {
-      if (key === 'entities' || !nd[key]?.length) return;
+    const ord = cascadeOrder(d.dimension);
+    ord.forEach((key, i) => {
+      if (i === 0 || !nd[key]?.length) return;  // first step has nothing upstream
       const valid = new Set(optionsForCat(nd, key));
       nd[key] = nd[key].filter((v) => valid.has(v));
     });
@@ -108,8 +124,8 @@ function FilterModal({ options, initial, onApply, onClose }) {
   // so the user must follow the cascade order (steps with no available options
   // for the current selections are auto-skipped rather than blocking forever).
   let firstOpen = -1;
-  for (let i = 0; i < CASCADE_ORDER.length; i += 1) {
-    const k = CASCADE_ORDER[i];
+  for (let i = 0; i < order.length; i += 1) {
+    const k = order[i];
     if (draft[k]?.length) continue;
     if (combos && optionsForCat(draft, k).length === 0) continue; // empty step → skip
     firstOpen = i;
@@ -117,11 +133,12 @@ function FilterModal({ options, initial, onApply, onClose }) {
   }
   const isLocked = (i) => firstOpen !== -1 && i > firstOpen;
 
-  // Never leave the active tab on a locked step (e.g. after clearing a step).
+  // Never leave the active tab on a locked step (e.g. after clearing a step or
+  // switching the report view, which reorders the steps).
   useEffect(() => {
-    const ci = CASCADE_ORDER.indexOf(cat);
-    if (isLocked(ci)) { setCat(CASCADE_ORDER[firstOpen]); setSearch(''); }
-  }, [firstOpen]);
+    const ci = order.indexOf(cat);
+    if (isLocked(ci)) { setCat(order[firstOpen]); setSearch(''); }
+  }, [firstOpen, draft.dimension]);
 
   const count = draft.entities.length + draft.metrics.length;
   const baseList = combos
@@ -158,7 +175,7 @@ function FilterModal({ options, initial, onApply, onClose }) {
 
       <div className="filter-modal-body">
         <div className="filter-cats">
-          {CATEGORIES.map(([key, label], i) => {
+          {order.map((key, i) => {
             const locked = isLocked(i);
             const done = draft[key]?.length > 0;
             return (
@@ -167,7 +184,7 @@ function FilterModal({ options, initial, onApply, onClose }) {
                 onClick={() => { if (!locked) { setCat(key); setSearch(''); } }}>
                 <span className="cat-label">
                   <span className="cat-step">{locked ? <i className="fas fa-lock" /> : done ? <i className="fas fa-check" /> : i + 2}</span>
-                  {key === 'entities' ? entityNoun(draft.dimension) : label}
+                  {key === 'entities' ? entityNoun(draft.dimension) : STEP_LABELS[key]}
                 </span>
                 {done && <span className="cat-count">{draft[key].length}</span>}
               </div>
@@ -180,9 +197,12 @@ function FilterModal({ options, initial, onApply, onClose }) {
 
           <div className="entity-chips">
             <span className="chip-btn" onClick={() => selectAllCat(cat)}><i className="fas fa-check-double" /> Select all</span>
-            {cat === 'entities' && draft.dimension === 'Insurer' && ENTITY_GROUPS.map((g) => (
-              <span key={g.name} className="chip-btn" onClick={() => setEntities(entityList.filter((e) => g.keys.some((k) => e.toLowerCase().includes(k.toLowerCase()))))}>{g.name}</span>
-            ))}
+            {cat === 'entities' && draft.dimension === 'Insurer' && ENTITY_GROUPS
+              .map((g) => [g, g.pick(baseList)])
+              .filter(([, picked]) => picked.length)
+              .map(([g, picked]) => (
+                <span key={g.name} className="chip-btn" onClick={() => setEntities(picked)}>{g.name}</span>
+              ))}
             <span className="chip-btn danger" onClick={() => clearCat(cat)}>Clear</span>
           </div>
 

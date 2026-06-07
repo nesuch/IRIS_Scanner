@@ -28,6 +28,15 @@ SHEET_ENTITY = {
     "B": "Life Insurance Sector",
     "C": "General Insurance Sector",
 }
+# Sheets D/E are a different shape: a country × (Life/Non-Life/Total) × year matrix.
+# They become a separate "Country" report view (entity = country, LOB = the
+# Life/Non-Life/Total split, metric = the fixed indicator).
+INTL_DIMENSION = "Country"
+INTL_SHEETS = {
+    "D": ("Insurance Penetration", "Per cent"),
+    "E": ("Insurance Density", "US $"),
+}
+CAL_YEAR_RE = re.compile(r"^\d{4}$")          # e.g. 2024 (calendar year)
 YEAR_RE = re.compile(r"^\d{4}-\d{2}$")        # e.g. 2024-25
 DIMENSION = "Industry"
 QUARTER = "Annual"
@@ -205,6 +214,59 @@ def convert_sheet(ws, entity, source):
     return rows
 
 
+def convert_intl_sheet(ws, metric_name, unit):
+    """Parse a country × (Life/Non-Life/Total) × year matrix (sheets D/E)."""
+    rows = list(ws.iter_rows(values_only=True))
+    # Locate the year header row ("Country* | 2014 | | | 2015 | ...").
+    year_row_idx = next(
+        (i for i, r in enumerate(rows) if r and _clean_text(r[0]).lower().startswith("country")),
+        None,
+    )
+    if year_row_idx is None:
+        print(f"   [!] no 'Country' header in '{ws.title}' — skipped")
+        return []
+    year_row = rows[year_row_idx]
+    sub_row = rows[year_row_idx + 1]  # Life / Non-Life / Total per column
+
+    # Calendar years span 3 merged columns; forward-fill across the sub-columns.
+    years_by_col, current = {}, None
+    for ci, cell in enumerate(year_row):
+        if ci == 0:
+            continue
+        if CAL_YEAR_RE.match(_clean_text(cell)):
+            current = _clean_text(cell)
+        if current:
+            years_by_col[ci] = current
+    subs_by_col = {ci: _clean_text(cell) for ci, cell in enumerate(sub_row)
+                   if _clean_text(cell) in {"Life", "Non-Life", "Total"}}
+
+    out = []
+    metric = _clean_metric(metric_name, unit)
+    for r in rows[year_row_idx + 2:]:
+        country = _clean_text(r[0]).rstrip("#^*").strip() if r else ""
+        # Stop at footnotes / blank rows (e.g. "* data relates to...", "Source:").
+        if not country or country.startswith(("*", "#", "^")) \
+                or country.lower().startswith(("note", "source")):
+            continue
+        for ci, fy in years_by_col.items():
+            if ci not in subs_by_col or ci >= len(r):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": INTL_DIMENSION,
+                "entity": country,
+                "metric": metric,
+                "value": value,
+                "financial_year": fy,
+                "quarter": "Annual",
+                "line_of_business": subs_by_col[ci],
+                "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="Convert IRDAI Handbook Summary into IRIS tidy rows.")
     ap.add_argument("summary_xlsx", help="Path to the Handbook 'Summary.xlsx'")
@@ -225,6 +287,14 @@ def main():
             continue
         rows = convert_sheet(wb[sheet], entity, source)
         print(f"   sheet {sheet} -> {entity}: {len(rows)} rows")
+        all_rows.extend(rows)
+
+    for sheet, (metric_name, unit) in INTL_SHEETS.items():
+        if sheet not in wb.sheetnames:
+            print(f"   [!] sheet '{sheet}' not in workbook — skipped")
+            continue
+        rows = convert_intl_sheet(wb[sheet], metric_name, unit)
+        print(f"   sheet {sheet} -> Country / {metric_name}: {len(rows)} rows")
         all_rows.extend(rows)
 
     if not all_rows:
