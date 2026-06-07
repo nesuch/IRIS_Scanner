@@ -67,6 +67,8 @@ PHASE3_CLASS = [
     ("Part III", "69", "Personal Accident"),
     ("Part III", "70", "Travel (Overseas)"),
     ("Part III", "71", "Travel (Domestic)"),
+    ("Part III", "68", "Health"),    # state individual health (New/Renewal/In-Force)
+    ("Part III", "72", "Health"),    # state claims settlement (Individual/Group)
 ]
 
 # Phase-4: line-item financial statements -> their own "Financials" view. The
@@ -99,6 +101,14 @@ PHASE8_PERIODIC = [
     ("Part I", "37", "Grievances (Life)", "Nos."),
     ("Part II", "56", "Grievances (General & Health)", "Nos."),
     ("Part I", "28", "Persistency", "Per cent"),
+    ("Part IV", "80", "Reinsurance Premium Schedule", "₹Crore"),
+    ("Part IV", "81", "Segment-wise Reinsurance Premium Accepted", "₹Crore"),
+]
+#   insurer rows x (year > stage > sub-metric) -> Reports: (part, sheet, report, unit)
+PHASE9_REPORTS_CLASS = [
+    ("Part I", "15", "Individual Death Claims", "Nos."),
+    ("Part I", "17", "Group Death Claims", "Nos."),
+    ("Part II", "53", "Status of Claims", "Nos."),
 ]
 
 # Phase-6: more per-insurer transposed tables routed into the Statements &
@@ -208,6 +218,8 @@ ENTITY_ALIASES = {
     "acko life": "Acko Life Insurance Ltd.",
     "credit access life": "Credit Access Life Insurance Ltd.",
     "adity birla sun life": "Aditya Birla Sun Life Insurance Ltd.",
+    "tata aia": "Tata AIA Life Insurance Ltd.",
+    "star union dai-ichi": "Star Union Dai-ichi Life Insurance Ltd.",
     "aic": "Agriculture Insurance of India Ltd.",
     # Reinsurer variants across Part IV tables.
     "gic": "General Insurance Corporation of India (GIC Re)",
@@ -224,14 +236,20 @@ ENTITY_ALIASES = {
 
 # Sector of each Handbook Part (per the index), used to disambiguate insurer
 # short forms — a "Bajaj Allianz" in a Part I table is the Life company.
-SECTOR_OF = {"Part I": "Life", "Part II": "General", "Part III": "Health",
+# General & Health share one "Non-Life" sector so a SAHI insurer appearing in
+# both Part II and Part III resolves to one entity; Life and Reinsurance stay
+# distinct (that's where short forms like "Bajaj Allianz" must not cross).
+SECTOR_OF = {"Part I": "Life", "Part II": "Non-Life", "Part III": "Non-Life",
              "Part IV": "Reinsurance", "Part V": "Life"}
 
 # Explicit per-sector resolutions for names that stay ambiguous even within a
 # sector (confirmed with the user). Key: (sector, squashed-name) -> canonical.
 SECTOR_ALIASES = {
-    ("General", "hdfcergo"): "HDFC ERGO General Insurance Co. Ltd.",
-    ("General", "reliance"): "Reliance General Insurance Co. Ltd.",
+    ("Non-Life", "hdfcergo"): "HDFC ERGO General Insurance Co. Ltd.",
+    ("Non-Life", "reliance"): "Reliance General Insurance Co. Ltd.",
+    ("Life", "reliance"): "Reliance Nippon Life Insurance Ltd.",
+    ("Life", "reliancelife"): "Reliance Nippon Life Insurance Ltd.",
+    ("Life", "reliancenippon"): "Reliance Nippon Life Insurance Ltd.",
 }
 
 
@@ -257,6 +275,11 @@ _FILLER = {"insurance", "co", "company", "ltd", "limited", "india", "the",
            "and", "assurance", "services", "branch", "branches", "of"}
 
 
+def _name_quality(n):
+    """Rank candidate spellings: prefer mixed-case, ending in 'Ltd.', then length."""
+    return (0 if n.isupper() else 1, 1 if re.search(r"\bLtd\.?$", n) else 0, len(n))
+
+
 def _sig(name):
     """Distinctive token set of an insurer name (drops corporate fillers)."""
     toks = re.sub(r"[^a-z0-9 ]", " ", name.lower()).split()
@@ -267,6 +290,7 @@ def _norm_entity(name):
     """Light canonicalisation so spelling variants of one insurer don't split
     into separate entities across tables (e.g. 'Ltd' vs 'Ltd.', 'Sunlife')."""
     s = re.sub(r"^[\s@#*$^%&]+|[\s@#*$^%.&]+$", "", _clean(name))  # strip footnote marks
+    s = re.sub(r"\s*\(\d+\)\s*$", "", s).strip()      # strip trailing "(1)" footnotes
     s = re.sub(r"\bLimited\b", "Ltd", s, flags=re.I)
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # normalise trailing Ltd.
     # Normalise compound brand words (case-insensitive — some tables are ALL CAPS).
@@ -274,12 +298,17 @@ def _norm_entity(name):
     s = re.sub(r"\bmax\s*life\b", "Max Life", s, flags=re.I)
     s = re.sub(r"\bcredit\s*access\b", "Credit Access", s, flags=re.I)
     s = re.sub(r"\bcompany\b\s*", "", s, flags=re.I)  # filler word; safe to drop
+    s = re.sub(r"\bGo\s*digit\b", "Go Digit", s, flags=re.I)        # compound spacing
+    s = re.sub(r"\bIndia\s*First\b", "India First", s, flags=re.I)
+    s = re.sub(r"\bKshema\s*General\b", "Kshema General", s, flags=re.I)
     s = s.replace("Limtied", "Limited")              # source typo
     s = re.sub(r"(Lloyd's of India)\s*-\s*", r"\1 - ", s)  # tidy "India- Markel"
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # re-normalise tail after edits
     s = re.sub(r"\s{2,}", " ", s).strip()
     if "edelweiss" in s.lower():                  # Edelweiss Tokio Life -> Edelweiss Life (rename)
         return "Edelweiss Life Insurance Ltd."
+    if "magma" in s.lower():                       # Magma General / Magma HDI -> one company
+        return "Magma HDI General Insurance Co. Ltd."
     return ENTITY_ALIASES.get(s.lower(), s)
 
 
@@ -1015,6 +1044,17 @@ def main():
               f"line items={len(set(r['metric'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
+    for part, sheet, report, fb_unit in PHASE9_REPORTS_CLASS:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_class_matrix(wb[match], report, dimension=FIN_DIMENSION, fallback_unit=fb_unit)
+        secs = sorted({r["class_of_business"] for r in rows})
+        print(f"   {part} t{sheet:>3} [Reports/{report[:24]}] -> {len(rows)} rows | stages={len(secs)}")
+        all_rows.extend(_stamp(rows, part))
+
     for part, sheet, report, fb_unit in PHASE6_REPORTS:
         wb = _open(args.parts_dir, part)
         match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
@@ -1071,12 +1111,11 @@ def main():
             supers = [o for o in sigs if s < o]
             minimal = [o for o in supers if not any(p < o for p in supers if p != o)]
             if len(minimal) == 1:
-                resolve[(sec, n)] = max(sig_names[minimal[0]], key=len)
+                resolve[(sec, n)] = max(sig_names[minimal[0]], key=_name_quality)
             else:
-                resolve[(sec, n)] = max(sig_names[s], key=len)
+                resolve[(sec, n)] = max(sig_names[s], key=_name_quality)
                 if len(minimal) > 1:               # could fold into several → flag
-                    ambiguous.setdefault((sec, n), sorted(
-                        {max(sig_names[m], key=len) for m in minimal}))
+                    ambiguous.setdefault((sec, n), sorted({max(sig_names[m], key=_name_quality) for m in minimal}))
     merged = sum(1 for r in all_rows if resolve[(r["_sector"], r["entity"])] != r["entity"])
     for r in all_rows:
         r["entity"] = resolve[(r["_sector"], r["entity"])]
