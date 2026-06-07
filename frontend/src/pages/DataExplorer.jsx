@@ -42,7 +42,7 @@ const cascadeOrder = (dim) => {
   return ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters'];
 };
 // What the "Entity" step is called per report view.
-const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers' };
+const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers', Channel: 'Channels' };
 const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
 // Friendly name for the report-view dropdown.
 const viewLabel = (dim) => (dim === 'Financials' ? 'Statements & Reports' : `${dim}-wise View`);

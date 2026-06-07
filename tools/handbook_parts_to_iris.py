@@ -111,6 +111,18 @@ PHASE9_REPORTS_CLASS = [
     ("Part II", "53", "Status of Claims", "Nos."),
 ]
 
+# Phase-10: Channel-wise distribution -> new Channel view (entity = channel).
+PHASE10_CHANNEL_MEASURES = [          # channel rows x (measure > year)
+    ("Part V", "99", "Life - Individual New Business"),
+    ("Part V", "101", "Life - Group New Business"),
+]
+PHASE10_CHANNEL_SEGMENT = [           # channel cols x segment rows (GDP)
+    ("Part V", "103", "General"),
+]
+PHASE10_CHANNEL_CLASS = [            # channel rows x (year > class > sub-metric)
+    ("Part V", "104", "Health"),
+]
+
 # Phase-6: more per-insurer transposed tables routed into the Statements &
 # Reports view as named reports. (part, sheet, report name, fallback unit)
 PHASE6_REPORTS = [
@@ -254,10 +266,11 @@ SECTOR_ALIASES = {
 
 
 def _stamp(rows, part):
-    """Tag rows with their sector so name resolution stays within-sector."""
+    """Tag rows with their sector so name resolution stays within-sector.
+    State and Channel entities are isolated (not insurers)."""
     sec = SECTOR_OF.get(part, "")
     for r in rows:
-        r["_sector"] = "State" if r["dimension"] == "State" else sec
+        r["_sector"] = r["dimension"] if r["dimension"] in ("State", "Channel") else sec
     return rows
 
 
@@ -700,6 +713,77 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
     return out
 
 
+CHANNEL_DIMENSION = "Channel"
+
+
+def convert_channel_measures(ws, lob, fallback_unit="Nos."):
+    """Channel rows x (measure > year). e.g. 99/101 channel-wise new business."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 1:
+        return []
+    measure_row = _ffill(grid[yr - 1])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    ent_col = min(years) - 1 if years else 1
+    out = []
+    for r in raw[yr + 1:]:
+        cells = [_clean(c) for c in r]
+        ch = cells[ent_col] if ent_col < len(cells) else ""
+        if not ch or SKIP_ENTITIES.match(ch):
+            continue
+        for ci, fy in years.items():
+            if ci >= len(r):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            meas = measure_row[ci] if ci < len(measure_row) else ""
+            low = meas.lower()
+            unit = ("Nos." if any(k in low for k in ("polic", "scheme", "number", "lives", "no."))
+                    else "₹Crore" if ("premium" in low or "amount" in low) else fallback_unit)
+            metric = f"{meas} ({unit})" if meas else "Value"
+            out.append({
+                "dimension": CHANNEL_DIMENSION, "entity": ch, "metric": metric,
+                "value": value, "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_channel_segment(ws, lob_unused=None, fallback_unit="₹Crore"):
+    """Channel column-groups > year, segment rows (Table 103). LOB = segment."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 1:
+        return []
+    chan_row = _ffill(grid[yr - 1])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    metric = f"Gross Direct Premium ({unit})"
+    out = []
+    for r in raw[yr + 1:]:
+        seg = _norm_lob(_clean(r[0])) if r else ""
+        if not seg or seg.lower() in SKIP_LOBS:
+            continue
+        for ci, fy in years.items():
+            entity = chan_row[ci] if ci < len(chan_row) else ""
+            if not entity or _is_entity_axis(entity) or ci >= len(r):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": CHANNEL_DIMENSION, "entity": entity, "metric": metric,
+                "value": value, "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": seg, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
 def convert_insurer_periodic(ws, report, fallback_unit="Nos.", dimension=FIN_DIMENSION):
     """Insurer rows x (year > sub-metric) columns, e.g. grievances (37/56),
     persistency (28). Routed to Statements & Reports: sub-metric = line item."""
@@ -776,7 +860,7 @@ def convert_segmented_statement(ws, statement, fallback_unit="₹Crore", dimensi
     return out
 
 
-def convert_class_matrix(ws, lob, dimension=DIMENSION, fallback_unit="₹Lakh"):
+def convert_class_matrix(ws, lob, dimension=DIMENSION, fallback_unit="₹Lakh", ent_col=None):
     """year > class > sub-metric column header; rows = insurers/states (58-65, 67-71)."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
@@ -788,7 +872,8 @@ def convert_class_matrix(ws, lob, dimension=DIMENSION, fallback_unit="₹Lakh"):
     clevel = _ffill(grid[yr + 1])
     slevel = grid[yr + 2]                       # sub-metric, one per column
     unit = _find_unit(grid[:yr + 1]) or fallback_unit
-    ent_col = next((i for i, c in enumerate(grid[yr]) if _is_entity_axis(c)), 1)
+    if ent_col is None:
+        ent_col = next((i for i, c in enumerate(grid[yr]) if _is_entity_axis(c)), 1)
 
     out = []
     for r in raw[yr + 3:]:
@@ -1042,6 +1127,36 @@ def main():
         rows = convert_insurer_periodic(wb[match], report, fallback_unit=fb_unit)
         print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
               f"line items={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, lob in PHASE10_CHANNEL_MEASURES:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_channel_measures(wb[match], lob)
+        print(f"   {part} t{sheet:>3} [Channel/{lob[:22]}] -> {len(rows)} rows | "
+              f"channels={len(set(r['entity'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, lob in PHASE10_CHANNEL_SEGMENT:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_channel_segment(wb[match])
+        print(f"   {part} t{sheet:>3} [Channel/General GDP] -> {len(rows)} rows | "
+              f"channels={len(set(r['entity'] for r in rows))} | LOBs={sorted(set(r['line_of_business'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, lob in PHASE10_CHANNEL_CLASS:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_class_matrix(wb[match], lob, dimension=CHANNEL_DIMENSION, fallback_unit="Nos.", ent_col=0)
+        print(f"   {part} t{sheet:>3} [Channel/Health] -> {len(rows)} rows | "
+              f"channels={len(set(r['entity'] for r in rows))} | classes={sorted(set(r['class_of_business'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, report, fb_unit in PHASE9_REPORTS_CLASS:
