@@ -649,6 +649,44 @@ def aggregate_submissions():
     except Exception as e:
         return f"Error syncing data: {e}"
 
+_ENTITY_FILLER = {"insurance", "co", "company", "ltd", "limited", "india", "the",
+                  "and", "assurance", "services", "branch", "branches", "of"}
+
+
+def _ent_sig(name):
+    toks = re.sub(r"[^a-z0-9 ]", " ", str(name).lower()).split()
+    return frozenset(t for t in toks if t not in _ENTITY_FILLER)
+
+
+def _ent_quality(n):
+    return (0 if n.isupper() else 1, 1 if re.search(r"\bLtd\.?$", n) else 0, len(n))
+
+
+def _canonicalize_insurer_entities():
+    """Merge insurer-name spelling variants that arrive from different sources
+    (e.g. SAHI 'unified_database.csv' vs Handbook) so the same company isn't
+    listed twice. Scoped to the Insurer/Financials dimensions; folds a name into
+    the maximal superset-by-words name (transitive)."""
+    global UNIFIED_DF
+    if UNIFIED_DF.empty or 'Dimension' not in UNIFIED_DF.columns:
+        return
+    mask = UNIFIED_DF['Dimension'].isin(['Insurer', 'Financials'])
+    names = sorted(UNIFIED_DF.loc[mask, 'Entity'].dropna().unique().tolist())
+    sig_names = {}
+    for n in names:
+        sig_names.setdefault(_ent_sig(n), set()).add(n)
+    sigs = list(sig_names)
+    resolve = {}
+    for n in names:
+        s = _ent_sig(n)
+        cands = [o for o in sigs if s <= o]
+        maximal = [o for o in cands if not any(o < p for p in cands)]
+        target_sig = maximal[0] if len(maximal) == 1 else s
+        resolve[n] = max(sig_names[target_sig], key=_ent_quality)
+    if any(resolve[n] != n for n in names):
+        UNIFIED_DF.loc[mask, 'Entity'] = UNIFIED_DF.loc[mask, 'Entity'].map(lambda e: resolve.get(e, e))
+
+
 def load_master_data_engine():
     global UNIFIED_DF
     try:
@@ -690,6 +728,8 @@ def load_master_data_engine():
 
         # Fix Dashes in Quarter
         UNIFIED_DF['Quarter'] = UNIFIED_DF['Quarter'].replace(['-', 'nan', 'None', ''], 'Annual')
+
+        _canonicalize_insurer_entities()
 
         print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
         
