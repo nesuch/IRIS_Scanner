@@ -45,7 +45,7 @@ const cascadeOrder = (dim) => {
 const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers' };
 const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
 // Friendly name for the report-view dropdown.
-const viewLabel = (dim) => (dim === 'Financials' ? 'Financial Statements' : `${dim}-wise View`);
+const viewLabel = (dim) => (dim === 'Financials' ? 'Statements & Reports' : `${dim}-wise View`);
 // Per-view overrides for the step labels (e.g. the Financials view reuses the
 // LOB/Class slots as Statement/Section).
 const STEP_LABEL_OVERRIDES = { Financials: { lobs: 'Statement', classes: 'Section', metrics: 'Line Item' } };

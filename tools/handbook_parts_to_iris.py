@@ -72,6 +72,23 @@ PHASE4 = [
     ("Part I", "25", "Shareholders Account"),    # Life
     ("Part I", "26", "Balance Sheet"),           # Life
     ("Part II", "52", "Balance Sheet"),          # General & Health
+    ("Part II", "51", "Shareholders Account"),   # General & Health
+]
+
+# Segmented statements: entity > year > segment > particulars.
+PHASE7_SEGMENTED = [
+    ("Part II", "50", "Policyholders Account"),   # General & Health (by segment)
+    ("Part IV", "87", "Policyholders Account"),   # Reinsurers (by segment)
+]
+
+# Phase-6: more per-insurer transposed tables routed into the Statements &
+# Reports view as named reports. (part, sheet, report name, fallback unit)
+PHASE6_REPORTS = [
+    ("Part I", "10", "In-Force Policies", "'000s"),
+    ("Part I", "11", "In-Force Sum Assured", "₹Crore"),
+    ("Part I", "18", "Death Claim Settlement Duration - Individual", "Nos."),
+    ("Part I", "19", "Death Claim Settlement Duration - Group", "Nos."),
+    ("Part IV", "88", "Shareholders Account", "₹Crore"),
 ]
 
 PHASE2B_CLASS = [
@@ -93,10 +110,17 @@ PHASE1 = [
     ("Part I", "22", "Life"),
     ("Part II", "40", "General"),
     ("Part IV", "86", "Reinsurance"),
+    ("Part II", "48", "General"),   # Equity Share Capital of General & Health
     # Tables 90-92 are agents *of life insurers* — so Life, not "All Lines".
     ("Part V", "90", "Life"),
     ("Part V", "91", "Life"),
     ("Part V", "92", "Life"),
+]
+
+# Phase-5: quarterly insurer tables — columns are "Month YYYY" periods.
+PHASE5_QUARTERLY = [
+    ("Part I", "23", "Life", False),    # Solvency Ratio of Life Insurers
+    ("Part II", "49", None, True),      # Solvency of General/Health/Reinsurance
 ]
 
 # Rows whose entity label is a group header / aggregate, not a real insurer.
@@ -136,31 +160,65 @@ def _clean(v):
     return re.sub(r"\s+", " ", str(v or "").replace("\n", " ")).strip()
 
 
-# Short forms some tables use, mapped to a fuller name (subset-subsumption then
-# folds these into the single canonical spelling). The Table-45 short forms are
-# general/health insurers, so the ambiguous ones resolve to their General arm.
+def _to_fy(year):
+    """Normalise a bare calendar year (an 'As on 31 March YYYY' balance-sheet /
+    equity column) to the financial year it closes: 2022 -> '2021-22'.
+    Leaves already-financial-year strings ('2022-23') unchanged."""
+    s = str(year).strip()
+    m = re.fullmatch(r"(\d{4})-(\d{2})", s)
+    if m:                                            # fix typos like "2023-23"
+        start = int(m.group(1))
+        exp = (start + 1) % 100
+        return s if int(m.group(2)) == exp else f"{start}-{exp:02d}"
+    if re.fullmatch(r"\d{4}", s):
+        y = int(s)
+        return f"{y - 1}-{s[-2:]}"
+    return s
+
+
+# UNAMBIGUOUS aliases only (one company regardless of sector). Ambiguous short
+# forms (Bajaj Allianz, HDFC, Reliance, Shriram, Bharti AXA, Go Digit, Aditya
+# Birla...) are resolved per-sector in the canonicalisation pass instead, so a
+# Life table never maps them to the General arm.
 ENTITY_ALIASES = {
     "lic": "Life Insurance Corporation of India",
+    "lic of india": "Life Insurance Corporation of India",
     "acko life": "Acko Life Insurance Ltd.",
     "credit access life": "Credit Access Life Insurance Ltd.",
-    "go digit life": "Go Digit Life Insurance Ltd.",
-    "max life insurance ltd.": "Axis Max Life Insurance Ltd.",
     "adity birla sun life": "Aditya Birla Sun Life Insurance Ltd.",
     "aic": "Agriculture Insurance of India Ltd.",
-    "aditya birla": "Aditya Birla Health Insurance Co. Ltd.",
-    "bajaj allianz": "Bajaj Allianz General Insurance Co. Ltd.",
-    "bharti axa": "Bharti AXA General Insurance Co. Ltd.",
-    "go digit": "Go Digit General Insurance Ltd.",
-    "hdfc ergo": "HDFC ERGO General Insurance Co. Ltd.",
-    "shriram": "Shriram General Insurance Co. Ltd.",
     # Reinsurer variants across Part IV tables.
     "gic": "General Insurance Corporation of India (GIC Re)",
     "gic re. (public)": "General Insurance Corporation of India (GIC Re)",
+    "gic re": "General Insurance Corporation of India (GIC Re)",
     "general insurance corporation (gic re)": "General Insurance Corporation of India (GIC Re)",
+    "general insurance corporation (gic)": "General Insurance Corporation of India (GIC Re)",
+    "general insurance corporation of india": "General Insurance Corporation of India (GIC Re)",
     "iti": "ITI Reinsurance Ltd.",
     "iti re": "ITI Reinsurance Ltd.",
     "iti (private)": "ITI Reinsurance Ltd.",
 }
+
+
+# Sector of each Handbook Part (per the index), used to disambiguate insurer
+# short forms — a "Bajaj Allianz" in a Part I table is the Life company.
+SECTOR_OF = {"Part I": "Life", "Part II": "General", "Part III": "Health",
+             "Part IV": "Reinsurance", "Part V": "Life"}
+
+# Explicit per-sector resolutions for names that stay ambiguous even within a
+# sector (confirmed with the user). Key: (sector, squashed-name) -> canonical.
+SECTOR_ALIASES = {
+    ("General", "hdfcergo"): "HDFC ERGO General Insurance Co. Ltd.",
+    ("General", "reliance"): "Reliance General Insurance Co. Ltd.",
+}
+
+
+def _stamp(rows, part):
+    """Tag rows with their sector so name resolution stays within-sector."""
+    sec = SECTOR_OF.get(part, "")
+    for r in rows:
+        r["_sector"] = "State" if r["dimension"] == "State" else sec
+    return rows
 
 
 def _canon_metric(m):
@@ -186,7 +244,7 @@ def _sig(name):
 def _norm_entity(name):
     """Light canonicalisation so spelling variants of one insurer don't split
     into separate entities across tables (e.g. 'Ltd' vs 'Ltd.', 'Sunlife')."""
-    s = re.sub(r"^[\s@#*$^%]+|[\s@#*$^%.]+$", "", _clean(name))  # strip footnote marks
+    s = re.sub(r"^[\s@#*$^%&]+|[\s@#*$^%.&]+$", "", _clean(name))  # strip footnote marks
     s = re.sub(r"\bLimited\b", "Ltd", s, flags=re.I)
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # normalise trailing Ltd.
     # Normalise compound brand words (case-insensitive — some tables are ALL CAPS).
@@ -198,6 +256,8 @@ def _norm_entity(name):
     s = re.sub(r"(Lloyd's of India)\s*-\s*", r"\1 - ", s)  # tidy "India- Markel"
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # re-normalise tail after edits
     s = re.sub(r"\s{2,}", " ", s).strip()
+    if "edelweiss" in s.lower():                  # Edelweiss Tokio Life -> Edelweiss Life (rename)
+        return "Edelweiss Life Insurance Ltd."
     return ENTITY_ALIASES.get(s.lower(), s)
 
 
@@ -589,6 +649,44 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
     return out
 
 
+def convert_segmented_statement(ws, statement, fallback_unit="₹Crore", dimension=FIN_DIMENSION):
+    """Segmented financial statement: columns are entity > year > segment,
+    rows are particulars (Tables 50, 87). The segment becomes the section."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 1 or yr + 1 >= len(grid):
+        return []
+    ent_row = _ffill(grid[yr - 1])
+    year_row = _ffill(grid[yr])
+    seg_row = grid[yr + 1]
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    out = []
+    for r in raw[yr + 2:]:
+        raw_label = _clean(r[0]) if r else ""
+        label = raw_label.rstrip("*#: ").strip()
+        if not label or "=" in label or _FOOTNOTE.search(raw_label):
+            continue
+        for ci in range(len(r)):
+            if not YEAR_RE.match(year_row[ci] if ci < len(year_row) else ""):
+                continue
+            seg = _clean(seg_row[ci]) if ci < len(seg_row) else ""
+            entity = _norm_entity(ent_row[ci]) if ci < len(ent_row) else ""
+            if not seg or not entity or SKIP_ENTITIES.match(entity):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": f"{label} ({unit})" if unit else label, "value": value,
+                "financial_year": year_row[ci], "quarter": QUARTER,
+                "line_of_business": statement, "class_of_business": _norm_lob(seg),
+            })
+    return out
+
+
 def convert_class_matrix(ws, lob, dimension=DIMENSION, fallback_unit="₹Lakh"):
     """year > class > sub-metric column header; rows = insurers/states (58-65, 67-71)."""
     raw = list(ws.iter_rows(values_only=True))
@@ -628,6 +726,72 @@ def convert_class_matrix(ws, lob, dimension=DIMENSION, fallback_unit="₹Lakh"):
     return out
 
 
+PERIOD_RE = re.compile(r"^[A-Za-z]{3,9}\.?\s*[\-\s]?\s*\d{4}$")
+_MONTH_Q = {"march": ("Q4", -1), "jun": ("Q1", 0), "june": ("Q1", 0),
+            "sep": ("Q2", 0), "sept": ("Q2", 0), "september": ("Q2", 0),
+            "dec": ("Q3", 0), "december": ("Q3", 0)}
+
+
+def _period_to_fy_q(text):
+    """'June 2015' -> ('2015-16','Q1'); 'March 2016' -> ('2015-16','Q4')."""
+    m = re.match(r"([A-Za-z]+)\.?\s*[\-\s]?\s*(\d{4})$", _clean(text))
+    if not m or m.group(1).lower() not in _MONTH_Q:
+        return None
+    q, off = _MONTH_Q[m.group(1).lower()]
+    start = int(m.group(2)) + off
+    return f"{start}-{str(start + 1)[-2:]}", q
+
+
+def _group_lob(g):
+    g = g.lower()
+    if "reinsur" in g:
+        return "Reinsurance"
+    if "health" in g:
+        return "Health"
+    return "General"
+
+
+def convert_quarterly(ws, default_lob, group_lob=False):
+    """Insurer x 'Month YYYY' period columns (e.g. Solvency tables 23/49)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    hdr = next((i for i, r in enumerate(grid[:8])
+                if sum(1 for c in r if PERIOD_RE.match(c)) >= 2), None)
+    if hdr is None:
+        return []
+    periods = {i: _period_to_fy_q(c) for i, c in enumerate(grid[hdr]) if PERIOD_RE.match(c)}
+    periods = {i: p for i, p in periods.items() if p}
+    ent_col = next((i for i, c in enumerate(grid[hdr]) if _is_entity_axis(c)),
+                   (min(periods) - 1 if periods else 1))
+    metric = _metric_from_title(grid[0][0] if grid[0] else "", "")
+    out, current_lob = [], default_lob
+    for r in raw[hdr + 1:]:
+        cells = [_clean(c) for c in r]
+        entity = cells[ent_col] if ent_col < len(cells) else ""
+        if not entity:
+            continue
+        has_data = any(_to_number(r[ci]) is not None for ci in periods if ci < len(r))
+        if not has_data:                         # group header row
+            if group_lob:
+                current_lob = _group_lob(entity)
+            continue
+        if SKIP_ENTITIES.match(entity):
+            continue
+        entity = _norm_entity(entity)
+        for ci, (fy, q) in periods.items():
+            if ci >= len(r):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": DIMENSION, "entity": entity, "metric": metric,
+                "value": value, "financial_year": fy, "quarter": q,
+                "line_of_business": current_lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
 def _open(parts_dir, part):
     path = os.path.join(parts_dir, f"{part}.xlsx")
     if not os.path.exists(path):
@@ -657,7 +821,7 @@ def main():
         rows = convert_table(wb[match], lob)
         metric = rows[0]["metric"] if rows else "?"
         print(f"   {part} t{sheet:>3} [{lob:11}] -> {metric}: {len(rows)} rows")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet in PHASE2:
         path = os.path.join(args.parts_dir, f"{part}.xlsx")
@@ -674,7 +838,7 @@ def main():
         mets = sorted({r["metric"] for r in rows})
         print(f"   {part} t{sheet:>3} [matrix]      -> {len(rows)} rows | "
               f"LOBs={lobs} | metrics={len(mets)}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet, lob in PHASE2B_TRANSPOSED:
         wb = _open(args.parts_dir, part)
@@ -685,7 +849,7 @@ def main():
         rows = convert_transposed(wb[match], lob)
         print(f"   {part} t{sheet:>3} [transposed]  -> {len(rows)} rows | "
               f"metrics={len(set(r['metric'] for r in rows))}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet, lob in PHASE2B_CLASS:
         wb = _open(args.parts_dir, part)
@@ -696,7 +860,7 @@ def main():
         rows = convert_class_matrix(wb[match], lob)
         cls = sorted({r["class_of_business"] for r in rows})
         print(f"   {part} t{sheet:>3} [{lob:11}] class -> {len(rows)} rows | classes={cls}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet, lob, prefix in PHASE3_YEAR_SUBMETRIC:
         wb = _open(args.parts_dir, part)
@@ -707,7 +871,7 @@ def main():
         rows = convert_year_submetric(wb[match], lob, "State", prefix)
         print(f"   {part} t{sheet:>3} [State]       -> {len(rows)} rows | "
               f"states={len(set(r['entity'] for r in rows))} | metrics={sorted(set(r['metric'] for r in rows))}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet in PHASE3_MATRIX:
         wb = _open(args.parts_dir, part)
@@ -718,7 +882,7 @@ def main():
         rows = convert_matrix(wb[match], dimension="State")
         print(f"   {part} t{sheet:>3} [State matrix]-> {len(rows)} rows | "
               f"states={len(set(r['entity'] for r in rows))} | LOBs={sorted(set(r['line_of_business'] for r in rows))}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet, lob in PHASE3_CLASS:
         wb = _open(args.parts_dir, part)
@@ -729,7 +893,7 @@ def main():
         rows = convert_class_matrix(wb[match], lob, dimension="State")
         cls = sorted({r["class_of_business"] for r in rows})
         print(f"   {part} t{sheet:>3} [State {lob:8}]-> {len(rows)} rows | classes={cls}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
 
     for part, sheet, statement in PHASE4:
         wb = _open(args.parts_dir, part)
@@ -741,40 +905,93 @@ def main():
                                   dimension=FIN_DIMENSION, section_as_class=True)
         secs = sorted({r["class_of_business"] for r in rows})
         print(f"   {part} t{sheet:>3} [Financials/{statement}] -> {len(rows)} rows | sections={len(secs)}")
-        all_rows.extend(rows)
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, statement in PHASE7_SEGMENTED:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_segmented_statement(wb[match], statement)
+        segs = sorted({r["class_of_business"] for r in rows})
+        print(f"   {part} t{sheet:>3} [Seg/{statement}] -> {len(rows)} rows | "
+              f"entities={len(set(r['entity'] for r in rows))} | segments={segs}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, report, fb_unit in PHASE6_REPORTS:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_transposed(wb[match], report, track_sections=True,
+                                  dimension=FIN_DIMENSION, section_as_class=True, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Reports/{report[:28]}] -> {len(rows)} rows | "
+              f"entities={len(set(r['entity'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, lob, group_lob in PHASE5_QUARTERLY:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_quarterly(wb[match], lob, group_lob=group_lob)
+        lobs = sorted({r["line_of_business"] for r in rows})
+        print(f"   {part} t{sheet:>3} [quarterly]   -> {len(rows)} rows | LOBs={lobs} | "
+              f"quarters={sorted(set(r['quarter'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
 
     if not all_rows:
         sys.exit("No rows produced.")
 
-    # Canonicalise insurer names into a standard list: a short/variant name folds
-    # into the fullest name whose words are a superset (e.g. "Star Health" ->
-    # "Star Health & Allied Insurance Co. Ltd.", "Tata AIG" -> "Tata AIG General
-    # Insurance Co. Ltd."). Ambiguous prefixes (e.g. a bare "Reliance" that could
-    # be General/Health/Life) are left untouched.
     # Fold state spelling variants into the canonical state name first.
     for r in all_rows:
         if r["dimension"] == "State":
             r["entity"] = _canon_state(r["entity"])
 
-    names = sorted({r["entity"] for r in all_rows})
-    sig_names = {}
-    for n in names:
-        sig_names.setdefault(_sig(n), set()).add(n)
-    sigs = list(sig_names)
-    resolve = {}
-    for n in names:
-        s = _sig(n)
-        supers = [o for o in sigs if s < o]
-        minimal = [o for o in supers if not any(p < o for p in supers if p != o)]
-        if len(minimal) == 1:                      # unique fuller name → fold in
-            resolve[n] = max(sig_names[minimal[0]], key=len)
-        else:                                      # keep within its own variant group
-            resolve[n] = max(sig_names[s], key=len)
-    merged = sum(1 for n in names if resolve[n] != n)
+    # Canonicalise insurer names PER SECTOR (driven by the index): a short/variant
+    # name folds into the fullest name whose words are a superset, but only within
+    # its own sector — so "Bajaj Allianz" in a Life table resolves to Bajaj Allianz
+    # *Life*, never the General arm. Names that stay ambiguous (a short form that
+    # could be >1 company even inside the sector) are left as-is and reported.
+    by_sector = {}
     for r in all_rows:
-        r["entity"] = resolve[r["entity"]]
+        by_sector.setdefault(r["_sector"], set()).add(r["entity"])
+    resolve, ambiguous = {}, {}
+    for sec, nameset in by_sector.items():
+        names = sorted(nameset)
+        sig_names = {}
+        for n in names:
+            sig_names.setdefault(_sig(n), set()).add(n)
+        sigs = list(sig_names)
+        for n in names:
+            key = SECTOR_ALIASES.get((sec, _state_key(n)))
+            if key:
+                resolve[(sec, n)] = key
+                continue
+            s = _sig(n)
+            supers = [o for o in sigs if s < o]
+            minimal = [o for o in supers if not any(p < o for p in supers if p != o)]
+            if len(minimal) == 1:
+                resolve[(sec, n)] = max(sig_names[minimal[0]], key=len)
+            else:
+                resolve[(sec, n)] = max(sig_names[s], key=len)
+                if len(minimal) > 1:               # could fold into several → flag
+                    ambiguous.setdefault((sec, n), sorted(
+                        {max(sig_names[m], key=len) for m in minimal}))
+    merged = sum(1 for r in all_rows if resolve[(r["_sector"], r["entity"])] != r["entity"])
+    for r in all_rows:
+        r["entity"] = resolve[(r["_sector"], r["entity"])]
         r["metric"] = _canon_metric(r["metric"])
-    print(f"\n[i] Canonicalised insurer names: folded {merged} variants into the standard list.")
+        r["financial_year"] = _to_fy(r["financial_year"])   # unify calendar -> FY
+        del r["_sector"]
+    print(f"\n[i] Canonicalised insurer names per sector: folded {merged} variants.")
+    if ambiguous:
+        print(f"[!] {len(ambiguous)} ambiguous name(s) left as-is (need a rule):")
+        for (sec, n), opts in sorted(ambiguous.items()):
+            print(f"      [{sec}] {n!r} -> could be {opts}")
 
     os.makedirs(args.out, exist_ok=True)
     out_path = os.path.join(args.out, args.name)
