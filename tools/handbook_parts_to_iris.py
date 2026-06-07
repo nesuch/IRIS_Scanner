@@ -56,6 +56,11 @@ PHASE3_YEAR_SUBMETRIC = [
 PHASE3_MATRIX = [
     ("Part II", "42"),   # State-wise Gross Direct Premium (General) by segment
 ]
+# Simple state x year tables (one metric from the title).
+PHASE3_STATE_SIMPLE = [
+    ("Part V", "97", "All Lines"),   # State-wise Registered Brokers
+    ("Part V", "98", "All Lines"),   # State-wise Insurance Marketing Firms
+]
 # Phase-3b: state-wise health/PA/travel, class-split (year>class>sub-metric).
 PHASE3_CLASS = [
     ("Part III", "67", "Health"),
@@ -146,6 +151,8 @@ _STATE_GROUPS = {
     "Andaman & Nicobar Islands": ["Andaman & Nicobar Islands", "Andaman & Nicobar Is"],
     "Dadra & Nagar Haveli and Daman & Diu": [
         "Dadra & Nagar Haveli and Daman & Diu", "Dadra & Nagara Haveli and Daman & Diu"],
+    "Delhi (NCT)": ["Delhi (NCT)", "Delhi", "New Delhi", "NCT of Delhi"],
+    "Jammu & Kashmir": ["Jammu & Kashmir", "Jammu and Kashmir"],
 }
 STATE_CANON = {_state_key(v): canon for canon, vs in _STATE_GROUPS.items() for v in vs}
 
@@ -349,7 +356,7 @@ def _norm_lob(s):
 def _metric_from_title(title, unit):
     t = _clean(title)
     t = re.sub(r"^(table|statement)\s*\d+\s*[:.\-]?\s*", "", t, flags=re.I)
-    t = re.sub(r"\b(segment|state)[- ]?wise\s+", "", t, flags=re.I)  # redundant once it's a column
+    t = re.sub(r"\b(segment|state)(\s+and\s+ut)?[- ]?wise\s+", "", t, flags=re.I)  # redundant once it's a column
     t = re.sub(r"\s*[-–]\s*general insurance\s*$", "", t, flags=re.I)
     # Drop the "... of <sector> (re)insurers" tail that's redundant once entity
     # and line-of-business are columns.
@@ -467,7 +474,7 @@ def convert_year_submetric(ws, lob, dimension, prefix="", fallback_unit="₹Cror
     return out
 
 
-def convert_table(ws, lob):
+def convert_table(ws, lob, dimension=DIMENSION):
     rows = [[_clean(c) for c in r] for r in ws.iter_rows(values_only=True)]
     rows = [r for r in rows if any(r)]
     if not rows:
@@ -497,7 +504,7 @@ def convert_table(ws, lob):
         return []
     header = rows[hdr_idx]
     year_cols = {i: c for i, c in enumerate(header) if YEAR_RE.match(c)}
-    ent_col = next((i for i, c in enumerate(header) if c.lower() in ENTITY_AXIS), None)
+    ent_col = next((i for i, c in enumerate(header) if _is_entity_axis(c)), None)
     if ent_col is None:
         first_year = min(year_cols)
         ent_col = first_year - 1 if first_year > 0 else 0
@@ -516,7 +523,7 @@ def convert_table(ws, lob):
             if value is None:
                 continue
             out.append({
-                "dimension": DIMENSION,
+                "dimension": dimension,
                 "entity": entity,
                 "metric": metric,
                 "value": value,
@@ -882,6 +889,19 @@ def main():
         rows = convert_matrix(wb[match], dimension="State")
         print(f"   {part} t{sheet:>3} [State matrix]-> {len(rows)} rows | "
               f"states={len(set(r['entity'] for r in rows))} | LOBs={sorted(set(r['line_of_business'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, lob in PHASE3_STATE_SIMPLE:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_table(wb[match], lob, dimension="State")
+        for r in rows:
+            r["dimension"] = "State"
+        print(f"   {part} t{sheet:>3} [State simple] -> {len(rows)} rows | "
+              f"metric={rows[0]['metric'] if rows else '?'}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, lob in PHASE3_CLASS:
