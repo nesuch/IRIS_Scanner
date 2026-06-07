@@ -33,7 +33,7 @@ def _is_entity_axis(c):
     """True if a header cell labels the entity column (insurer/reinsurer/state)."""
     low = c.lower().strip()
     return (low in ENTITY_AXIS or "insurer" in low or "reinsurer" in low.replace("-", "")
-            or "state" in low or "union territory" in low)
+            or "state" in low or "union territory" in low or "centre" in low)
 
 # Phase-2 LOB matrices: (file, sheet). LOB + metric are read from the multi-row
 # column headers; the parser auto-detects 2-level (LOB>year) vs 3-level
@@ -110,6 +110,8 @@ PHASE9_REPORTS_CLASS = [
     ("Part I", "15", "Individual Death Claims", "Nos."),
     ("Part I", "17", "Group Death Claims", "Nos."),
     ("Part II", "53", "Status of Claims", "Nos."),
+    ("Part I", "38", "Ombudsman Performance (Life)", "Nos."),
+    ("Part II", "57", "Ombudsman Performance (General & Health)", "Nos."),
 ]
 # Health business by LIFE insurers (entities are life insurers -> Life sector).
 PHASE9B_LIFE_HEALTH = [
@@ -140,6 +142,13 @@ PHASE11_MEASURES = [
     ("Part V", "94", "Avg New Business Premium per Agent", "₹Lakh"),
     ("Part V", "95", "Avg Premium per Policy", "₹"),
     ("Part I", "27", "Lapsed / Forfeited Policies (Non-Linked)", "'000s"),
+]
+
+# 3-level plan/category > type > year, rows=insurers. (part, sheet, unit)
+PHASE14_NESTED = [
+    ("Part I", "12", "₹Crore"),     # Linked & Non-Linked Premium
+    ("Part I", "13", "₹Crore"),     # Linked & Non-Linked Commission
+    ("Part I", "31", "Nos."),       # Micro-Insurance New Business
 ]
 
 # State x insurer cross-tabs -> entity=insurer, class=state. (part, sheet, lob,
@@ -898,6 +907,55 @@ def convert_channel_segment(ws, lob_unused=None, fallback_unit="₹Crore"):
     return out
 
 
+def _strip_enum(s):
+    """Drop a leading 'A.' / 'a)' / '1.' enumerator from a header label."""
+    return re.sub(r"^\s*[A-Za-z0-9]+[\.\)]\s*", "", s).strip()
+
+
+def convert_nested_lob_metric(ws, dimension=DIMENSION, fallback_unit="₹Crore"):
+    """3-level column header: level1 (plan/category) > level2 (premium type/measure)
+    > year, rows = insurers. level1 -> LOB, level2 -> metric (12/13/31)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 2:
+        return []
+    lob_row = _ffill(grid[yr - 2])
+    metric_row = _ffill(grid[yr - 1])
+    year_row = _ffill(grid[yr])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    ent_col = next((i for i, c in enumerate(grid[yr - 2]) if _is_entity_axis(c)), None)
+    if ent_col is None:
+        ent_col = (min(years) - 1) if years else 1
+    out = []
+    for r in raw[yr + 1:]:
+        cells = [_clean(c) for c in r]
+        entity = _norm_entity(cells[ent_col]) if ent_col < len(cells) else ""
+        if not entity or SKIP_ENTITIES.match(entity):
+            continue
+        for ci, fy in years.items():
+            value = _to_number(r[ci]) if ci < len(r) else None
+            if value is None:
+                continue
+            lob = _strip_enum(lob_row[ci]) if ci < len(lob_row) else ""
+            mlabel = _strip_enum(metric_row[ci]) if ci < len(metric_row) else ""
+            if not lob or not mlabel or _is_entity_axis(lob):
+                continue
+            if re.match(r"(?i)total\b", lob):       # drop contextless total LOBs
+                continue
+            if lob.isupper():
+                lob = lob.title()
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": _submetric(mlabel, unit), "value": value,
+                "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
 INDUSTRY_DIMENSION = "Industry"
 
 
@@ -1320,6 +1378,16 @@ def main():
         rows = convert_insurer_periodic(wb[match], report, fallback_unit=fb_unit)
         print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
               f"line items={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, fb_unit in PHASE14_NESTED:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_nested_lob_metric(wb[match], fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [nested] -> {len(rows)} rows | "
+              f"LOBs={sorted(set(r['line_of_business'] for r in rows))[:6]} | metrics={len(set(r['metric'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, entity, lob_base, row_as, fb_unit in PHASE13_INDUSTRY_ROWS:
