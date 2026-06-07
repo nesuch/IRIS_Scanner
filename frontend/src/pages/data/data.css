@@ -115,3 +115,11 @@
   .view-toggle-bar { gap: 8px; }
   .vt-btn { padding: 7px 13px; font-size: 12.5px; }
 }
+
+/* ---- Financial statement view ---- */
+.stmt-card { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--card); box-shadow: var(--sh-1); overflow: hidden; margin-bottom: 20px; }
+.stmt-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 18px; background: var(--paper); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.stmt-head strong { color: var(--navy-700); font-size: 14px; }
+.stmt-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.stmt-table th.row-head { min-width: 280px; max-width: 460px; white-space: normal; font-weight: 500; color: var(--ink); }
+.stmt-table tr.stmt-section td { background: var(--paper-2); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--navy-700); font-weight: 700; padding: 9px 15px; position: sticky; left: 0; }

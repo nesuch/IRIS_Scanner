@@ -376,6 +376,33 @@ def api_data_filter():
     return jsonify(brain.filter_data(_filters_from_request()))
 
 
+@api_bp.post("/data/statement")
+def api_data_statement():
+    data = request.get_json(silent=True) or {}
+    return jsonify(brain.build_financial_statement(
+        data.get("entities", []) or [],
+        data.get("statement", ""),
+        data.get("years", []) or [],
+    ))
+
+
+@api_bp.post("/data/statement/download")
+def api_data_statement_download():
+    data = request.get_json(silent=True) or {}
+    statement = data.get("statement", "")
+    excel_file = brain.generate_statement_excel(
+        data.get("entities", []) or [], statement, data.get("years", []) or [])
+    if excel_file:
+        safe = "".join(c for c in statement if c.isalnum() or c in " _-").strip() or "Statement"
+        return send_file(
+            excel_file,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"IRIS_{safe}.xlsx",
+        )
+    return jsonify({"ok": False, "message": "No statement data."}), 400
+
+
 @api_bp.post("/data/download")
 def api_data_download():
     excel_file = brain.generate_excel(_filters_from_request())

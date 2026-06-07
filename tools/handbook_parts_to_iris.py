@@ -524,6 +524,8 @@ def _submetric(sub, table_unit):
 
 
 _GEN_ITEM = re.compile(r"^(\(|total\b|sub[- ]?total|others?\b|less[: ]|add[: ])", re.I)
+# Footnote / disclaimer rows that aren't real line items.
+_FOOTNOTE = re.compile(r"^\s*[#*$^@]|^\s*(note\b|source\b|disclaimer|refer\b)|w\.e\.f|demerger", re.I)
 
 
 def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
@@ -550,7 +552,7 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
     for ri, r in enumerate(raw[yr + 1:]):
         raw_label = _clean(r[0]) if r else ""
         label = raw_label.rstrip("*#: ").strip()
-        if not label or "=" in label or label.lower().startswith("note"):
+        if not label or "=" in label or _FOOTNOTE.search(raw_label):
             continue
         row_vals = [(_to_number(r[ci]) if ci < len(r) else None) for ci in years]
         if track_sections and (not any(v is not None for v in row_vals) or raw_label.endswith(":")):

@@ -840,6 +840,100 @@ def generate_excel(filters):
     output.seek(0)
     return output
 
+# --- FINANCIAL STATEMENT VIEW (whole-statement reproduction) ---
+def get_statement_options():
+    """Entities + statements available in the Financials dimension."""
+    if UNIFIED_DF.empty:
+        load_master_data_engine()
+    if UNIFIED_DF.empty or 'Dimension' not in UNIFIED_DF.columns:
+        return {"entities": [], "statements": []}
+    d = UNIFIED_DF[UNIFIED_DF['Dimension'] == 'Financials']
+    return {
+        "entities": sorted(d['Entity'].dropna().unique().tolist()),
+        "statements": sorted(d['Line_of_Business'].dropna().unique().tolist()),
+    }
+
+def build_financial_statement(entities, statement, years=None):
+    """Reproduce whole financial statements: ordered sections -> line items ->
+    value per year, preserving the statement's natural row order."""
+    if UNIFIED_DF.empty:
+        load_master_data_engine()
+    if UNIFIED_DF.empty:
+        return {"statement": statement, "entities": []}
+
+    df = UNIFIED_DF[(UNIFIED_DF['Dimension'] == 'Financials') &
+                    (UNIFIED_DF['Line_of_Business'] == statement)]
+    if entities:
+        df = df[df['Entity'].isin(entities)]
+    if years:
+        df = df[df['Financial_Year'].isin(years)]
+    if df.empty:
+        return {"statement": statement, "years": [], "entities": []}
+
+    def _strip_unit(metric):
+        m = re.search(r"\(([^()]*)\)\s*$", metric)
+        if m and re.search(r"₹|crore|lakh|per ?cent|nos|us \$|%", m.group(1), re.I):
+            return metric[:m.start()].strip(), m.group(1).strip()
+        return metric, ""
+
+    all_years = sorted(df['Financial_Year'].dropna().unique().tolist())
+    out_entities = []
+    for entity in (entities or sorted(df['Entity'].unique().tolist())):
+        edf = df[df['Entity'] == entity]
+        if edf.empty:
+            continue
+        unit = ""
+        sections, sec_index, item_index = [], {}, {}
+        for _, row in edf.iterrows():
+            section = str(row.get('Class_of_Business') or 'General')
+            label, u = _strip_unit(str(row['Metric']))
+            unit = unit or u
+            if section not in sec_index:
+                sec_index[section] = len(sections)
+                sections.append({"name": section, "items": []})
+            sec = sections[sec_index[section]]
+            ikey = (section, label)
+            if ikey not in item_index:
+                item_index[ikey] = len(sec["items"])
+                sec["items"].append({"label": label, "values": {}})
+            sec["items"][item_index[ikey]]["values"][str(row['Financial_Year'])] = row['Value']
+        # Flatten each item's values into the year order.
+        for sec in sections:
+            for it in sec["items"]:
+                it["values"] = [it["values"].get(y) for y in all_years]
+        out_entities.append({"entity": entity, "unit": unit, "sections": sections})
+
+    return {"statement": statement, "years": all_years, "entities": out_entities}
+
+def generate_statement_excel(entities, statement, years=None):
+    """Excel workbook of whole statements — one sheet per insurer."""
+    data = build_financial_statement(entities, statement, years)
+    if not data["entities"]:
+        return None
+    yrs = data["years"]
+    output = io.BytesIO()
+    used = set()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        for ent in data["entities"]:
+            recs = []
+            for sec in ent["sections"]:
+                if sec["name"] and sec["name"] != "General":
+                    recs.append({"Particulars": sec["name"], **{y: "" for y in yrs}})
+                for it in sec["items"]:
+                    recs.append({"Particulars": it["label"],
+                                 **{y: ("" if it["values"][i] is None else it["values"][i])
+                                    for i, y in enumerate(yrs)}})
+            df = pd.DataFrame(recs, columns=["Particulars", *yrs])
+            name = re.sub(r"[^A-Za-z0-9 ]", "", ent["entity"])[:28].strip() or "Sheet"
+            base, n = name, 1
+            while name.lower() in used:
+                n += 1
+                name = f"{base[:25]} {n}"
+            used.add(name.lower())
+            df.to_excel(writer, index=False, sheet_name=name)
+    output.seek(0)
+    return output
+
 # ==========================================
 # COMPLIANCE ENGINE UPDATES (TREND AWARE)
 # ==========================================

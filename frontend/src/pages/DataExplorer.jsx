@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Modal, EmptyState, TypingDots } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -34,9 +34,13 @@ const KEY_TO_COL = {
 // The cascade order the user follows, per report view. In the Insurer view the
 // Line of Business comes first so the insurer list narrows to the relevant ones
 // (life vs general vs reinsurance); other views pick the entity first.
-const cascadeOrder = (dim) => (dim === 'Insurer'
-  ? ['lobs', 'entities', 'classes', 'metrics', 'years', 'quarters']
-  : ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters']);
+const cascadeOrder = (dim) => {
+  if (dim === 'Insurer') return ['lobs', 'entities', 'classes', 'metrics', 'years', 'quarters'];
+  // The Financials view reproduces whole statements, so it only needs the
+  // insurer, the statement, and the years — no per-line-item picking.
+  if (dim === 'Financials') return ['entities', 'lobs', 'years', 'quarters'];
+  return ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters'];
+};
 // What the "Entity" step is called per report view.
 const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers' };
 const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
@@ -160,7 +164,12 @@ function FilterModal({ options, initial, onApply, onClose }) {
   const list = baseList.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
 
   function apply() {
-    if (!draft.entities.length || !draft.metrics.length) {
+    if (draft.dimension === 'Financials') {
+      if (!draft.entities.length || !draft.lobs.length) {
+        toast.error('Select at least one insurer and a statement.');
+        return;
+      }
+    } else if (!draft.entities.length || !draft.metrics.length) {
       toast.error('Please select at least one Entity and one Metric.');
       return;
     }
@@ -312,11 +321,81 @@ function ReportTable({ report, onExport, onFlag }) {
   );
 }
 
+// Whole-statement reproduction (Balance Sheet / P&L) — sections in order, line
+// items as rows, years across the top.
+function StatementView({ data, onFlag }) {
+  const toast = useToast();
+  if (!data?.entities?.length) {
+    return <EmptyState icon="fa-folder-open">No statement data for this selection.</EmptyState>;
+  }
+  const { statement, years } = data;
+
+  function copyStatement(ent) {
+    const lines = [['Particulars', ...years].join('\t')];
+    ent.sections.forEach((sec) => {
+      if (sec.name && sec.name !== 'General') lines.push(sec.name);
+      sec.items.forEach((it) => lines.push([it.label, ...it.values.map((v) => (v == null ? '' : v))].join('\t')));
+    });
+    navigator.clipboard.writeText(lines.join('\n'))
+      .then(() => toast.success('Statement copied!'))
+      .catch(() => toast.error('Copy failed'));
+  }
+
+  function exportStatement(ent) {
+    api.download('/data/statement/download',
+      { entities: [ent.entity], statement, years },
+      `IRIS_${ent.entity.replace(/[^A-Za-z0-9]+/g, '_')}_${statement.replace(/[^A-Za-z0-9]+/g, '_')}.xlsx`)
+      .catch((e) => toast.error(e.message));
+  }
+
+  return (
+    <>
+      {data.entities.map((ent) => (
+        <div className="stmt-card anim-rise" key={ent.entity}>
+          <div className="stmt-head">
+            <div><strong>{ent.entity}</strong><span className="stmt-sub">{statement}{ent.unit ? ` · ${ent.unit}` : ''}</span></div>
+            <div className="dt-actions">
+              <button className="btn btn-ghost btn-sm" onClick={() => copyStatement(ent)}><i className="fas fa-copy" /> Copy</button>
+              <button className="btn btn-ghost btn-sm" onClick={onFlag}><i className="fas fa-flag" /> Flag</button>
+              <button className="btn btn-sm dt-excel" onClick={() => exportStatement(ent)}><i className="fas fa-file-excel" /> Export Excel</button>
+            </div>
+          </div>
+          <div className="data-table-scroll">
+            <table className="dt-table stmt-table">
+              <thead>
+                <tr><th className="row-head">Particulars</th>{years.map((y) => <th key={y} className="num">{y}</th>)}</tr>
+              </thead>
+              <tbody>
+                {ent.sections.map((sec) => (
+                  <Fragment key={sec.name}>
+                    {sec.name && sec.name !== 'General' && (
+                      <tr className="stmt-section"><td colSpan={years.length + 1}>{sec.name}</td></tr>
+                    )}
+                    {sec.items.map((it, ii) => (
+                      <tr key={ii}>
+                        <th className="row-head">{it.label}</th>
+                        {it.values.map((v, vi) => (
+                          <td key={vi} className="num">{v == null ? '—' : fmtCell(v)}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function DataExplorer() {
   const toast = useToast();
   const [options, setOptions] = useState(null);
   const [filters, setFilters] = useState(blankFilters());
   const [report, setReport] = useState(null);
+  const [statements, setStatements] = useState(null);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
@@ -331,8 +410,16 @@ export default function DataExplorer() {
     setModal(false);
     setLoading(true);
     try {
-      const data = await api.post('/data/filter', draft);
-      setReport(data);
+      if (draft.dimension === 'Financials') {
+        const results = await Promise.all((draft.lobs || []).map((st) =>
+          api.post('/data/statement', { entities: draft.entities, statement: st, years: draft.years })));
+        setStatements(results);
+        setReport(null);
+      } else {
+        const data = await api.post('/data/filter', draft);
+        setReport(data);
+        setStatements(null);
+      }
     } catch (err) {
       toast.error(err.message || 'Filter failed');
     } finally {
@@ -340,12 +427,21 @@ export default function DataExplorer() {
     }
   }
 
+  function resetDashboard() {
+    setReport(null);
+    setStatements(null);
+    setFilters(blankFilters());
+  }
+
   function exportExcel() {
     api.download('/data/download', filters, 'IRIS_Financial_Report.xlsx').catch((e) => toast.error(e.message));
   }
 
-  const summary = useMemo(() => (report ? `Report: ${filters.dimension} View` : 'No filters applied'), [report, filters]);
-  const filterCount = filters.entities.length + filters.metrics.length;
+  const summary = useMemo(() => {
+    if (statements) return `Statement: ${filters.lobs.join(', ')}`;
+    return report ? `Report: ${filters.dimension} View` : 'No filters applied';
+  }, [report, statements, filters]);
+  const filterCount = filters.entities.length + filters.metrics.length + (filters.dimension === 'Financials' ? filters.lobs.length : 0);
 
   return (
     <>
@@ -357,11 +453,15 @@ export default function DataExplorer() {
             {report && filterCount > 0 && <span className="filter-badge">{filterCount}</span>}
           </button>
           <span className="active-filters-text">{summary}</span>
-          <button className="reset-link" onClick={() => { setReport(null); setFilters(blankFilters()); }}>Reset Dashboard</button>
+          <button className="reset-link" onClick={resetDashboard}>Reset Dashboard</button>
         </div>
 
         {loading ? (
           <div className="dt-loading"><TypingDots /><div>Processing data…</div></div>
+        ) : statements ? (
+          statements.every((s) => !s.entities?.length)
+            ? <EmptyState icon="fa-folder-open">No statement data for this selection.</EmptyState>
+            : statements.map((s, i) => <StatementView key={i} data={s} onFlag={() => setFlagOpen(true)} />)
         ) : !report ? (
           <EmptyState icon="fa-chart-column">Select <strong>Filters</strong> to generate a report.</EmptyState>
         ) : (
