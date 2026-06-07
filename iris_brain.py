@@ -718,16 +718,19 @@ def get_filter_options():
     # options to the selected dimension to avoid empty "no data" combinations.
     # Column -> position in the cascade tuple the UI sends as "combos".
     CASCADE = ['Entity', 'Line_of_Business', 'Class_of_Business', 'Metric', 'Financial_Year', 'Quarter']
+    # The Financials view reproduces whole statements, so its filter only cascades
+    # Entity -> Statement(LOB) -> Year -> Quarter; dropping Class/Metric keeps the
+    # combos payload small (statements have hundreds of line items per insurer).
+    CASCADE_BY_DIM = {'Financials': ['Entity', 'Line_of_Business', 'Financial_Year', 'Quarter']}
 
     by_dim = {}
     for dim in unique_dims:
         d = UNIFIED_DF[UNIFIED_DF['Dimension'] == dim]
         entities_by_dim[dim] = sorted(d['Entity'].unique().tolist())
         # Distinct valid combinations drive a cascading filter in the UI: each
-        # step (Entity -> LOB -> Class -> Metric -> Year -> Quarter) only offers
-        # options consistent with earlier picks, so impossible "no data" combos
-        # can't be built (e.g. picking "Aviation" then a metric it doesn't have).
-        avail = [c for c in CASCADE if c in d.columns]
+        # step only offers options consistent with earlier picks, so impossible
+        # "no data" combos can't be built.
+        avail = [c for c in CASCADE_BY_DIM.get(dim, CASCADE) if c in d.columns]
         combos = d[avail].drop_duplicates().astype(str).values.tolist()
         by_dim[dim] = {
             "cascade": avail,            # column order of each combo tuple

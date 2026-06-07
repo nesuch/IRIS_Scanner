@@ -30,9 +30,10 @@ ENTITY_AXIS = {"insurer", "insurers", "reinsurer", "reinsurers", "company", "nam
 
 
 def _is_entity_axis(c):
-    """True if a header cell labels the entity column (insurer or state)."""
+    """True if a header cell labels the entity column (insurer/reinsurer/state)."""
     low = c.lower().strip()
-    return low in ENTITY_AXIS or "state" in low or "union territory" in low
+    return (low in ENTITY_AXIS or "insurer" in low or "reinsurer" in low.replace("-", "")
+            or "state" in low or "union territory" in low)
 
 # Phase-2 LOB matrices: (file, sheet). LOB + metric are read from the multi-row
 # column headers; the parser auto-detects 2-level (LOB>year) vs 3-level
@@ -302,7 +303,7 @@ def _sig(name):
 def _norm_entity(name):
     """Light canonicalisation so spelling variants of one insurer don't split
     into separate entities across tables (e.g. 'Ltd' vs 'Ltd.', 'Sunlife')."""
-    s = re.sub(r"^[\s@#*$^%&]+|[\s@#*$^%.&]+$", "", _clean(name))  # strip footnote marks
+    s = re.sub(r"^[\s@#*$^%&\-]+|[\s@#*$^%.&]+$", "", _clean(name))  # strip footnote marks
     s = re.sub(r"\s*\(\d+\)\s*$", "", s).strip()      # strip trailing "(1)" footnotes
     s = re.sub(r"\bLimited\b", "Ltd", s, flags=re.I)
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # normalise trailing Ltd.
