@@ -142,6 +142,28 @@ PHASE11_MEASURES = [
     ("Part I", "27", "Lapsed / Forfeited Policies (Non-Linked)", "'000s"),
 ]
 
+# State x insurer cross-tabs -> entity=insurer, class=state. (part, sheet, lob,
+# base metric, unit). Sectors come from the part (6/8/29 Life, 54 Non-Life, 96 Life).
+PHASE12_CROSSTAB = [
+    ("Part I", "6", "Individual New Business by State", "New Business", "₹Crore"),
+    ("Part I", "8", "Group New Business by State", "New Business", "₹Crore"),
+    ("Part I", "29", "Offices by State", "No. of Offices", "Nos."),
+    ("Part II", "54", "Offices by State", "No. of Offices", "Nos."),
+    ("Part V", "96", "Individual Agents by State", "No. of Agents", "Nos."),
+]
+
+# Industry-aggregate tables -> Industry view. (part, sheet, entity, lob/base, row_as, unit)
+PHASE13_INDUSTRY_ROWS = [
+    ("Part I", "14", "Life Insurers (Industry)", "Individual Death Claims", "metric", "Nos."),
+    ("Part I", "16", "Life Insurers (Industry)", "Group Death Claims", "metric", "Nos."),
+    ("Part IV", "82", "Non-Life & Reinsurers (Industry)", "Net Retention (Per cent)", "lob", "Per cent"),
+]
+# (part, sheet, entity, lob, unit)
+PHASE13_INDUSTRY_2KEY = [
+    ("Part I", "20", "Life Insurers (Industry)", "Investments (AUM)", "₹Crore"),
+    ("Part II", "46", "General, Health & RE (Industry)", "Investments (AUM)", "₹Crore"),
+]
+
 # Phase-6: more per-insurer transposed tables routed into the Statements &
 # Reports view as named reports. (part, sheet, report name, fallback unit)
 PHASE6_REPORTS = [
@@ -303,7 +325,7 @@ def _stamp(rows, part, sector=None):
     the part default (e.g. health-by-life tables hold *life* insurers)."""
     sec = sector or SECTOR_OF.get(part, "")
     for r in rows:
-        r["_sector"] = r["dimension"] if r["dimension"] in ("State", "Channel") else sec
+        r["_sector"] = r["dimension"] if r["dimension"] in ("State", "Channel", "Industry") else sec
     return rows
 
 
@@ -752,6 +774,57 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
 
 
 CHANNEL_DIMENSION = "Channel"
+_SUBMETRIC_VOCAB = ("polic", "premium", "lives", "scheme", "persons", "amount",
+                    "sum assured", "no.", "number", "offices", "agents", "providers")
+
+
+def convert_state_insurer_crosstab(ws, lob, base_metric, fallback_unit="₹Crore",
+                                   dimension=DIMENSION):
+    """State (rows) x insurer (col group) x year [x sub-metric]. Flattened to
+    entity=insurer, class_of_business=state so all three axes survive (6/8/29/54/96)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 1:
+        return []
+    insurer_row = _ffill(grid[yr - 1])
+    year_row = _ffill(grid[yr])
+    # optional sub-metric row directly below the years
+    sub_row = None
+    if yr + 1 < len(grid):
+        cand = grid[yr + 1]
+        if sum(1 for c in cand if c and any(v in c.lower() for v in _SUBMETRIC_VOCAB)) >= 2:
+            sub_row = cand
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    state_col = next((i for i, c in enumerate(grid[yr - 1]) if _is_entity_axis(c)
+                      or "state" in c.lower()), 1)
+    data_start = yr + 2 if sub_row else yr + 1
+    out = []
+    for r in raw[data_start:]:
+        cells = [_clean(c) for c in r]
+        state = _canon_state(cells[state_col]) if state_col < len(cells) else ""
+        if not state or SKIP_ENTITIES.match(state) or _is_entity_axis(state):
+            continue
+        for ci in range(len(r)):
+            fy = year_row[ci] if ci < len(year_row) else ""
+            insurer = _norm_entity(insurer_row[ci]) if ci < len(insurer_row) else ""
+            if not YEAR_RE.match(fy) or not insurer or _is_entity_axis(insurer):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            if sub_row:
+                sub = _clean(sub_row[ci]) if ci < len(sub_row) else ""
+                metric = _submetric(sub, unit) if sub else f"{base_metric} ({unit})"
+            else:
+                metric = f"{base_metric} ({unit})"
+            out.append({
+                "dimension": dimension, "entity": insurer, "metric": metric,
+                "value": value, "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": state,
+            })
+    return out
 
 
 def convert_channel_measures(ws, lob, fallback_unit="Nos.", dimension=CHANNEL_DIMENSION,
@@ -821,6 +894,85 @@ def convert_channel_segment(ws, lob_unused=None, fallback_unit="₹Crore"):
                 "dimension": CHANNEL_DIMENSION, "entity": entity, "metric": metric,
                 "value": value, "financial_year": fy, "quarter": QUARTER,
                 "line_of_business": seg, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+INDUSTRY_DIMENSION = "Industry"
+
+
+def convert_industry_rows(ws, entity, lob_or_base, row_as="metric",
+                          fallback_unit="Nos.", dimension=INDUSTRY_DIMENSION):
+    """Single industry-aggregate table: rows = line items, columns = [measure>]year.
+    row_as='metric' -> metric=row label, lob fixed (14/16); row_as='lob' ->
+    lob=row label, metric fixed (82)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None:
+        return []
+    year_row = _ffill(grid[yr])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    measure_row = _ffill(grid[yr - 1]) if (yr >= 1 and row_as == "metric") else []
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    out = []
+    for r in raw[yr + 1:]:
+        label = _clean(r[0]) if r else ""
+        if not label or SKIP_ENTITIES.match(label) or _FOOTNOTE.search(label):
+            continue
+        for ci, fy in years.items():
+            value = _to_number(r[ci]) if ci < len(r) else None
+            if value is None:
+                continue
+            if row_as == "metric":
+                meas = measure_row[ci] if ci < len(measure_row) else ""
+                mlabel = f"{meas} - {label}" if (meas and not YEAR_RE.match(meas)) else label
+                metric, lob = _submetric(mlabel, unit), lob_or_base
+            else:
+                lob, metric = _norm_lob(label), f"{lob_or_base} ({unit})"
+            out.append({
+                "dimension": dimension, "entity": entity, "metric": metric,
+                "value": value, "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_industry_2key(ws, entity, lob, fallback_unit="₹Crore",
+                          dimension=INDUSTRY_DIMENSION):
+    """Industry AUM: col0=instrument (merged), col1=item (Amount/% of total),
+    columns=year. metric=instrument, class=item (20/46)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None:
+        return []
+    year_row = _ffill(grid[yr])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    out, cur_k0 = [], ""
+    for r in raw[yr + 1:]:
+        cells = [_clean(c) for c in r]
+        k0 = cells[0] if cells else ""
+        k1 = cells[1] if len(cells) > 1 else ""
+        if k0:
+            cur_k0 = k0
+        if not cur_k0 or SKIP_ENTITIES.match(cur_k0):
+            continue
+        low = k1.lower()
+        klass = ("% of Total" if ("%" in k1 or "percent" in low or "per cent" in low)
+                 else "Amount")
+        for ci, fy in years.items():
+            value = _to_number(r[ci]) if ci < len(r) else None
+            if value is None:
+                continue
+            unit = "Per cent" if klass == "% of Total" else fallback_unit
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": _submetric(cur_k0, unit), "value": value,
+                "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": klass,
             })
     return out
 
@@ -1168,6 +1320,36 @@ def main():
         rows = convert_insurer_periodic(wb[match], report, fallback_unit=fb_unit)
         print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
               f"line items={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, entity, lob_base, row_as, fb_unit in PHASE13_INDUSTRY_ROWS:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_industry_rows(wb[match], entity, lob_base, row_as=row_as, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Industry/{lob_base[:20]}] -> {len(rows)} rows | "
+              f"LOBs={len(set(r['line_of_business'] for r in rows))} | metrics={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, entity, lob, fb_unit in PHASE13_INDUSTRY_2KEY:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_industry_2key(wb[match], entity, lob, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Industry/{lob[:20]}] -> {len(rows)} rows | "
+              f"instruments={len(set(r['metric'] for r in rows))} | classes={sorted(set(r['class_of_business'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, lob, base_metric, fb_unit in PHASE12_CROSSTAB:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_state_insurer_crosstab(wb[match], lob, base_metric, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Insurer/{lob[:22]}] -> {len(rows)} rows | "
+              f"insurers={len(set(r['entity'] for r in rows))} | states={len(set(r['class_of_business'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, report, fb_unit in PHASE11_MEASURES:
