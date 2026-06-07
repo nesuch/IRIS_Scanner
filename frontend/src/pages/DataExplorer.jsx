@@ -38,8 +38,14 @@ const cascadeOrder = (dim) => (dim === 'Insurer'
   ? ['lobs', 'entities', 'classes', 'metrics', 'years', 'quarters']
   : ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters']);
 // What the "Entity" step is called per report view.
-const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries' };
+const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers' };
 const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
+// Friendly name for the report-view dropdown.
+const viewLabel = (dim) => (dim === 'Financials' ? 'Financial Statements' : `${dim}-wise View`);
+// Per-view overrides for the step labels (e.g. the Financials view reuses the
+// LOB/Class slots as Statement/Section).
+const STEP_LABEL_OVERRIDES = { Financials: { lobs: 'Statement', classes: 'Section', metrics: 'Line Item' } };
+const stepLabel = (dim, key) => STEP_LABEL_OVERRIDES[dim]?.[key] || STEP_LABELS[key];
 
 const blankFilters = (dim = 'Insurer') => ({
   dimension: dim, entities: [], metrics: [], classes: [], years: [], quarters: [], lobs: [],
@@ -175,7 +181,7 @@ function FilterModal({ options, initial, onApply, onClose }) {
         <label className="mono-label">Step 1 · Select Report View</label>
         <select className="select" value={draft.dimension} onChange={(e) => changeDim(e.target.value)}>
           {(options.dimensions?.length ? options.dimensions : ['Insurer']).map((d) => (
-            <option key={d} value={d}>{d}-wise View</option>
+            <option key={d} value={d}>{viewLabel(d)}</option>
           ))}
         </select>
       </div>
@@ -191,7 +197,7 @@ function FilterModal({ options, initial, onApply, onClose }) {
                 onClick={() => { if (!locked) { setCat(key); setSearch(''); } }}>
                 <span className="cat-label">
                   <span className="cat-step">{locked ? <i className="fas fa-lock" /> : done ? <i className="fas fa-check" /> : i + 2}</span>
-                  {key === 'entities' ? entityNoun(draft.dimension) : STEP_LABELS[key]}
+                  {key === 'entities' ? entityNoun(draft.dimension) : stepLabel(draft.dimension, key)}
                 </span>
                 {done && <span className="cat-count">{draft[key].length}</span>}
               </div>
@@ -233,48 +239,74 @@ function FilterModal({ options, initial, onApply, onClose }) {
 function ReportTable({ report, onExport, onFlag }) {
   const toast = useToast();
   const cols = report.columns || [];
+  const rows = report.rows || [];
+  const [tx, setTx] = useState(false);
 
   function copyData() {
     const keep = cols.filter((c) => c !== 'Source_File');
     const head = keep.map((c) => c.replace(/_/g, ' ')).join('\t');
-    const body = report.rows.map((r) => keep.map((c) => r[c]).join('\t')).join('\n');
+    const body = rows.map((r) => keep.map((c) => r[c]).join('\t')).join('\n');
     navigator.clipboard.writeText(head + '\n' + body)
       .then(() => toast.success('Table copied! (Source filenames excluded)'))
       .catch(() => toast.error('Copy failed'));
   }
 
+  const cell = (c, row) => (c === 'Source_File' ? row[c] : fmtCell(row[c]));
+  const numCls = (c, row) => (c !== 'Source_File' && isNumCell(row[c]) ? 'num' : '');
+
   return (
     <div className="data-table-wrapper anim-rise">
       <div className="data-table-header">
-        <div className="dt-title"><strong>Financial Report</strong><span className="dt-rows">{report.rows.length} rows</span></div>
+        <div className="dt-title"><strong>Financial Report</strong><span className="dt-rows">{rows.length} rows</span></div>
         <div className="dt-actions">
+          <button className={`btn btn-ghost btn-sm ${tx ? 'is-active' : ''}`} onClick={() => setTx(!tx)}>
+            <i className="fas fa-rotate" /> Transpose
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={copyData}><i className="fas fa-copy" /> Copy Data</button>
           <button className="btn btn-ghost btn-sm" onClick={onFlag}><i className="fas fa-flag" /> Flag</button>
           <button className="btn btn-sm dt-excel" onClick={onExport}><i className="fas fa-file-excel" /> Export Excel</button>
         </div>
       </div>
       <div className="data-table-scroll">
+        {tx ? (
+          <table className="dt-table">
+            <thead>
+              <tr>
+                <th className="row-head">Field</th>
+                {rows.map((row, ri) => <th key={ri}>{fmtCell(row[cols[0]])}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {cols.slice(1).map((c) => (
+                <tr key={c}>
+                  <th className="row-head">{c.replace(/_/g, ' ')}</th>
+                  {rows.map((row, ri) => (
+                    <td key={ri} className={numCls(c, row)} title={c === 'Source_File' ? row[c] : undefined}>{cell(c, row)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
         <table className="dt-table">
           <thead>
             <tr>{cols.map((c) => <th key={c} className={c === 'Source_File' ? 'src-col' : ''}>{c.replace(/_/g, ' ')}</th>)}</tr>
           </thead>
           <tbody>
-            {report.rows.map((row, ri) => (
+            {rows.map((row, ri) => (
               <tr key={ri}>
-                {cols.map((c, ci) => {
-                  const numeric = c !== 'Source_File' && isNumCell(row[c]);
-                  return (
-                    <td key={c}
-                      className={`${c === 'Source_File' ? 'src-col' : ''} ${ci < 2 ? 'fw-bold' : ''} ${numeric ? 'num' : ''}`}
-                      title={c === 'Source_File' ? row[c] : undefined}>
-                      {c === 'Source_File' ? row[c] : fmtCell(row[c])}
-                    </td>
-                  );
-                })}
+                {cols.map((c, ci) => (
+                  <td key={c}
+                    className={`${c === 'Source_File' ? 'src-col' : ''} ${ci < 2 ? 'fw-bold' : ''} ${numCls(c, row)}`}
+                    title={c === 'Source_File' ? row[c] : undefined}>
+                    {cell(c, row)}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

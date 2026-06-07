@@ -64,6 +64,16 @@ PHASE3_CLASS = [
     ("Part III", "71", "Travel (Domestic)"),
 ]
 
+# Phase-4: line-item financial statements -> their own "Financials" view. The
+# statement becomes the Line of Business and the statement section the Class.
+FIN_DIMENSION = "Financials"
+PHASE4 = [
+    ("Part I", "24", "Policyholders Account"),   # Life
+    ("Part I", "25", "Shareholders Account"),    # Life
+    ("Part I", "26", "Balance Sheet"),           # Life
+    ("Part II", "52", "Balance Sheet"),          # General & Health
+]
+
 PHASE2B_CLASS = [
     ("Part III", "58", "Health"),
     ("Part III", "59", "Personal Accident"),
@@ -134,7 +144,8 @@ ENTITY_ALIASES = {
     "acko life": "Acko Life Insurance Ltd.",
     "credit access life": "Credit Access Life Insurance Ltd.",
     "go digit life": "Go Digit Life Insurance Ltd.",
-    "maxlife insurance ltd.": "Axis MaxLife Insurance Ltd.",
+    "max life insurance ltd.": "Axis Max Life Insurance Ltd.",
+    "adity birla sun life": "Aditya Birla Sun Life Insurance Ltd.",
     "aic": "Agriculture Insurance of India Ltd.",
     "aditya birla": "Aditya Birla Health Insurance Co. Ltd.",
     "bajaj allianz": "Bajaj Allianz General Insurance Co. Ltd.",
@@ -178,9 +189,11 @@ def _norm_entity(name):
     s = re.sub(r"^[\s@#*$^%]+|[\s@#*$^%.]+$", "", _clean(name))  # strip footnote marks
     s = re.sub(r"\bLimited\b", "Ltd", s, flags=re.I)
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # normalise trailing Ltd.
-    s = re.sub(r"\bSun\s*[Ll]ife\b", "Sun Life", s)
-    s = re.sub(r"\bCredit\s*Access\b", "Credit Access", s, flags=re.I)
-    s = re.sub(r"\bCompany\b\s*", "", s)             # filler word; safe to drop
+    # Normalise compound brand words (case-insensitive — some tables are ALL CAPS).
+    s = re.sub(r"\bsun\s*life\b", "Sun Life", s, flags=re.I)
+    s = re.sub(r"\bmax\s*life\b", "Max Life", s, flags=re.I)
+    s = re.sub(r"\bcredit\s*access\b", "Credit Access", s, flags=re.I)
+    s = re.sub(r"\bcompany\b\s*", "", s, flags=re.I)  # filler word; safe to drop
     s = s.replace("Limtied", "Limited")              # source typo
     s = re.sub(r"(Lloyd's of India)\s*-\s*", r"\1 - ", s)  # tidy "India- Markel"
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # re-normalise tail after edits
@@ -510,8 +523,15 @@ def _submetric(sub, table_unit):
     return f"{s} ({unit})" if unit else s
 
 
-def convert_transposed(ws, lob, fallback_unit="₹Crore"):
-    """Insurers are column groups, metrics are row labels (e.g. Table 45)."""
+_GEN_ITEM = re.compile(r"^(\(|total\b|sub[- ]?total|others?\b|less[: ]|add[: ])", re.I)
+
+
+def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
+                       dimension=DIMENSION, section_as_class=False):
+    """Insurers are column groups, metrics are row labels (e.g. Table 45).
+    With track_sections (balance-sheet/P&L tables) a no-value row becomes a
+    section header. section_as_class puts that section in the Class column (used
+    by the Financial Statements view); otherwise it prefixes colliding items."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     yr = next((i for i, r in enumerate(grid[:8])
@@ -521,12 +541,26 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore"):
     ent_row = _ffill(grid[yr - 1])
     years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
     unit = _find_unit(grid[:yr]) or fallback_unit
-    out = []
-    for r in raw[yr + 1:]:
-        metric = _clean(r[0]).rstrip("*# ").strip() if r else ""
-        if not metric or "=" in metric or metric.lower().startswith("note"):
+
+    out, current_section = [], ""
+    metric_sections = {}
+    # Disambiguate distinct source rows that share the same (section,label):
+    # each such row gets a stable ordinal so they never collapse in the pivot.
+    seen_keys, ordinal = {}, {}
+    for ri, r in enumerate(raw[yr + 1:]):
+        raw_label = _clean(r[0]) if r else ""
+        label = raw_label.rstrip("*#: ").strip()
+        if not label or "=" in label or label.lower().startswith("note"):
             continue
-        name = f"{metric} ({unit})" if unit else metric
+        row_vals = [(_to_number(r[ci]) if ci < len(r) else None) for ci in years]
+        if track_sections and (not any(v is not None for v in row_vals) or raw_label.endswith(":")):
+            current_section = label.title() if label.isupper() else label
+            continue
+        key = (current_section, label)
+        if ri not in ordinal:
+            seen_keys[key] = seen_keys.get(key, 0) + 1
+            ordinal[ri] = seen_keys[key]
+        metric_sections.setdefault(label, set()).add(current_section)
         for ci, fy in years.items():
             entity = _norm_entity(ent_row[ci]) if ci < len(ent_row) else ""
             if not entity or SKIP_ENTITIES.match(entity) or ci >= len(r):
@@ -535,10 +569,21 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore"):
             if value is None:
                 continue
             out.append({
-                "dimension": DIMENSION, "entity": entity, "metric": name,
-                "value": value, "financial_year": fy, "quarter": QUARTER,
+                "dimension": dimension, "entity": entity, "metric": label,
+                "section": current_section, "ord": ordinal[ri], "value": value,
+                "financial_year": fy, "quarter": QUARTER,
                 "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
             })
+    for row in out:
+        sec, n = row.pop("section"), row.pop("ord")
+        base = row["metric"]
+        if section_as_class:
+            row["class_of_business"] = sec or "General"
+        elif sec and (len(metric_sections.get(base, ())) > 1 or _GEN_ITEM.match(base)):
+            base = f"{sec} — {base}"
+        if n > 1:                                # repeated label → stable ordinal
+            base = f"{base} ({n})"
+        row["metric"] = f"{base} ({unit})" if unit else base
     return out
 
 
@@ -682,6 +727,18 @@ def main():
         rows = convert_class_matrix(wb[match], lob, dimension="State")
         cls = sorted({r["class_of_business"] for r in rows})
         print(f"   {part} t{sheet:>3} [State {lob:8}]-> {len(rows)} rows | classes={cls}")
+        all_rows.extend(rows)
+
+    for part, sheet, statement in PHASE4:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_transposed(wb[match], statement, track_sections=True,
+                                  dimension=FIN_DIMENSION, section_as_class=True)
+        secs = sorted({r["class_of_business"] for r in rows})
+        print(f"   {part} t{sheet:>3} [Financials/{statement}] -> {len(rows)} rows | sections={len(secs)}")
         all_rows.extend(rows)
 
     if not all_rows:
