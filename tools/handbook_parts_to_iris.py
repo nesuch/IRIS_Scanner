@@ -139,6 +139,7 @@ PHASE11_MEASURES = [
     ("Part V", "93", "Avg Individual Policies Sold per Agent", "Nos."),
     ("Part V", "94", "Avg New Business Premium per Agent", "₹Lakh"),
     ("Part V", "95", "Avg Premium per Policy", "₹"),
+    ("Part I", "27", "Lapsed / Forfeited Policies (Non-Linked)", "'000s"),
 ]
 
 # Phase-6: more per-insurer transposed tables routed into the Statements &
@@ -149,6 +150,7 @@ PHASE6_REPORTS = [
     ("Part I", "18", "Death Claim Settlement Duration - Individual", "Nos."),
     ("Part I", "19", "Death Claim Settlement Duration - Group", "Nos."),
     ("Part IV", "88", "Shareholders Account", "₹Crore"),
+    ("Part IV", "89", "Balance Sheet", "₹Crore"),   # reinsurers
 ]
 
 PHASE2B_CLASS = [
