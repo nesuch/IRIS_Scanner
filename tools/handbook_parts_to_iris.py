@@ -187,7 +187,8 @@ PHASE5_QUARTERLY = [
 # Rows whose entity label is a group header / aggregate, not a real insurer.
 SKIP_ENTITIES = re.compile(
     r"^(public sector|private sector|standalone health|stand-alone health|"
-    r"speciali[sz]ed|grand total|industry|total|sub[- ]?total|all india).*?$|.*\btotal$",
+    r"speciali[sz]ed|grand total|industry|total|sub[- ]?total|all india).*?$"
+    r"|.*\btotal\b\)?$|.*\baverage$|.*cancelled.*",
     re.I,
 )
 
@@ -251,6 +252,7 @@ ENTITY_ALIASES = {
     "adity birla sun life": "Aditya Birla Sun Life Insurance Ltd.",
     "tata aia": "Tata AIA Life Insurance Ltd.",
     "star union dai-ichi": "Star Union Dai-ichi Life Insurance Ltd.",
+    "factorty mutual": "Factory Mutual",
     "aic": "Agriculture Insurance of India Ltd.",
     # Reinsurer variants across Part IV tables.
     "gic": "General Insurance Corporation of India (GIC Re)",
@@ -262,6 +264,9 @@ ENTITY_ALIASES = {
     "iti": "ITI Reinsurance Ltd.",
     "iti re": "ITI Reinsurance Ltd.",
     "iti (private)": "ITI Reinsurance Ltd.",
+    "sud life": "Star Union Dai-ichi Life Insurance Ltd.",
+    "rga life": "RGA",
+    "gen re": "General Reinsurance AG",
 }
 
 
@@ -270,8 +275,11 @@ ENTITY_ALIASES = {
 # General & Health share one "Non-Life" sector so a SAHI insurer appearing in
 # both Part II and Part III resolves to one entity; Life and Reinsurance stay
 # distinct (that's where short forms like "Bajaj Allianz" must not cross).
+# Part IV (reinsurance) also folds into "Non-Life" for name resolution, because
+# reinsurers appear in some Part II tables too (e.g. AUM 47); the Reinsurance LOB
+# still distinguishes them in the data.
 SECTOR_OF = {"Part I": "Life", "Part II": "Non-Life", "Part III": "Non-Life",
-             "Part IV": "Reinsurance", "Part V": "Life"}
+             "Part IV": "Non-Life", "Part V": "Life"}
 
 # Explicit per-sector resolutions for names that stay ambiguous even within a
 # sector (confirmed with the user). Key: (sector, squashed-name) -> canonical.
@@ -281,6 +289,9 @@ SECTOR_ALIASES = {
     ("Life", "reliance"): "Reliance Nippon Life Insurance Ltd.",
     ("Life", "reliancelife"): "Reliance Nippon Life Insurance Ltd.",
     ("Life", "reliancenippon"): "Reliance Nippon Life Insurance Ltd.",
+    ("Life", "fg"): "Future Generali India Life Insurance Ltd.",
+    ("Life", "pnb life"): "PNB MetLife India Insurance Co. Ltd.",
+    ("Life", "pnblife"): "PNB MetLife India Insurance Co. Ltd.",
 }
 
 
@@ -334,6 +345,11 @@ def _norm_entity(name):
     s = re.sub(r"\bGo\s*digit\b", "Go Digit", s, flags=re.I)        # compound spacing
     s = re.sub(r"\bIndia\s*First\b", "India First", s, flags=re.I)
     s = re.sub(r"\bKshema\s*General\b", "Kshema General", s, flags=re.I)
+    s = re.sub(r"\bAlianz\b", "Allianz", s, flags=re.I)            # typos
+    s = re.sub(r"\bFuture\s*generali\b", "Future Generali", s, flags=re.I)
+    s = re.sub(r"\bManipal\s*Cigna\b", "ManipalCigna", s, flags=re.I)
+    s = re.sub(r"\bMet\s*Life\b", "MetLife", s, flags=re.I)
+    s = re.sub(r"\bScore\s+SE\b", "SCOR SE", s, flags=re.I)        # typo
     s = s.replace("Limtied", "Limited")              # source typo
     s = re.sub(r"(Lloyd's of India)\s*-\s*", r"\1 - ", s)  # tidy "India- Markel"
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # re-normalise tail after edits
@@ -753,7 +769,7 @@ def convert_channel_measures(ws, lob, fallback_unit="Nos.", dimension=CHANNEL_DI
     out = []
     for r in raw[yr + 1:]:
         cells = [_clean(c) for c in r]
-        ch = cells[ent_col] if ent_col < len(cells) else ""
+        ch = _norm_entity(cells[ent_col]) if ent_col < len(cells) else ""
         if not ch or SKIP_ENTITIES.match(ch):
             continue
         for ci, fy in years.items():
@@ -793,7 +809,7 @@ def convert_channel_segment(ws, lob_unused=None, fallback_unit="₹Crore"):
         if not seg or seg.lower() in SKIP_LOBS:
             continue
         for ci, fy in years.items():
-            entity = chan_row[ci] if ci < len(chan_row) else ""
+            entity = _norm_entity(chan_row[ci]) if ci < len(chan_row) else ""
             if not entity or _is_entity_axis(entity) or ci >= len(r):
                 continue
             value = _to_number(r[ci])
@@ -1267,14 +1283,16 @@ def main():
                 resolve[(sec, n)] = key
                 continue
             s = _sig(n)
-            supers = [o for o in sigs if s < o]
-            minimal = [o for o in supers if not any(p < o for p in supers if p != o)]
-            if len(minimal) == 1:
-                resolve[(sec, n)] = max(sig_names[minimal[0]], key=_name_quality)
+            # Fold into the MAXIMAL superset name (transitive), so chains like
+            # Cholamandalam -> Cholamandalam MS -> ...General all land on the full
+            # name. Ambiguous only when there are several incomparable maximals.
+            cands = [o for o in sigs if s <= o]
+            maximal = [o for o in cands if not any(o < p for p in cands)]
+            if len(maximal) == 1:
+                resolve[(sec, n)] = max(sig_names[maximal[0]], key=_name_quality)
             else:
                 resolve[(sec, n)] = max(sig_names[s], key=_name_quality)
-                if len(minimal) > 1:               # could fold into several → flag
-                    ambiguous.setdefault((sec, n), sorted({max(sig_names[m], key=_name_quality) for m in minimal}))
+                ambiguous.setdefault((sec, n), sorted({max(sig_names[m], key=_name_quality) for m in maximal}))
     merged = sum(1 for r in all_rows if resolve[(r["_sector"], r["entity"])] != r["entity"])
     for r in all_rows:
         r["entity"] = resolve[(r["_sector"], r["entity"])]
