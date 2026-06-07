@@ -86,6 +86,21 @@ PHASE7_SEGMENTED = [
     ("Part IV", "87", "Policyholders Account"),   # Reinsurers (by segment)
 ]
 
+# Phase-8: more reports into Statements & Reports.
+#   transposed (insurer columns, particulars rows): (part, sheet, report, unit)
+PHASE8_TRANSPOSED = [
+    ("Part I", "32", "Micro-Insurance Death Claims - Individual", "₹Lakh"),
+    ("Part I", "33", "Micro-Insurance Death Claims - Group", "₹Lakh"),
+    ("Part I", "34", "Micro-Insurance Claim Settlement - Individual", "Nos."),
+    ("Part I", "35", "Micro-Insurance Claim Settlement - Group", "Nos."),
+]
+#   insurer rows x (year > sub-metric): (part, sheet, report, unit)
+PHASE8_PERIODIC = [
+    ("Part I", "37", "Grievances (Life)", "Nos."),
+    ("Part II", "56", "Grievances (General & Health)", "Nos."),
+    ("Part I", "28", "Persistency", "Per cent"),
+]
+
 # Phase-6: more per-insurer transposed tables routed into the Statements &
 # Reports view as named reports. (part, sheet, report name, fallback unit)
 PHASE6_REPORTS = [
@@ -656,6 +671,44 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore", track_sections=False,
     return out
 
 
+def convert_insurer_periodic(ws, report, fallback_unit="Nos.", dimension=FIN_DIMENSION):
+    """Insurer rows x (year > sub-metric) columns, e.g. grievances (37/56),
+    persistency (28). Routed to Statements & Reports: sub-metric = line item."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr + 1 >= len(grid):
+        return []
+    year_row = _ffill(grid[yr])
+    sub_row = grid[yr + 1]
+    unit = _find_unit(grid[:yr + 1]) or fallback_unit
+    ent_col = next((i for i, c in enumerate(grid[yr]) if _is_entity_axis(c)), 1)
+    out = []
+    for r in raw[yr + 2:]:
+        cells = [_clean(c) for c in r]
+        entity = _norm_entity(cells[ent_col]) if ent_col < len(cells) else ""
+        if not entity or SKIP_ENTITIES.match(entity):
+            continue
+        for ci in range(len(r)):
+            if not YEAR_RE.match(year_row[ci] if ci < len(year_row) else ""):
+                continue
+            sub = _clean(sub_row[ci]) if ci < len(sub_row) else ""
+            if not sub:
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            sub = re.sub(r"^(\d+)\s*\*+$", r"\1th Month", sub)   # persistency buckets
+            metric = _submetric(sub, unit)
+            out.append({
+                "dimension": dimension, "entity": entity, "metric": metric,
+                "value": value, "financial_year": year_row[ci], "quarter": QUARTER,
+                "line_of_business": report, "class_of_business": "General",
+            })
+    return out
+
+
 def convert_segmented_statement(ws, statement, fallback_unit="₹Crore", dimension=FIN_DIMENSION):
     """Segmented financial statement: columns are entity > year > segment,
     rows are particulars (Tables 50, 87). The segment becomes the section."""
@@ -937,6 +990,29 @@ def main():
         segs = sorted({r["class_of_business"] for r in rows})
         print(f"   {part} t{sheet:>3} [Seg/{statement}] -> {len(rows)} rows | "
               f"entities={len(set(r['entity'] for r in rows))} | segments={segs}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, report, fb_unit in PHASE8_TRANSPOSED:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_transposed(wb[match], report, track_sections=True,
+                                  dimension=FIN_DIMENSION, section_as_class=True, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
+              f"entities={len(set(r['entity'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, report, fb_unit in PHASE8_PERIODIC:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_insurer_periodic(wb[match], report, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
+              f"line items={len(set(r['metric'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, report, fb_unit in PHASE6_REPORTS:
