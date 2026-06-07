@@ -34,6 +34,23 @@ ENTITY_AXIS = {"insurer", "reinsurer", "reinsurers", "company", "name of the ins
 PHASE2 = [
     ("Part II", "41"),   # Segment-wise Gross Direct Premium (2-level)
     ("Part II", "44"),   # Net Premium / Claims Incurred / ICR by segment (3-level)
+    ("Part IV", "83"),   # Reinsurers: NEP / Claims / ICR by segment (metric>LOB>year)
+]
+
+# Phase-2b/2c: transposed (insurers/reinsurers as columns; metrics are rows).
+PHASE2B_TRANSPOSED = [
+    ("Part II", "45", "General"),       # Underwriting Experience of insurers
+    ("Part IV", "84", "Reinsurance"),   # Underwriting Experience of reinsurers
+]
+PHASE2B_CLASS = [
+    ("Part III", "58", "Health"),
+    ("Part III", "59", "Personal Accident"),
+    ("Part III", "60", "Travel (Overseas)"),
+    ("Part III", "61", "Travel (Domestic)"),
+    ("Part III", "62", "Health"),
+    ("Part III", "63", "Personal Accident"),
+    ("Part III", "64", "Travel (Overseas)"),
+    ("Part III", "65", "Travel (Domestic)"),
 ]
 
 # Phase-1 tables: (file, sheet, line_of_business). Metric is derived from the title.
@@ -64,25 +81,63 @@ def _clean(v):
     return re.sub(r"\s+", " ", str(v or "").replace("\n", " ")).strip()
 
 
-# Short forms some tables use, mapped to the canonical full name used elsewhere.
+# Short forms some tables use, mapped to a fuller name (subset-subsumption then
+# folds these into the single canonical spelling). The Table-45 short forms are
+# general/health insurers, so the ambiguous ones resolve to their General arm.
 ENTITY_ALIASES = {
     "lic": "Life Insurance Corporation of India",
     "acko life": "Acko Life Insurance Ltd.",
     "credit access life": "Credit Access Life Insurance Ltd.",
     "go digit life": "Go Digit Life Insurance Ltd.",
     "maxlife insurance ltd.": "Axis MaxLife Insurance Ltd.",
+    "aic": "Agriculture Insurance of India Ltd.",
+    "aditya birla": "Aditya Birla Health Insurance Co. Ltd.",
+    "bajaj allianz": "Bajaj Allianz General Insurance Co. Ltd.",
+    "bharti axa": "Bharti AXA General Insurance Co. Ltd.",
+    "go digit": "Go Digit General Insurance Ltd.",
+    "hdfc ergo": "HDFC ERGO General Insurance Co. Ltd.",
+    "shriram": "Shriram General Insurance Co. Ltd.",
+    # Reinsurer variants across Part IV tables.
+    "gic": "General Insurance Corporation of India (GIC Re)",
+    "gic re. (public)": "General Insurance Corporation of India (GIC Re)",
+    "general insurance corporation (gic re)": "General Insurance Corporation of India (GIC Re)",
+    "iti": "ITI Reinsurance Ltd.",
+    "iti re": "ITI Reinsurance Ltd.",
+    "iti (private)": "ITI Reinsurance Ltd.",
 }
+
+
+def _canon_metric(m):
+    """Unify equivalent metric names across tables (insurers vs reinsurers)."""
+    m = m.replace("(%)", "(Per cent)").replace("(Percent)", "(Per cent)")
+    m = re.sub(r"\bIncurred Claim Ratio\b", "Incurred Claims Ratio", m)
+    m = re.sub(r"\bNet Premium Earned\b", "Net Earned Premium", m)
+    m = re.sub(r"\bNet Incurred Claims\b", "Claims Incurred (Net)", m)
+    return re.sub(r"\s{2,}", " ", m).strip()
+
+
+# Corporate-filler words that don't distinguish one insurer from another.
+_FILLER = {"insurance", "co", "company", "ltd", "limited", "india", "the",
+           "and", "assurance", "services", "branch", "branches", "of"}
+
+
+def _sig(name):
+    """Distinctive token set of an insurer name (drops corporate fillers)."""
+    toks = re.sub(r"[^a-z0-9 ]", " ", name.lower()).split()
+    return frozenset(t for t in toks if t not in _FILLER)
 
 
 def _norm_entity(name):
     """Light canonicalisation so spelling variants of one insurer don't split
     into separate entities across tables (e.g. 'Ltd' vs 'Ltd.', 'Sunlife')."""
-    s = _clean(name).rstrip("@#*$^% .").strip()
+    s = re.sub(r"^[\s@#*$^%]+|[\s@#*$^%.]+$", "", _clean(name))  # strip footnote marks
     s = re.sub(r"\bLimited\b", "Ltd", s, flags=re.I)
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # normalise trailing Ltd.
     s = re.sub(r"\bSun\s*[Ll]ife\b", "Sun Life", s)
     s = re.sub(r"\bCredit\s*Access\b", "Credit Access", s, flags=re.I)
     s = re.sub(r"\bCompany\b\s*", "", s)             # filler word; safe to drop
+    s = s.replace("Limtied", "Limited")              # source typo
+    s = re.sub(r"(Lloyd's of India)\s*-\s*", r"\1 - ", s)  # tidy "India- Markel"
     s = re.sub(r"\bLtd\.?\s*$", "Ltd.", s)           # re-normalise tail after edits
     s = re.sub(r"\s{2,}", " ", s).strip()
     return ENTITY_ALIASES.get(s.lower(), s)
@@ -149,6 +204,19 @@ def _tidy_metric(name):
 # Aggregate LOB labels to drop (contextless sums of the segments above them).
 SKIP_LOBS = {"total", "all segments", "total segments", "grand total", "all", "total insurance"}
 
+# Segment names used to tell which header level is the Line of Business (vs the
+# metric) in a matrix, since the two can be nested in either order.
+SEGMENT_VOCAB = {"fire", "marine", "marine cargo", "marine hull", "motor", "motor od",
+                 "motor tp", "health", "life", "engineering", "aviation", "liability",
+                 "personal accident", "pa", "crop", "credit", "travel", "misc",
+                 "miscellaneous", "others", "health + pa + travel"}
+
+
+def _seg_score(level, year_cols):
+    """Fraction of a header level's values that look like Line-of-Business names."""
+    vals = [_norm_lob(level[i]) for i in year_cols if i < len(level) and level[i]]
+    return sum(1 for v in vals if v.lower() in SEGMENT_VOCAB) / len(vals) if vals else 0
+
 
 def _norm_lob(s):
     s = _clean(s)
@@ -202,6 +270,10 @@ def convert_matrix(ws):
     # 3-level if the row above the segment row carries >1 distinct grouping value.
     three = len({up[i] for i in years}) > 1
     base_metric = _metric_from_title(grid[0][0] if grid[0] else "", _find_unit(grid[:3]))
+    # The two header levels can be nested either way (LOB>metric as in Table 44,
+    # or metric>LOB as in Table 83). Pick the LOB level by segment-vocabulary.
+    if three:
+        lob_level, met_level = (seg, up) if _seg_score(seg, years) >= _seg_score(up, years) else (up, seg)
 
     out = []
     for r in raw[yr + 1:]:
@@ -215,8 +287,8 @@ def convert_matrix(ws):
             value = _to_number(r[ci])
             if value is None:
                 continue
-            lob = _norm_lob(up[ci]) if three else _norm_lob(seg[ci])
-            metric = _tidy_metric(seg[ci]) if three else base_metric
+            lob = _norm_lob(lob_level[ci]) if three else _norm_lob(seg[ci])
+            metric = _tidy_metric(met_level[ci]) if three else base_metric
             if not lob or lob.lower() in SKIP_LOBS:
                 continue
             out.append({
@@ -288,6 +360,127 @@ def convert_table(ws, lob):
     return out
 
 
+def _tidy_class(c):
+    c = _clean(c)
+    low = c.lower()
+    if "total" in low:                              # any total / grand-total variant
+        return "Total"
+    if "irctc" in low:
+        return "IRCTC Scheme"
+    if "pmjdy" in low or "jan dhan" in low:
+        return "PMJDY"
+    if "pmsby" in low or "suraksha bima" in low:
+        return "PMSBY"
+    if low.startswith("government sponsored"):
+        return "Government Sponsored"
+    if low.startswith("group"):
+        return "Group (excl. Govt)" if "exclud" in low else "Group"
+    if "family" in low and "floater" in low and "excluding individual" in low:
+        return "Family Floater (excl. Individual)"
+    if "individual" in low and "excluding family" in low:
+        return "Individual (excl. Family Floater)"
+    if "individual" in low and "family floater" in low and "other" not in low:
+        return "Individual - Family Floater"
+    if "individual" in low and "other" in low:
+        return "Individual - Other"
+    if low == "individual business":
+        return "Individual"
+    return c
+
+
+def _submetric(sub, table_unit):
+    s = _clean(sub).replace("Permium", "Premium")
+    low = s.lower()
+    if "ratio" in low:
+        unit = "Per cent"
+    elif re.search(r"\([^)]*\)\s*$", s):       # already carries a unit/qualifier
+        unit = ""
+    elif "polic" in low:
+        s, unit = "No. of Policies", "Nos."
+    else:
+        unit = table_unit
+    return f"{s} ({unit})" if unit else s
+
+
+def convert_transposed(ws, lob, fallback_unit="₹Crore"):
+    """Insurers are column groups, metrics are row labels (e.g. Table 45)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 1:
+        return []
+    ent_row = _ffill(grid[yr - 1])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    out = []
+    for r in raw[yr + 1:]:
+        metric = _clean(r[0]).rstrip("*# ").strip() if r else ""
+        if not metric or "=" in metric or metric.lower().startswith("note"):
+            continue
+        name = f"{metric} ({unit})" if unit else metric
+        for ci, fy in years.items():
+            entity = _norm_entity(ent_row[ci]) if ci < len(ent_row) else ""
+            if not entity or SKIP_ENTITIES.match(entity) or ci >= len(r):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": DIMENSION, "entity": entity, "metric": name,
+                "value": value, "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_class_matrix(ws, lob, fallback_unit="₹Lakh"):
+    """year > class > sub-metric column header, rows = insurers (Tables 58-65)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr + 2 >= len(grid):
+        return []
+    ylevel = _ffill(grid[yr])
+    clevel = _ffill(grid[yr + 1])
+    slevel = grid[yr + 2]                       # sub-metric, one per column
+    unit = _find_unit(grid[:yr + 1]) or fallback_unit
+    ent_col = next((i for i, c in enumerate(grid[yr]) if c.lower() in ENTITY_AXIS), 1)
+
+    out = []
+    for r in raw[yr + 3:]:
+        cells = [_clean(c) for c in r]
+        entity = _norm_entity(cells[ent_col]) if ent_col < len(cells) else ""
+        if not entity or SKIP_ENTITIES.match(entity):
+            continue
+        for ci in range(len(r)):
+            if not (YEAR_RE.match(ylevel[ci] if ci < len(ylevel) else "")):
+                continue
+            cls = _tidy_class(clevel[ci] if ci < len(clevel) else "")
+            sub = slevel[ci] if ci < len(slevel) else ""
+            if not cls or "total" in cls.lower() or not _clean(sub):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": DIMENSION, "entity": entity,
+                "metric": _submetric(sub, unit), "value": value,
+                "financial_year": ylevel[ci], "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": cls,
+            })
+    return out
+
+
+def _open(parts_dir, part):
+    path = os.path.join(parts_dir, f"{part}.xlsx")
+    if not os.path.exists(path):
+        print(f"   [!] {path} missing — skipped")
+        return None
+    return openpyxl.load_workbook(path, read_only=True, data_only=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Convert Handbook Part tables (Phase 1) to IRIS rows.")
     ap.add_argument("parts_dir", help="Folder containing 'Part I.xlsx' ... 'Part V.xlsx'")
@@ -328,8 +521,56 @@ def main():
               f"LOBs={lobs} | metrics={len(mets)}")
         all_rows.extend(rows)
 
+    for part, sheet, lob in PHASE2B_TRANSPOSED:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_transposed(wb[match], lob)
+        print(f"   {part} t{sheet:>3} [transposed]  -> {len(rows)} rows | "
+              f"metrics={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(rows)
+
+    for part, sheet, lob in PHASE2B_CLASS:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_class_matrix(wb[match], lob)
+        cls = sorted({r["class_of_business"] for r in rows})
+        print(f"   {part} t{sheet:>3} [{lob:11}] class -> {len(rows)} rows | classes={cls}")
+        all_rows.extend(rows)
+
     if not all_rows:
         sys.exit("No rows produced.")
+
+    # Canonicalise insurer names into a standard list: a short/variant name folds
+    # into the fullest name whose words are a superset (e.g. "Star Health" ->
+    # "Star Health & Allied Insurance Co. Ltd.", "Tata AIG" -> "Tata AIG General
+    # Insurance Co. Ltd."). Ambiguous prefixes (e.g. a bare "Reliance" that could
+    # be General/Health/Life) are left untouched.
+    names = sorted({r["entity"] for r in all_rows})
+    sig_names = {}
+    for n in names:
+        sig_names.setdefault(_sig(n), set()).add(n)
+    sigs = list(sig_names)
+    resolve = {}
+    for n in names:
+        s = _sig(n)
+        supers = [o for o in sigs if s < o]
+        minimal = [o for o in supers if not any(p < o for p in supers if p != o)]
+        if len(minimal) == 1:                      # unique fuller name → fold in
+            resolve[n] = max(sig_names[minimal[0]], key=len)
+        else:                                      # keep within its own variant group
+            resolve[n] = max(sig_names[s], key=len)
+    merged = sum(1 for n in names if resolve[n] != n)
+    for r in all_rows:
+        r["entity"] = resolve[r["entity"]]
+        r["metric"] = _canon_metric(r["metric"])
+    print(f"\n[i] Canonicalised insurer names: folded {merged} variants into the standard list.")
+
     os.makedirs(args.out, exist_ok=True)
     out_path = os.path.join(args.out, args.name)
     df = pd.DataFrame(all_rows, columns=[
