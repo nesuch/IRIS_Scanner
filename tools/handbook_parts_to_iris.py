@@ -907,6 +907,109 @@ def convert_channel_segment(ws, lob_unused=None, fallback_unit="₹Crore"):
     return out
 
 
+def convert_snapshot(ws, statement, year, ent_col=1, metric_row_idx=2, data_start=3,
+                     fallback_unit="Nos.", dimension=FIN_DIMENSION):
+    """No year axis — a single snapshot. rows = entity, columns = sub-metrics on
+    one header row. metric=sub-metric, financial_year=fixed (e.g. 77 TPA hospitals)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    if metric_row_idx >= len(grid):
+        return []
+    metric_row = grid[metric_row_idx]
+    out = []
+    for r in raw[data_start:]:
+        cells = [_clean(c) for c in r]
+        entity = _norm_entity(cells[ent_col]) if ent_col < len(cells) else ""
+        if not entity or SKIP_ENTITIES.match(entity):
+            continue
+        seen = set()
+        for ci in range(ent_col + 1, len(r)):
+            sub = _clean(metric_row[ci]) if ci < len(metric_row) else ""
+            if not sub or sub in seen:
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            seen.add(sub)
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": _submetric(sub, fallback_unit), "value": value,
+                "financial_year": year, "quarter": QUARTER,
+                "line_of_business": statement, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimension=DIMENSION):
+    """Insurer (col0, merged) + State (col1) rows x [registry > region] columns.
+    entity=insurer, class=state, metric='registry - region' (78)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    # header: row1=registry(merged), row2=region; find them as the two rows above data
+    hdr = next((i for i, r in enumerate(grid[:6])
+                if any("metro" in c.lower() or "urban" in c.lower() for c in r)), 3)
+    registry_row = _ffill(grid[hdr - 1]) if hdr >= 1 else []
+    region_row = grid[hdr]
+    out, cur_ins = [], ""
+    for r in raw[hdr + 1:]:
+        cells = [_clean(c) for c in r]
+        if cells and cells[0]:
+            cur_ins = _norm_entity(cells[0])
+        state = _canon_state(cells[1]) if len(cells) > 1 else ""
+        if not cur_ins or not state or SKIP_ENTITIES.match(state) or _is_entity_axis(state):
+            continue
+        for ci in range(2, len(r)):
+            region = _clean(region_row[ci]) if ci < len(region_row) else ""
+            reg = _clean(registry_row[ci]) if ci < len(registry_row) else ""
+            if not region or YEAR_RE.match(region):
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            label = f"{reg} - {region}" if reg else region
+            out.append({
+                "dimension": dimension, "entity": cur_ins,
+                "metric": _submetric(label, fallback_unit), "value": value,
+                "financial_year": year, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": state,
+            })
+    return out
+
+
+def convert_industry_channel(ws, entity, lob, fallback_unit="₹Lakh", dimension="Industry"):
+    """Industry table: rows = line items, columns = year > channel (e.g. 66 claims
+    aging: For Claims Handled through TPAs / Directly). class=channel, metric=line item."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr + 1 >= len(grid):
+        return []
+    year_row = _ffill(grid[yr])
+    chan_row = _ffill(grid[yr + 1])
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    out = []
+    for r in raw[yr + 2:]:
+        label = _clean(r[0]) if r else ""
+        if not label or SKIP_ENTITIES.match(label) or _FOOTNOTE.search(label):
+            continue
+        for ci in range(1, len(r)):
+            fy = year_row[ci] if ci < len(year_row) else ""
+            chan = _clean(chan_row[ci]) if ci < len(chan_row) else ""
+            if not YEAR_RE.match(fy) or not chan or "total" in chan.lower():
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": _submetric(label, unit), "value": value,
+                "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": chan,
+            })
+    return out
+
+
 def _strip_enum(s):
     """Drop a leading 'A.' / 'a)' / '1.' enumerator from a header label."""
     return re.sub(r"^\s*[A-Za-z0-9]+[\.\)]\s*", "", s).strip()
@@ -1408,6 +1511,24 @@ def main():
         rows = convert_industry_2key(wb[match], entity, lob, fallback_unit=fb_unit)
         print(f"   {part} t{sheet:>3} [Industry/{lob[:20]}] -> {len(rows)} rows | "
               f"instruments={len(set(r['metric'] for r in rows))} | classes={sorted(set(r['class_of_business'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    # One-off tables: TPA hospitals (77), network providers (78), claims aging (66).
+    for part, sheet, fn, args_ in [
+        ("Part III", "77", convert_snapshot,
+         dict(statement="TPA Network Hospitals", year="2022-23", fallback_unit="Nos.")),
+        ("Part III", "78", convert_insurer_state_providers,
+         dict(lob="Network Providers by State", year="2024-25", fallback_unit="Nos.")),
+        ("Part III", "66", convert_industry_channel,
+         dict(entity="Health Industry", lob="Claims Development & Aging", fallback_unit="₹Lakh")),
+    ]:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = fn(wb[match], **args_)
+        print(f"   {part} t{sheet:>3} [{fn.__name__[8:]}] -> {len(rows)} rows | "
+              f"entities={len(set(r['entity'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, lob, base_metric, fb_unit in PHASE12_CROSSTAB:
