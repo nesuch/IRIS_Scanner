@@ -111,6 +111,13 @@ PHASE9_REPORTS_CLASS = [
     ("Part I", "17", "Group Death Claims", "Nos."),
     ("Part II", "53", "Status of Claims", "Nos."),
 ]
+# Health business by LIFE insurers (entities are life insurers -> Life sector).
+PHASE9B_LIFE_HEALTH = [
+    ("Part III", "73", "Health Business by Life Insurers - New", "Nos."),
+    ("Part III", "74", "Health Business by Life Insurers - Renewal", "Nos."),
+    ("Part III", "75", "Health Riders on Life Products - New", "Nos."),
+    ("Part III", "76", "Health Riders on Life Products - Renewal", "Nos."),
+]
 
 # Phase-10: Channel-wise distribution -> new Channel view (entity = channel).
 PHASE10_CHANNEL_MEASURES = [          # channel rows x (measure > year)
@@ -153,6 +160,7 @@ PHASE1 = [
     ("Part I", "22", "Life"),
     ("Part II", "40", "General"),
     ("Part IV", "86", "Reinsurance"),
+    ("Part IV", "85", "Reinsurance"),   # Equity/Assigned Capital of Reinsurers
     ("Part II", "48", "General"),   # Equity Share Capital of General & Health
     # Tables 90-92 are agents *of life insurers* — so Life, not "All Lines".
     ("Part V", "90", "Life"),
@@ -266,10 +274,11 @@ SECTOR_ALIASES = {
 }
 
 
-def _stamp(rows, part):
+def _stamp(rows, part, sector=None):
     """Tag rows with their sector so name resolution stays within-sector.
-    State and Channel entities are isolated (not insurers)."""
-    sec = SECTOR_OF.get(part, "")
+    State and Channel entities are isolated (not insurers). `sector` overrides
+    the part default (e.g. health-by-life tables hold *life* insurers)."""
+    sec = sector or SECTOR_OF.get(part, "")
     for r in rows:
         r["_sector"] = r["dimension"] if r["dimension"] in ("State", "Channel") else sec
     return rows
@@ -1129,6 +1138,16 @@ def main():
         print(f"   {part} t{sheet:>3} [Reports/{report[:26]}] -> {len(rows)} rows | "
               f"line items={len(set(r['metric'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, report, fb_unit in PHASE9B_LIFE_HEALTH:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_class_matrix(wb[match], report, dimension=FIN_DIMENSION, fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Reports/{report[:24]}] -> {len(rows)} rows | "
+              f"entities={len(set(r['entity'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part, sector="Life"))
 
     for part, sheet, lob in PHASE10_CHANNEL_MEASURES:
         wb = _open(args.parts_dir, part)
