@@ -45,6 +45,13 @@ const blankFilters = (dim = 'Insurer') => ({
   dimension: dim, entities: [], metrics: [], classes: [], years: [], quarters: [], lobs: [],
 });
 
+// A plain number (not a year like "2014-15"); formatted with Indian grouping.
+const NUM_CELL = /^-?\d+(\.\d+)?$/;
+const isNumCell = (v) => NUM_CELL.test(String(v));
+const fmtCell = (v) => (isNumCell(v)
+  ? Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+  : v);
+
 // Split an EWS message ("Title: Entity - detail") for structured display.
 function parseAlert(msg) {
   const [title, rest = ''] = msg.split(/: (.+)/s);
@@ -254,9 +261,16 @@ function ReportTable({ report, onExport, onFlag }) {
           <tbody>
             {report.rows.map((row, ri) => (
               <tr key={ri}>
-                {cols.map((c, ci) => (
-                  <td key={c} className={`${c === 'Source_File' ? 'src-col' : ''} ${ci < 2 ? 'fw-bold' : ''}`} title={c === 'Source_File' ? row[c] : undefined}>{row[c]}</td>
-                ))}
+                {cols.map((c, ci) => {
+                  const numeric = c !== 'Source_File' && isNumCell(row[c]);
+                  return (
+                    <td key={c}
+                      className={`${c === 'Source_File' ? 'src-col' : ''} ${ci < 2 ? 'fw-bold' : ''} ${numeric ? 'num' : ''}`}
+                      title={c === 'Source_File' ? row[c] : undefined}>
+                      {c === 'Source_File' ? row[c] : fmtCell(row[c])}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

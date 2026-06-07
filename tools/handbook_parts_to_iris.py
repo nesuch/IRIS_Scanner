@@ -26,7 +26,13 @@ DEFAULT_CLASS = "All Classes"
 
 YEAR_RE = re.compile(r"^(?:\d{4}-\d{2}|\d{4})$")     # 2023-24 or 2023
 NUM_RE = re.compile(r"-?\d[\d,]*\.?\d*")              # first number, ignoring footnote marks
-ENTITY_AXIS = {"insurer", "reinsurer", "reinsurers", "company", "name of the insurer"}
+ENTITY_AXIS = {"insurer", "insurers", "reinsurer", "reinsurers", "company", "name of the insurer"}
+
+
+def _is_entity_axis(c):
+    """True if a header cell labels the entity column (insurer or state)."""
+    low = c.lower().strip()
+    return low in ENTITY_AXIS or "state" in low or "union territory" in low
 
 # Phase-2 LOB matrices: (file, sheet). LOB + metric are read from the multi-row
 # column headers; the parser auto-detects 2-level (LOB>year) vs 3-level
@@ -42,6 +48,22 @@ PHASE2B_TRANSPOSED = [
     ("Part II", "45", "General"),       # Underwriting Experience of insurers
     ("Part IV", "84", "Reinsurance"),   # Underwriting Experience of reinsurers
 ]
+# Phase-3: State dimension (entity = state).
+PHASE3_YEAR_SUBMETRIC = [
+    ("Part I", "5", "Life", "Individual New Business"),
+    ("Part I", "7", "Life", "Group New Business"),
+]
+PHASE3_MATRIX = [
+    ("Part II", "42"),   # State-wise Gross Direct Premium (General) by segment
+]
+# Phase-3b: state-wise health/PA/travel, class-split (year>class>sub-metric).
+PHASE3_CLASS = [
+    ("Part III", "67", "Health"),
+    ("Part III", "69", "Personal Accident"),
+    ("Part III", "70", "Travel (Overseas)"),
+    ("Part III", "71", "Travel (Domestic)"),
+]
+
 PHASE2B_CLASS = [
     ("Part III", "58", "Health"),
     ("Part III", "59", "Personal Accident"),
@@ -70,9 +92,32 @@ PHASE1 = [
 # Rows whose entity label is a group header / aggregate, not a real insurer.
 SKIP_ENTITIES = re.compile(
     r"^(public sector|private sector|standalone health|stand-alone health|"
-    r"speciali[sz]ed|grand total|industry|total|sub[- ]?total).*?$|.*\btotal$",
+    r"speciali[sz]ed|grand total|industry|total|sub[- ]?total|all india).*?$|.*\btotal$",
     re.I,
 )
+
+# Canonical state/UT names (variant spelling -> standard), keyed by a squashed form.
+def _state_key(s):
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+_STATE_GROUPS = {
+    "Tamil Nadu": ["Tamil Nadu", "TamilNadu"],
+    "Chhattisgarh": ["Chhattisgarh", "Chattisgarh"],
+    "Jharkhand": ["Jharkhand", "Jharkand"],
+    "Maharashtra": ["Maharashtra", "Maharasthra", "Maharastra"],
+    "Odisha": ["Odisha", "Orissa"],
+    "Rajasthan": ["Rajasthan", "Rajashtan"],
+    "Uttarakhand": ["Uttarakhand", "Uttrakhand"],
+    "Andaman & Nicobar Islands": ["Andaman & Nicobar Islands", "Andaman & Nicobar Is"],
+    "Dadra & Nagar Haveli and Daman & Diu": [
+        "Dadra & Nagar Haveli and Daman & Diu", "Dadra & Nagara Haveli and Daman & Diu"],
+}
+STATE_CANON = {_state_key(v): canon for canon, vs in _STATE_GROUPS.items() for v in vs}
+
+
+def _canon_state(name):
+    return STATE_CANON.get(_state_key(name), name)
 UNIT_RE = re.compile(r"\((₹\s?crore|in lakhs|amount in ₹lakh|₹\s?lakh|lakhs|in crore|"
                      r"us ?\$|per ?cent|nos\.?|number|₹.*?)\)", re.I)
 
@@ -231,7 +276,8 @@ def _norm_lob(s):
 def _metric_from_title(title, unit):
     t = _clean(title)
     t = re.sub(r"^(table|statement)\s*\d+\s*[:.\-]?\s*", "", t, flags=re.I)
-    t = re.sub(r"\bsegment[- ]?wise\s+", "", t, flags=re.I)  # redundant once LOB is a column
+    t = re.sub(r"\b(segment|state)[- ]?wise\s+", "", t, flags=re.I)  # redundant once it's a column
+    t = re.sub(r"\s*[-–]\s*general insurance\s*$", "", t, flags=re.I)
     # Drop the "... of <sector> (re)insurers" tail that's redundant once entity
     # and line-of-business are columns.
     t = re.sub(r"\bof\s+(life|general|health|non-life|general and health|"
@@ -245,8 +291,9 @@ def _metric_from_title(title, unit):
     return t
 
 
-def convert_matrix(ws):
-    """Parse an LOB matrix: 2-level (LOB>year) or 3-level (LOB>metric>year)."""
+def convert_matrix(ws, dimension=DIMENSION, fallback_unit="₹Crore"):
+    """Parse an LOB matrix: 2-level (LOB>year) or 3-level (LOB>metric>year).
+    Rows are insurers (default) or states (dimension="State")."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     if not grid:
@@ -261,15 +308,18 @@ def convert_matrix(ws):
 
     ent_col = None
     for hr in (grid[yr - 1], grid[yr - 2] if yr >= 2 else []):
-        ent_col = next((i for i, c in enumerate(hr) if c.lower() in ENTITY_AXIS), None)
+        ent_col = next((i for i, c in enumerate(hr) if _is_entity_axis(c)), None)
         if ent_col is not None:
             break
     if ent_col is None:
         ent_col = min(years) - 1
 
-    # 3-level if the row above the segment row carries >1 distinct grouping value.
-    three = len({up[i] for i in years}) > 1
-    base_metric = _metric_from_title(grid[0][0] if grid[0] else "", _find_unit(grid[:3]))
+    # 3-level only if the row above carries >1 *meaningful* grouping label
+    # (ignore blanks and stray unit tokens like a lone "(₹Crore)").
+    def _meaningful(v):
+        return bool(v) and not re.fullmatch(r"\(?\s*[₹]?\s*(crore|lakh|lakhs|per ?cent|nos\.?|us ?\$|%)\s*\)?", v.strip(), re.I)
+    three = len({up[i] for i in years if _meaningful(up[i])}) > 1
+    base_metric = _metric_from_title(grid[0][0] if grid[0] else "", _find_unit(grid[:3]) or fallback_unit)
     # The two header levels can be nested either way (LOB>metric as in Table 44,
     # or metric>LOB as in Table 83). Pick the LOB level by segment-vocabulary.
     if three:
@@ -292,8 +342,53 @@ def convert_matrix(ws):
             if not lob or lob.lower() in SKIP_LOBS:
                 continue
             out.append({
-                "dimension": DIMENSION, "entity": entity, "metric": metric,
+                "dimension": dimension, "entity": entity, "metric": metric,
                 "value": value, "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_year_submetric(ws, lob, dimension, prefix="", fallback_unit="₹Crore"):
+    """year (top, merged) > sub-metric (per column); rows = states/insurers.
+    e.g. Table 5/7 — State-wise New Business: columns are year × {Policies, Premium}."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr + 1 >= len(grid):
+        return []
+    ylevel = _ffill(grid[yr])
+    slevel = grid[yr + 1]                             # sub-metric, one per column
+    ent_col = next((i for i, c in enumerate(grid[yr]) if _is_entity_axis(c)), 1)
+    out = []
+    for r in raw[yr + 2:]:
+        cells = [_clean(c) for c in r]
+        entity = _norm_entity(cells[ent_col]) if ent_col < len(cells) else ""
+        if not entity or SKIP_ENTITIES.match(entity):
+            continue
+        for ci in range(len(r)):
+            if not YEAR_RE.match(ylevel[ci] if ci < len(ylevel) else ""):
+                continue
+            sub = _clean(slevel[ci]) if ci < len(slevel) else ""
+            if not sub:
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            name = f"{prefix} {sub}".strip()
+            if re.search(r"\([^)]*\)\s*$", sub):          # already carries a unit
+                metric = name
+            else:
+                low = sub.lower()
+                if any(k in low for k in ("no.", "number", "polic", "scheme", "lives", "person", "claims")):
+                    unit = "Nos."
+                else:
+                    unit = fallback_unit                  # premium / sum assured / amount
+                metric = f"{name} ({unit})"
+            out.append({
+                "dimension": dimension, "entity": entity, "metric": metric,
+                "value": value, "financial_year": ylevel[ci], "quarter": QUARTER,
                 "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
             })
     return out
@@ -371,19 +466,30 @@ def _tidy_class(c):
         return "PMJDY"
     if "pmsby" in low or "suraksha bima" in low:
         return "PMSBY"
+    if "ayushman" in low or "pmjay" in low:
+        return "AB-PMJAY"
+    if "rsby" in low and "group" not in low:
+        return "RSBY"
+    if "other govt" in low or "other government" in low:
+        return "Government Sponsored (Other)"
     if low.startswith("government sponsored"):
         return "Government Sponsored"
     if low.startswith("group"):
-        return "Group (excl. Govt)" if "exclud" in low else "Group"
+        govt = ("rsby" in low or "govt sponsor" in low or "government sponsor" in low)
+        if "other than" in low or "exclud" in low:
+            return "Group (excl. Govt)"
+        if govt:
+            return "Government Sponsored"
+        return "Group"
     if "family" in low and "floater" in low and "excluding individual" in low:
         return "Family Floater (excl. Individual)"
-    if "individual" in low and "excluding family" in low:
-        return "Individual (excl. Family Floater)"
-    if "individual" in low and "family floater" in low and "other" not in low:
-        return "Individual - Family Floater"
-    if "individual" in low and "other" in low:
-        return "Individual - Other"
-    if low == "individual business":
+    if low.startswith("individual"):
+        if "excluding family" in low:
+            return "Individual (excl. Family Floater)"
+        if "other than family" in low or ("other" in low and "floater" in low):
+            return "Individual - Other"
+        if "family floater" in low:
+            return "Individual - Family Floater"
         return "Individual"
     return c
 
@@ -397,6 +503,8 @@ def _submetric(sub, table_unit):
         unit = ""
     elif "polic" in low:
         s, unit = "No. of Policies", "Nos."
+    elif low.startswith(("no.", "number")) or "no. of" in low or "no.of" in low:
+        unit = "Nos."                          # counts (e.g. "No. of claims paid")
     else:
         unit = table_unit
     return f"{s} ({unit})" if unit else s
@@ -434,8 +542,8 @@ def convert_transposed(ws, lob, fallback_unit="₹Crore"):
     return out
 
 
-def convert_class_matrix(ws, lob, fallback_unit="₹Lakh"):
-    """year > class > sub-metric column header, rows = insurers (Tables 58-65)."""
+def convert_class_matrix(ws, lob, dimension=DIMENSION, fallback_unit="₹Lakh"):
+    """year > class > sub-metric column header; rows = insurers/states (58-65, 67-71)."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     yr = next((i for i, r in enumerate(grid[:8])
@@ -446,7 +554,7 @@ def convert_class_matrix(ws, lob, fallback_unit="₹Lakh"):
     clevel = _ffill(grid[yr + 1])
     slevel = grid[yr + 2]                       # sub-metric, one per column
     unit = _find_unit(grid[:yr + 1]) or fallback_unit
-    ent_col = next((i for i, c in enumerate(grid[yr]) if c.lower() in ENTITY_AXIS), 1)
+    ent_col = next((i for i, c in enumerate(grid[yr]) if _is_entity_axis(c)), 1)
 
     out = []
     for r in raw[yr + 3:]:
@@ -465,7 +573,7 @@ def convert_class_matrix(ws, lob, fallback_unit="₹Lakh"):
             if value is None:
                 continue
             out.append({
-                "dimension": DIMENSION, "entity": entity,
+                "dimension": dimension, "entity": entity,
                 "metric": _submetric(sub, unit), "value": value,
                 "financial_year": ylevel[ci], "quarter": QUARTER,
                 "line_of_business": lob, "class_of_business": cls,
@@ -543,6 +651,39 @@ def main():
         print(f"   {part} t{sheet:>3} [{lob:11}] class -> {len(rows)} rows | classes={cls}")
         all_rows.extend(rows)
 
+    for part, sheet, lob, prefix in PHASE3_YEAR_SUBMETRIC:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_year_submetric(wb[match], lob, "State", prefix)
+        print(f"   {part} t{sheet:>3} [State]       -> {len(rows)} rows | "
+              f"states={len(set(r['entity'] for r in rows))} | metrics={sorted(set(r['metric'] for r in rows))}")
+        all_rows.extend(rows)
+
+    for part, sheet in PHASE3_MATRIX:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_matrix(wb[match], dimension="State")
+        print(f"   {part} t{sheet:>3} [State matrix]-> {len(rows)} rows | "
+              f"states={len(set(r['entity'] for r in rows))} | LOBs={sorted(set(r['line_of_business'] for r in rows))}")
+        all_rows.extend(rows)
+
+    for part, sheet, lob in PHASE3_CLASS:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            print(f"   [!] {part}: sheet {sheet!r} not found — skipped")
+            continue
+        rows = convert_class_matrix(wb[match], lob, dimension="State")
+        cls = sorted({r["class_of_business"] for r in rows})
+        print(f"   {part} t{sheet:>3} [State {lob:8}]-> {len(rows)} rows | classes={cls}")
+        all_rows.extend(rows)
+
     if not all_rows:
         sys.exit("No rows produced.")
 
@@ -551,6 +692,11 @@ def main():
     # "Star Health & Allied Insurance Co. Ltd.", "Tata AIG" -> "Tata AIG General
     # Insurance Co. Ltd."). Ambiguous prefixes (e.g. a bare "Reliance" that could
     # be General/Health/Life) are left untouched.
+    # Fold state spelling variants into the canonical state name first.
+    for r in all_rows:
+        if r["dimension"] == "State":
+            r["entity"] = _canon_state(r["entity"])
+
     names = sorted({r["entity"] for r in all_rows})
     sig_names = {}
     for n in names:
