@@ -1298,6 +1298,8 @@ def main():
         r["entity"] = resolve[(r["_sector"], r["entity"])]
         r["metric"] = _canon_metric(r["metric"])
         r["financial_year"] = _to_fy(r["financial_year"])   # unify calendar -> FY
+        if r["line_of_business"] == "General":              # disambiguate the
+            r["line_of_business"] = "General (All Segments)"  # company-wide total
         del r["_sector"]
     print(f"\n[i] Canonicalised insurer names per sector: folded {merged} variants.")
     if ambiguous:
