@@ -694,6 +694,15 @@ def _canonicalize_insurer_entities():
         UNIFIED_DF.loc[mask, 'Entity'] = UNIFIED_DF.loc[mask, 'Entity'].map(lambda e: resolve.get(e, e))
 
 
+# Memoised results that only change when the underlying data is (re)loaded.
+# Cleared by _invalidate_caches() at the end of every load_master_data_engine().
+_CACHE = {}
+
+
+def _invalidate_caches():
+    _CACHE.clear()
+
+
 def load_master_data_engine():
     global UNIFIED_DF
     try:
@@ -746,21 +755,27 @@ def load_master_data_engine():
             UNIFIED_DF.loc[bare, 'Financial_Year'] = fy[bare].apply(
                 lambda y: f"{int(y) - 1}-{y[2:]}")
 
+        _invalidate_caches()   # data changed → drop memoised filter options / compliance
         print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
-        
+
     except Exception as e:
         print(f"[!] Error loading SQL data: {e}")
         UNIFIED_DF = pd.DataFrame()
 
 def get_filter_options():
     """
-    Returns options structured by Dimension for the new UI.
+    Returns options structured by Dimension for the new UI. Memoised — the result
+    only changes when data is reloaded (which clears the cache), so repeated modal
+    opens are instant instead of rebuilding ~50k combo tuples each time.
     """
-    if UNIFIED_DF.empty: 
+    if UNIFIED_DF.empty:
         load_master_data_engine()
 
-    if UNIFIED_DF.empty: 
+    if UNIFIED_DF.empty:
         return {"dimensions": [], "entities": {}, "metrics": [], "years": [], "quarters": [], "lobs": [], "classes": []}
+
+    if 'filter_options' in _CACHE:
+        return _CACHE['filter_options']
 
     entities_by_dim = {}
     unique_dims = sorted(UNIFIED_DF['Dimension'].unique().tolist())
@@ -804,7 +819,7 @@ def get_filter_options():
         for tag in _insurer_tags(ent):
             insurer_groups.setdefault(tag, []).append(ent)
 
-    return {
+    result = {
         "dimensions": unique_dims,
         "entities": entities_by_dim,
         "by_dim": by_dim,
@@ -816,6 +831,8 @@ def get_filter_options():
         "lobs": _uniq(UNIFIED_DF, 'Line_of_Business'),
         "classes": _uniq(UNIFIED_DF, 'Class_of_Business'),
     }
+    _CACHE['filter_options'] = result
+    return result
 
 # --- PIVOT LOGIC ---
 def _create_pivoted_view(filters):
@@ -1048,13 +1065,19 @@ def get_compliance_years():
 def get_compliance_dashboard(target_year=None):
     """
     Analyzes data against thresholds AND historical trends.
-    Only runs for Dimension = 'Insurer'.
+    Only runs for Dimension = 'Insurer'. Memoised per target year — the result is
+    identical for every user until data is reloaded, so we compute it once.
     """
-    load_master_data_engine()
-    df = UNIFIED_DF
-    
-    if df.empty: return []
+    if UNIFIED_DF.empty:
+        load_master_data_engine()
+    if UNIFIED_DF.empty:
+        return []
 
+    cache_key = ('compliance', target_year or 'Latest')
+    if cache_key in _CACHE:
+        return _CACHE[cache_key]
+
+    df = UNIFIED_DF
     # Compliance only makes sense for Insurers
     if 'Dimension' in df.columns:
         df = df[df['Dimension'] == 'Insurer']
@@ -1201,5 +1224,6 @@ def get_compliance_dashboard(target_year=None):
 
     priority = {"VIOLATION": 0, "WATCHLIST": 1, "COMPLIANT": 2}
     dashboard_data.sort(key=lambda x: priority.get(x['status'], 3))
-    
+
+    _CACHE[cache_key] = dashboard_data
     return dashboard_data
