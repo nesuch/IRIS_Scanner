@@ -49,7 +49,9 @@
 .dt-table tbody tr:nth-child(even) { background: #fafbfc; }
 .dt-table tbody tr:hover { background: var(--paper-2); }
 .dt-table td.fw-bold { font-weight: 600; }
-.dt-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dt-table td.num { text-align: center; font-variant-numeric: tabular-nums; }
+/* Center the data columns + their headers; the first label column stays left. */
+.dt-table th:not(.row-head) { text-align: center; }
 /* transposed view: sticky left field-name column */
 .dt-table th.row-head { position: sticky; left: 0; z-index: 4; background: var(--paper);
   text-align: left; color: var(--navy-700); white-space: nowrap; }
