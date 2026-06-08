@@ -947,9 +947,9 @@ def convert_snapshot(ws, statement, year, ent_col=1, metric_row_idx=2, data_star
     return out
 
 
-def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimension=DIMENSION):
+def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimension="State"):
     """Insurer (col0, merged) + State (col1) rows x [registry > region] columns.
-    entity=insurer, class=state, metric='registry - region' (78)."""
+    Lives in the State view: entity=state, class=insurer (78)."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     # header: row1=registry(merged), row2=region; find them as the two rows above data
@@ -976,10 +976,10 @@ def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimensi
                 continue
             label = f"{reg} - {region}" if reg else region
             out.append({
-                "dimension": dimension, "entity": cur_ins,
+                "dimension": dimension, "entity": state,
                 "metric": _submetric(label, fallback_unit), "value": value,
                 "financial_year": year, "quarter": QUARTER,
-                "line_of_business": lob, "class_of_business": state,
+                "line_of_business": lob, "class_of_business": cur_ins,
             })
     return out
 
@@ -1632,7 +1632,7 @@ def main():
         ("Part III", "77", convert_snapshot,
          dict(statement="Network Hospitals", year="2022-23", fallback_unit="Nos.", dimension="TPA")),
         ("Part III", "78", convert_insurer_state_providers,
-         dict(lob="Network Providers by State", year="2024-25", fallback_unit="Nos.")),
+         dict(lob="Network Providers", year="2024-25", fallback_unit="Nos.")),
         ("Part III", "66", convert_industry_channel,
          dict(entity="Health Industry", lob="Claims Development & Aging", fallback_unit="₹Lakh")),
         ("Part I", "4", convert_industry_3col,
@@ -1804,7 +1804,20 @@ def main():
         if r["line_of_business"] == "General":              # disambiguate the
             r["line_of_business"] = "General (All Segments)"  # company-wide total
         del r["_sector"]
-    print(f"\n[i] Canonicalised insurer names per sector: folded {merged} variants.")
+    # Drop (entity, LOB) series that are entirely zero — e.g. a health insurer
+    # listed with 0 premium in Fire/Marine/Motor segments it doesn't operate, so
+    # those lines of business stop cluttering its filter.
+    nonzero = set()
+    for r in all_rows:
+        v = r["value"]
+        if v not in (0, 0.0, None):
+            nonzero.add((r["dimension"], r["entity"], r["line_of_business"]))
+    before = len(all_rows)
+    all_rows = [r for r in all_rows
+                if (r["dimension"], r["entity"], r["line_of_business"]) in nonzero]
+    print(f"\n[i] Dropped {before - len(all_rows)} all-zero (entity, LOB) rows.")
+
+    print(f"[i] Canonicalised insurer names per sector: folded {merged} variants.")
     if ambiguous:
         print(f"[!] {len(ambiguous)} ambiguous name(s) left as-is (need a rule):")
         for (sec, n), opts in sorted(ambiguous.items()):

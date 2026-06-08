@@ -738,6 +738,14 @@ def load_master_data_engine():
 
         _canonicalize_insurer_entities()
 
+        # Unify bare calendar years (e.g. an AUM "As on 31 March 2024" snapshot)
+        # into financial-year form so "2024" and "2024-25" don't both appear.
+        if 'Financial_Year' in UNIFIED_DF.columns:
+            fy = UNIFIED_DF['Financial_Year'].astype(str)
+            bare = fy.str.fullmatch(r'\d{4}')
+            UNIFIED_DF.loc[bare, 'Financial_Year'] = fy[bare].apply(
+                lambda y: f"{int(y) - 1}-{y[2:]}")
+
         print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
         
     except Exception as e:
@@ -790,10 +798,17 @@ def get_filter_options():
             "classes": _uniq(d, 'Class_of_Business'),
         }
 
+    # Quick-filter groups for the Insurer picker: {group -> [insurer names]}.
+    insurer_groups = {}
+    for ent in entities_by_dim.get('Insurer', []):
+        for tag in _insurer_tags(ent):
+            insurer_groups.setdefault(tag, []).append(ent)
+
     return {
         "dimensions": unique_dims,
         "entities": entities_by_dim,
         "by_dim": by_dim,
+        "insurer_groups": insurer_groups,
         # Global unions kept for backward compatibility.
         "metrics": _uniq(UNIFIED_DF, 'Metric'),
         "years": _uniq(UNIFIED_DF, 'Financial_Year'),
@@ -988,6 +1003,40 @@ def generate_statement_excel(entities, statement, years=None):
 # COMPLIANCE ENGINE UPDATES (TREND AWARE)
 # ==========================================
 
+_PSU_KEYS = ("life insurance corporation", "new india", "national insurance", "united india",
+             "oriental insurance", "general insurance corporation", "gic re", "ecgc",
+             "agriculture insurance")
+_SAHI_KEYS = ("star health", "care health", "aditya birla health", "niva bupa",
+              "manipalcigna", "manipal cigna", "galaxy health", "narayana health")
+_RE_KEYS = ("reinsur", "gic re", "gen re", "munich", "swiss re", "hannover", "scor ", "scor se",
+            "rga", "lloyd", "markel", "axa france", "allianz global", "general reinsurance",
+            "valueattics", "iti reinsurance")
+
+
+def _insurer_tags(name):
+    """Classify an insurer into quick-filter groups (it can hold several)."""
+    low = str(name).lower()
+    tags = set()
+    if any(k in low for k in _RE_KEYS):
+        tags.add("Reinsurance")
+    if any(k in low for k in _SAHI_KEYS):
+        tags.add("Health (SAHI)")
+    if "life" in low:
+        tags.add("Life")
+    if not (tags & {"Reinsurance", "Health (SAHI)", "Life"}):
+        tags.add("General")
+    tags.add("PSU" if any(k in low for k in _PSU_KEYS) else "Private")
+    return tags
+
+
+def _insurer_group(name):
+    tags = _insurer_tags(name)
+    for g in ("Reinsurance", "Health (SAHI)", "Life", "General"):
+        if g in tags:
+            return g
+    return "Other"
+
+
 def get_compliance_years():
     if UNIFIED_DF.empty: 
         load_master_data_engine()
@@ -1010,58 +1059,75 @@ def get_compliance_dashboard(target_year=None):
     if 'Dimension' in df.columns:
         df = df[df['Dimension'] == 'Insurer']
 
-    SAHI_INSURERS = ["Star", "Care", "Aditya Birla", "Niva Bupa", "Manipal", "Galaxy", "Narayana"]
     dashboard_data = []
     insurers = df['Entity'].unique()
 
     for insurer in insurers:
         ins_df = df[df['Entity'] == insurer]
         if ins_df.empty: continue
+        group = _insurer_group(insurer)
+        is_sahi = group == "SAHI"
 
-        # --- A. GET LATEST SNAPSHOT ---
-        snapshot_df = ins_df.copy()
+        # Scope to the chosen year, else use everything (each metric then resolves
+        # to its own latest available value — solvency is quarterly, others annual).
+        scoped = ins_df
         if target_year and target_year != "Latest":
-            snapshot_df = ins_df[ins_df['Financial_Year'] == target_year]
-        
-        if snapshot_df.empty: continue
-
+            scoped = ins_df[ins_df['Financial_Year'] == target_year]
+        if scoped.empty: continue
         try:
-            latest_row = snapshot_df.sort_values(by=['Financial_Year', 'Quarter'], ascending=False).iloc[0]
-            curr_year = latest_row['Financial_Year']
-            curr_qtr = latest_row['Quarter']
-        except: continue
+            curr_year = sorted(scoped['Financial_Year'].dropna().unique(),
+                               key=lambda y: str(y))[-1]
+        except Exception:
+            continue
 
-        current_data = snapshot_df[
-            (snapshot_df['Financial_Year'] == curr_year) & 
-            (snapshot_df['Quarter'] == curr_qtr)
-        ]
-
-        def get_val(metric_name_part):
-            try:
-                if isinstance(metric_name_part, list):
-                    for name in metric_name_part:
-                        row = current_data[current_data['Metric'].str.contains(name, case=False, na=False)]
-                        if not row.empty:
-                            val_str = str(row.iloc[0]['Value']).replace(',', '').replace('%', '')
-                            return float(val_str)
-                else:
-                    row = current_data[current_data['Metric'].str.contains(metric_name_part, case=False, na=False)]
-                    if not row.empty:
-                        val_str = str(row.iloc[0]['Value']).replace(',', '').replace('%', '')
-                        return float(val_str)
-            except: pass
+        def latest_val(names, lob=None, agg="last"):
+            """Latest value of the first matching metric (optionally a LOB), across
+            quarters. agg='mean' averages across a metric's segments for the latest year."""
+            names = names if isinstance(names, list) else [names]
+            for nm in names:
+                rows = scoped[scoped['Metric'].str.contains(nm, case=False, na=False, regex=False)]
+                if lob is not None and 'Line_of_Business' in rows.columns:
+                    rows = rows[rows['Line_of_Business'].astype(str).str.contains(lob, case=False, na=False, regex=False)]
+                rows = rows.dropna(subset=['Value'])
+                if rows.empty:
+                    continue
+                rows = rows.assign(_sy=rows['Financial_Year'].astype(str))
+                ly = sorted(rows['_sy'].unique())[-1]
+                rows = rows[rows['_sy'] == ly]
+                try:
+                    if agg == "mean":
+                        return round(float(rows['Value'].astype(float).mean()), 2)
+                    r = rows.sort_values('Quarter').iloc[-1]
+                    return float(str(r['Value']).replace(',', '').replace('%', ''))
+                except Exception:
+                    continue
             return None
 
-        # Metrics
-        solvency = get_val(["Solvency Margin", "Solvency Ratio"])
-        combined_ratio = get_val("Combined Ratio")
-        claims_ratio = get_val(["Net Incurred Claims", "Incurred Claims"])
-        expense_ratio = get_val(["Expense of Management to GDP Ratio", "Expense of Management", "EoM"])
-        repudiation_val = get_val(["Repudiation Ratio", "Claims Repudiated"])
-        
+        # Available directly:
+        solvency = latest_val(["Solvency Ratio", "Solvency Margin"])
+        gdp = latest_val(["Gross Direct Premium (Within And Outside", "Gross Direct Premium (Within India", "Gross Direct Premium"])
+        # Company-level Incurred Claims Ratio = total net claims / total net earned
+        # premium; fall back to the segment-average ICR if the totals aren't there.
+        claims_amt = latest_val(["Claims Incurred (Net) (₹Crore)"], lob="General (All Segments)")
+        nep_co = latest_val(["Net Earned Premium (₹Crore)"], lob="General (All Segments)")
+        if claims_amt is not None and nep_co:
+            claims_ratio = round(claims_amt / nep_co * 100, 2)
+        else:
+            claims_ratio = latest_val(["Incurred Claims Ratio"], agg="mean")
+        underwriting = latest_val(["Underwriting Profit"])
+        repudiation_val = latest_val(["Repudiation Ratio"])
+        # Derived where not reported directly:
+        eom_amt = latest_val(["Commission, Expenses of Management", "Expense of Management"])
+        expense_ratio = latest_val(["Expense of Management to GDP", "EoM Ratio"])
+        if expense_ratio is None and eom_amt is not None and gdp:
+            expense_ratio = round(eom_amt / gdp * 100, 2)
+        combined_ratio = latest_val(["Combined Ratio"])
+        if combined_ratio is None and claims_ratio is not None and expense_ratio is not None:
+            combined_ratio = round(claims_ratio + expense_ratio, 2)
+
+        curr_qtr = ""
         status = "COMPLIANT"
         alerts = []
-        is_sahi = any(s.lower() in insurer.lower() for s in SAHI_INSURERS)
 
         # --- B. THRESHOLD CHECKS (Aligned with EWS Logic) ---
         if solvency is not None and solvency < 1.5:
@@ -1078,69 +1144,59 @@ def get_compliance_dashboard(target_year=None):
             # High Repudiation is a Warning/Watchlist, not necessarily a status change to VIOLATION
             alerts.append({"level": "warning", "msg": f"High Repudiation: {insurer} - Repudiation Ratio {repudiation_val}% exceeds 10% limit"})
 
-        # --- C. TREND CHECKS (Safety Fixed) ---
-        def check_trend_alert(metric_patterns, alert_type="rising"):
-            pattern = '|'.join(metric_patterns)
-            metric_rows = ins_df[ins_df['Metric'].str.contains(pattern, case=False, na=False)].copy()
-            
-            # SAFETY FIX: Ensure at least 3 points exist for trend analysis
-            if len(metric_rows) < 3: return
+        # --- C. TREND CHECKS — only on a single percent/ratio series, one value
+        # per (distinct) year, so absolute ₹Crore values never read as percentages.
+        def check_trend_alert(metric_name, label, alert_type="rising"):
+            rows = ins_df[ins_df['Metric'].str.contains(metric_name, case=False, na=False, regex=False)].copy()
+            if rows.empty:
+                return
+            rows['_sy'] = rows['Financial_Year'].astype(str).str.extract(r'(\d{4})').astype(float)
+            rows = (rows.dropna(subset=['Value', '_sy'])
+                        .groupby('Financial_Year', as_index=False)
+                        .agg({'Value': 'mean', '_sy': 'first'})
+                        .sort_values('_sy'))
+            if len(rows) < 3:
+                return
+            vals = [float(v) for v in rows['Value'].tolist()[-3:]]
+            yrs = rows['Financial_Year'].tolist()[-3:]
+            if alert_type == "rising" and vals[0] < vals[1] < vals[2] and (vals[2] - vals[0]) >= 3:
+                alerts.append({"level": "warning",
+                               "msg": f"Rising Trend: {insurer} - {label} rose from {vals[0]:.2f}% to {vals[2]:.2f}% ({yrs[0]} to {yrs[2]})."})
+            elif alert_type == "falling" and vals[0] > vals[1] > vals[2] and (vals[0] - vals[2]) >= 0.2:
+                alerts.append({"level": "warning",
+                               "msg": f"Deteriorating Solvency: {insurer} - dropped from {vals[0]:.2f} to {vals[2]:.2f} ({yrs[0]} to {yrs[2]})."})
 
-            metric_rows['Sort_Y'] = metric_rows['Financial_Year'].astype(str).str.extract(r'(\d+)').astype(float)
-            metric_rows = metric_rows.sort_values(by=['Sort_Y', 'Quarter'])
-            
-            last_3 = metric_rows.tail(3)
-            vals = [float(str(v).replace(',','').replace('%','')) for v in last_3['Value'].tolist()]
-            years = last_3['Financial_Year'].tolist()
-            
-            # Double check list length before indexing
-            if len(vals) < 3: return
-
-            if alert_type == "rising":
-                if vals[0] < vals[1] < vals[2]:
-                    growth = vals[2] - vals[0]
-                    if growth >= 3:
-                        alerts.append({
-                            "level": "warning",
-                            "msg": f"Rising Trend: {insurer} - {metric_patterns[0]} rose from {vals[0]}% to {vals[2]}% ({years[0]} to {years[2]})."
-                        })
-            elif alert_type == "falling":
-                if vals[0] > vals[1] > vals[2]:
-                    drop = vals[0] - vals[2]
-                    if drop >= 0.2: 
-                        alerts.append({
-                            "level": "warning",
-                            "msg": f"Deteriorating Solvency: {insurer} - Dropped from {vals[0]} to {vals[2]} ({years[0]} to {years[2]})."
-                        })
-
-        check_trend_alert(["Repudiation Ratio", "Claims Repudiated"], "rising")
-        check_trend_alert(["Net Incurred Claims", "Incurred Claims"], "rising")
-        check_trend_alert(["Expense of Management"], "rising")
-        check_trend_alert(["Solvency"], "falling")
+        check_trend_alert("Incurred Claims Ratio", "Incurred Claims Ratio", "rising")
+        check_trend_alert("Solvency Ratio", "Solvency", "falling")
 
         # --- D. Finalize Data ---
         has_critical = any(a['level'] == 'critical' for a in alerts)
         has_warning = any(a['level'] == 'warning' for a in alerts)
-
-        # Adjust overall status based on critical alerts
         if has_critical:
             status = "VIOLATION"
         elif has_warning and status != "VIOLATION":
             status = "WATCHLIST"
 
+        def _fv(v):
+            return v if (v is not None and v != "") else "N/A"
+
         dashboard_data.append({
             "name": insurer,
+            "group": group,
+            "tags": sorted(_insurer_tags(insurer)),
             "metrics": {
-                "solvency": solvency if solvency else "N/A",
-                "expenses": expense_ratio if expense_ratio else "N/A",
-                "combined": combined_ratio if combined_ratio else "N/A",
-                "claims": claims_ratio if claims_ratio else "N/A"
+                "solvency": _fv(solvency),
+                "expenses": _fv(expense_ratio),
+                "combined": _fv(combined_ratio),
+                "claims": _fv(claims_ratio),
+                "premium": _fv(round(gdp, 0) if gdp else None),
+                "underwriting": _fv(underwriting),
             },
             "status": status,
             "alerts": alerts,
             "has_critical": has_critical,
             "has_warning": has_warning,
-            "last_updated": f"{curr_qtr} {curr_year}"
+            "last_updated": str(curr_year),
         })
 
     priority = {"VIOLATION": 0, "WATCHLIST": 1, "COMPLIANT": 2}

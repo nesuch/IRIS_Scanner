@@ -16,11 +16,9 @@ const PUBLIC_KEYS = ['Life Insurance Corporation', 'New India', 'Oriental Insura
 const SAHI_KEYS = ['Star Health', 'Care Health', 'ManipalCigna', 'Niva Bupa',
   'Aditya Birla Health', 'Galaxy Health', 'Narayana Health', 'Reliance Health', 'HDFC ERGO Health'];
 const matchesAny = (e, keys) => keys.some((k) => e.toLowerCase().includes(k.toLowerCase()));
-const ENTITY_GROUPS = [
-  { name: 'Public Sector', pick: (list) => list.filter((e) => matchesAny(e, PUBLIC_KEYS)) },
-  { name: 'Private', pick: (list) => list.filter((e) => !matchesAny(e, PUBLIC_KEYS)) },
-  { name: 'Standalone Health', pick: (list) => list.filter((e) => matchesAny(e, SAHI_KEYS)) },
-];
+// Quick-filter group order for the Insurer picker; the membership itself comes
+// from the backend (options.insurer_groups), so it stays correct as data grows.
+const GROUP_ORDER = ['PSU', 'Private', 'Life', 'General', 'Health (SAHI)', 'Reinsurance'];
 
 // Tab labels for each filter step.
 const STEP_LABELS = {
@@ -225,12 +223,14 @@ function FilterModal({ options, initial, onApply, onClose }) {
 
           <div className="entity-chips">
             <span className="chip-btn" onClick={() => selectAllCat(cat)}><i className="fas fa-check-double" /> Select all</span>
-            {cat === 'entities' && draft.dimension === 'Insurer' && ENTITY_GROUPS
-              .map((g) => [g, g.pick(baseList)])
-              .filter(([, picked]) => picked.length)
-              .map(([g, picked]) => (
-                <span key={g.name} className="chip-btn" onClick={() => setEntities(picked)}>{g.name}</span>
-              ))}
+            {cat === 'entities' && draft.dimension === 'Insurer' && options.insurer_groups
+              && Object.entries(options.insurer_groups)
+                .map(([name, ents]) => [name, ents.filter((e) => baseList.includes(e))])
+                .filter(([, picked]) => picked.length)
+                .sort((a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]))
+                .map(([name, picked]) => (
+                  <span key={name} className="chip-btn" onClick={() => setEntities(picked)}>{name} ({picked.length})</span>
+                ))}
             <span className="chip-btn danger" onClick={() => clearCat(cat)}>Clear</span>
           </div>
 

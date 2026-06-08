@@ -22,12 +22,16 @@ function cardView(co, mode) {
 }
 
 const num = (v) => (v === 'N/A' || v == null ? null : Number(v));
+const inr = (v) => (v === 'N/A' || v == null ? 'N/A' : Number(v).toLocaleString('en-IN'));
+const pct = (v) => (v === 'N/A' || v == null ? 'N/A' : `${v}%`);
+const GROUPS = ['All', 'PSU', 'Private', 'Life', 'General', 'Health (SAHI)', 'Reinsurance'];
 
 export default function Compliance() {
   const toast = useToast();
   const [data, setData] = useState(null);
   const [year, setYear] = useState('');
   const [mode, setMode] = useState('all');
+  const [group, setGroup] = useState('All');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,8 +43,9 @@ export default function Compliance() {
   }, [year]);
 
   const companies = (data?.companies || []).filter((co) => {
-    if (mode === 'critical') return co.has_critical;
-    if (mode === 'warning') return co.has_warning;
+    if (mode === 'critical' && !co.has_critical) return false;
+    if (mode === 'warning' && !co.has_warning) return false;
+    if (group !== 'All' && !(co.tags || []).includes(group)) return false;
     return true;
   });
 
@@ -59,6 +64,11 @@ export default function Compliance() {
             {(data?.years || []).map((y) => <option key={y} value={y}>FY {y}</option>)}
           </select>
         </div>
+        <div className="comp-groups">
+          {GROUPS.map((g) => (
+            <button key={g} className={`comp-chip ${group === g ? 'active' : ''}`} onClick={() => setGroup(g)}>{g}</button>
+          ))}
+        </div>
 
         {loading ? <PageLoading label="Loading compliance data…" />
           : companies.length === 0 ? <EmptyState icon="fa-shield-halved">No companies match this view.</EmptyState>
@@ -72,14 +82,19 @@ export default function Compliance() {
                 return (
                   <div key={i} className={`company-card border-${v.cls}`}>
                     <div className="card-header">
-                      <div className="card-title" title={co.name}>{co.name}</div>
+                      <div className="card-title" title={co.name}>
+                        {co.name}
+                        {co.group && <span className="card-group">{co.group}</span>}
+                      </div>
                       <span className={`status-badge status-${v.cls}`}>{v.status}</span>
                     </div>
                     <div className="metrics-grid">
                       <Metric val={co.metrics.solvency} label="Solvency" cls={sol != null && sol < 1.5 ? 'm-violation' : 'm-primary'} />
-                      <Metric val={`${co.metrics.expenses}%`} label="EoM" cls={exp != null && exp > 35 ? 'm-violation' : 'm-primary'} />
-                      <Metric val={`${co.metrics.combined}%`} label="Comb. Ratio" cls={comb != null && comb > 100 ? 'm-watchlist' : 'm-dark'} />
-                      <Metric val={`${co.metrics.claims}%`} label="Claims Ratio" cls={clm != null && clm > 90 ? 'm-watchlist' : 'm-dark'} />
+                      <Metric val={pct(co.metrics.expenses)} label="EoM" cls={exp != null && exp > 35 ? 'm-violation' : 'm-primary'} />
+                      <Metric val={pct(co.metrics.combined)} label="Comb. Ratio" cls={comb != null && comb > 100 ? 'm-watchlist' : 'm-dark'} />
+                      <Metric val={pct(co.metrics.claims)} label="Claims Ratio" cls={clm != null && clm > 90 ? 'm-watchlist' : 'm-dark'} />
+                      <Metric val={inr(co.metrics.premium)} label="GDP (₹Cr)" cls="m-dark" />
+                      <Metric val={inr(co.metrics.underwriting)} label="U/W P&L (₹Cr)" cls={num(co.metrics.underwriting) != null && num(co.metrics.underwriting) < 0 ? 'm-watchlist' : 'm-dark'} />
                     </div>
                     <div className="alert-area">
                       {alerts.length === 0 ? (
