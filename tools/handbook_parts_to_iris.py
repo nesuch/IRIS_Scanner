@@ -319,6 +319,7 @@ SECTOR_OF = {"Part I": "Life", "Part II": "Non-Life", "Part III": "Non-Life",
 SECTOR_ALIASES = {
     ("Non-Life", "hdfcergo"): "HDFC ERGO General Insurance Co. Ltd.",
     ("Non-Life", "reliance"): "Reliance General Insurance Co. Ltd.",
+    ("Non-Life", "kotakgeneral"): "Zurich Kotak General Insurance Co. (India) Ltd.",
     ("Life", "reliance"): "Reliance Nippon Life Insurance Ltd.",
     ("Life", "reliancelife"): "Reliance Nippon Life Insurance Ltd.",
     ("Life", "reliancenippon"): "Reliance Nippon Life Insurance Ltd.",
@@ -818,7 +819,8 @@ def convert_state_insurer_crosstab(ws, lob, base_metric, fallback_unit="₹Crore
         for ci in range(len(r)):
             fy = year_row[ci] if ci < len(year_row) else ""
             insurer = _norm_entity(insurer_row[ci]) if ci < len(insurer_row) else ""
-            if not YEAR_RE.match(fy) or not insurer or _is_entity_axis(insurer):
+            if (not YEAR_RE.match(fy) or not insurer or _is_entity_axis(insurer)
+                    or SKIP_ENTITIES.match(insurer)):
                 continue
             value = _to_number(r[ci])
             if value is None:
@@ -956,7 +958,8 @@ def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimensi
         if cells and cells[0]:
             cur_ins = _norm_entity(cells[0])
         state = _canon_state(cells[1]) if len(cells) > 1 else ""
-        if not cur_ins or not state or SKIP_ENTITIES.match(state) or _is_entity_axis(state):
+        if (not cur_ins or not state or SKIP_ENTITIES.match(cur_ins)
+                or SKIP_ENTITIES.match(state) or _is_entity_axis(state)):
             continue
         for ci in range(2, len(r)):
             region = _clean(region_row[ci]) if ci < len(region_row) else ""
@@ -972,6 +975,112 @@ def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimensi
                 "metric": _submetric(label, fallback_unit), "value": value,
                 "financial_year": year, "quarter": QUARTER,
                 "line_of_business": lob, "class_of_business": state,
+            })
+    return out
+
+
+def convert_industry_3col(ws, entity, fallback_unit="₹Crore", dimension="Industry"):
+    """Industry: rows=plan, columns=year>par/non-par>premium-type. LOB=plan,
+    class=par, metric=premium-type (table 4 segment-wise life premium)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr + 2 >= len(grid):
+        return []
+    year_row = _ffill(grid[yr])
+    par_row = _ffill(grid[yr + 1])
+    ptype_row = grid[yr + 2]
+    unit = _find_unit(grid[:yr]) or fallback_unit
+    out = []
+    for r in raw[yr + 3:]:
+        plan = _clean(r[0]) if r else ""
+        if not plan or SKIP_ENTITIES.match(plan) or _FOOTNOTE.search(plan):
+            continue
+        if plan.isupper():
+            plan = plan.title()
+        for ci in range(1, len(r)):
+            fy = year_row[ci] if ci < len(year_row) else ""
+            ptype = _clean(ptype_row[ci]) if ci < len(ptype_row) else ""
+            if not YEAR_RE.match(fy) or not ptype:
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            par = _clean(par_row[ci]) if ci < len(par_row) else ""
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": _submetric(ptype, unit), "value": value,
+                "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": plan, "class_of_business": par or DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_insurer_obligation(ws, fallback_unit="Per cent", dimension=DIMENSION):
+    """Insurer rows x (obligation > year > Target/Achieved). LOB=obligation,
+    metric=Target/Achieved (table 55 rural & social obligations)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None or yr < 1 or yr + 1 >= len(grid):
+        return []
+    oblig_row = _ffill(grid[yr - 1])
+    year_row = _ffill(grid[yr])
+    sub_row = grid[yr + 1]
+    out = []
+    for r in raw[yr + 2:]:
+        cells = [_clean(c) for c in r]
+        entity = _norm_entity(cells[1]) if len(cells) > 1 else ""
+        if not entity or SKIP_ENTITIES.match(entity):
+            continue
+        for ci in range(2, len(r)):
+            fy = year_row[ci] if ci < len(year_row) else ""
+            sub = _clean(sub_row[ci]) if ci < len(sub_row) else ""
+            if not YEAR_RE.match(fy) or not sub:
+                continue
+            value = _to_number(r[ci])
+            if value is None:
+                continue
+            oblig = _clean(oblig_row[ci]) if ci < len(oblig_row) else ""
+            low = oblig.lower()
+            lob = ("Rural Sector Obligations" if "rural" in low
+                   else "Social Sector Obligations" if "social" in low else oblig or "Obligations")
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": _submetric(sub, fallback_unit), "value": value,
+                "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": DEFAULT_CLASS,
+            })
+    return out
+
+
+def convert_type_table(ws, entity, lob, base_metric, fallback_unit="Lakh", dimension="Industry"):
+    """Rows = type-of-insurer (Public/Private) x year, one metric. class=type
+    (table 43 policies issued by general insurers)."""
+    raw = list(ws.iter_rows(values_only=True))
+    grid = [[_clean(c) for c in r] for r in raw]
+    yr = next((i for i, r in enumerate(grid[:8])
+               if sum(1 for c in r if YEAR_RE.match(c)) >= 2), None)
+    if yr is None:
+        return []
+    year_row = _ffill(grid[yr])
+    years = {i: c for i, c in enumerate(grid[yr]) if YEAR_RE.match(c)}
+    out = []
+    for r in raw[yr + 1:]:
+        typ = _clean(r[0]) if r else ""
+        if not typ or "total" in typ.lower() or _FOOTNOTE.search(typ):
+            continue
+        for ci, fy in years.items():
+            value = _to_number(r[ci]) if ci < len(r) else None
+            if value is None:
+                continue
+            out.append({
+                "dimension": dimension, "entity": entity,
+                "metric": f"{base_metric} ({fallback_unit})", "value": value,
+                "financial_year": fy, "quarter": QUARTER,
+                "line_of_business": lob, "class_of_business": typ,
             })
     return out
 
@@ -1521,6 +1630,12 @@ def main():
          dict(lob="Network Providers by State", year="2024-25", fallback_unit="Nos.")),
         ("Part III", "66", convert_industry_channel,
          dict(entity="Health Industry", lob="Claims Development & Aging", fallback_unit="₹Lakh")),
+        ("Part I", "4", convert_industry_3col,
+         dict(entity="Life Insurers (Industry)", fallback_unit="₹Crore")),
+        ("Part II", "55", convert_insurer_obligation, dict(fallback_unit="Per cent")),
+        ("Part II", "43", convert_type_table,
+         dict(entity="General Insurers (Industry)", lob="Policies Issued",
+              base_metric="No. of Policies Issued", fallback_unit="Lakh")),
     ]:
         wb = _open(args.parts_dir, part)
         match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
