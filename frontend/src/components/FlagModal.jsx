@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, Spinner } from './UI.jsx';
 import { useToast } from './Toast.jsx';
 import { api } from '../api.js';
@@ -20,11 +20,40 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
   const [reason, setReason] = useState(reasonList[0]);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shot, setShot] = useState(null);          // captured data URL
+  const [attach, setAttach] = useState(true);
+  const [capturing, setCapturing] = useState(true);
+
+  // Capture the screen once on open, excluding this modal so the report itself
+  // is what the admin sees. Best-effort — failures just disable the attachment.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { default: html2canvas } = await import('html2canvas');
+        const canvas = await html2canvas(document.body, {
+          scale: 0.6, logging: false, useCORS: true, backgroundColor: '#ffffff',
+          windowWidth: document.documentElement.scrollWidth,
+          windowHeight: document.documentElement.scrollHeight,
+          ignoreElements: (el) => el.classList?.contains('modal-overlay'),
+        });
+        if (alive) setShot(canvas.toDataURL('image/jpeg', 0.7));
+      } catch {
+        if (alive) setShot(null);
+      } finally {
+        if (alive) setCapturing(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   async function submit() {
     setBusy(true);
     try {
-      await api.post('/flag', { kind, reason, description, target, detail });
+      await api.post('/flag', {
+        kind, reason, description, target, detail,
+        screenshot: attach && shot ? shot : undefined,
+      });
       toast.success('Flag submitted — thank you.');
       onClose();
     } catch (e) {
@@ -51,10 +80,22 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
           {reasonList.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
-      <div className="field">
+      <div className="field" style={{ marginBottom: 14 }}>
         <label>Description (optional)</label>
         <textarea className="input" rows={4} value={description} onChange={(e) => setDescription(e.target.value)}
           placeholder="Add any detail that helps us fix this…" />
+      </div>
+      <div className="flag-shot">
+        <label className="flag-shot-toggle">
+          <input type="checkbox" checked={attach && !!shot} disabled={!shot || capturing}
+            onChange={(e) => setAttach(e.target.checked)} />
+          {capturing
+            ? <span className="flag-shot-status"><Spinner size={12} /> Capturing screenshot…</span>
+            : shot
+              ? 'Attach screenshot of this screen (helps the reviewer)'
+              : <span className="flag-shot-status">Screenshot unavailable</span>}
+        </label>
+        {shot && attach && <img className="flag-shot-preview" src={shot} alt="screen preview" />}
       </div>
     </Modal>
   );

@@ -355,60 +355,67 @@ def _analyze_risk(selected_entities, dimension, selected_years=None):
 
     SAHI_INSURERS = ["Star", "Care", "Aditya Birla", "Niva Bupa", "Manipal", "Galaxy", "Narayana"]
 
-    # 1. GROUP BY INSURER & METRIC TO CHECK TRENDS
-    for (entity, metric), group in df.groupby(['Entity', 'Metric']):
+    def _is_pct(m):
+        m = m.lower()
+        return ("per cent" in m) or ("ratio" in m) or ("%" in m)
+
+    def _fmt(v, pct):
+        return f"{v:,.2f}%" if pct else f"{v:,.2f}"
+
+    # Group by the FULL series (entity + metric + line of business + class) so we
+    # never mix, e.g., Fire and Motor "Claims Incurred" into one trend. Each series
+    # is then collapsed to one value per financial year.
+    keys = ['Entity', 'Metric', 'Line_of_Business', 'Class_of_Business']
+    keys = [k for k in keys if k in df.columns]
+    for grp_keys, group in df.groupby(keys):
+        entity = grp_keys[0] if isinstance(grp_keys, tuple) else grp_keys
+        metric = grp_keys[1] if isinstance(grp_keys, tuple) else ""
         group = cast(pd.DataFrame, group)
-        
-        # UNIVERSAL THRESHOLD CHECKS (Latest Value)
-        # Always check the most recent data point regardless of history length
-        latest = group.iloc[-1]
-        val = latest['Value']
-        
+        pct = _is_pct(metric)
+
+        # one row per financial year (latest quarter), chronologically
+        series = (group.dropna(subset=['Value'])
+                       .drop_duplicates(subset=['Financial_Year'], keep='last')
+                       .sort_values('Sortable_Year'))
+        if series.empty:
+            continue
+        val = float(series.iloc[-1]['Value'])
+
+        # THRESHOLD CHECKS (latest value) — only on the relevant metric kinds.
         if "Solvency" in metric and val < 1.5:
-            alerts.append({"level": "critical", "msg": f"Regulatory Violation: {entity} - Solvency {val} < 1.5 limit"})
-        
-        elif "Expense" in metric:
+            alerts.append({"level": "critical",
+                           "msg": f"Regulatory Violation: {entity} - Solvency {val:.2f} < 1.5 limit"})
+        elif "Expense" in metric and pct:
             limit = 35 if any(s in entity for s in SAHI_INSURERS) else 30
             if val > limit:
-                alerts.append({"level": "critical", "msg": f"Regulatory Violation: {entity} - EoM {val}% exceeds {limit}% limit"})
-        
-        elif "Repudiation" in metric:
-            if val > 10:
-                alerts.append({"level": "warning", "msg": f"High Repudiation: {entity} - {metric} {val}% exceeds 10% limit"})
+                alerts.append({"level": "critical",
+                               "msg": f"Regulatory Violation: {entity} - EoM {val:.2f}% exceeds {limit}% limit"})
+        elif "Repudiation" in metric and pct and val > 10:
+            alerts.append({"level": "warning",
+                           "msg": f"High Repudiation: {entity} - {metric} {val:.2f}% exceeds 10% limit"})
 
-        # --- SAFETY FIX: TREND ANALYSIS ---
-        # We need at least 3 points to compare v0, v1, and v2
-        if len(group) < 3:
+        # TREND ANALYSIS — needs 3 distinct years.
+        if len(series) < 3:
             continue
+        vals = [float(v) for v in series['Value'].tolist()[-3:]]
+        years = series['Financial_Year'].tolist()[-3:]
 
-        # Get last 3 values specifically
-        last_3 = group.tail(3)
-        vals = [float(str(v).replace(',','').replace('%','')) for v in last_3['Value'].tolist()]
-        years = last_3['Financial_Year'].tolist()
-        
-        # Double check vals list length before indexing
-        if len(vals) < 3:
-            continue
+        # Rising "bad" ratios only (ICR, repudiation, expense, combined) — never on
+        # absolute ₹Crore / Nos. metrics (those legitimately grow with the business).
+        if pct and any(x in metric for x in ["Repudiation", "Claims", "Expense", "Combined", "Ratio"]):
+            if vals[0] < vals[1] < vals[2] and (vals[2] - vals[0]) >= 3:
+                alerts.append({
+                    "level": "warning",
+                    "msg": f"Rising Trend: {entity} - {metric} rose from {_fmt(vals[0], pct)} "
+                           f"to {_fmt(vals[2], pct)} ({years[0]} to {years[2]})."
+                })
 
-        # TREND 1: RISING "BAD" METRICS
-        if any(x in metric for x in ["Repudiation", "Claims", "Expense", "Combined"]):
-            if vals[0] < vals[1] < vals[2]:
-                growth = vals[2] - vals[0]
-                if growth >= 3:
-                    alerts.append({
-                        "level": "warning", 
-                        "msg": f"Rising Trend: {entity} - {metric} rose from {vals[0]}% to {vals[2]}% ({years[0]} to {years[2]})."
-                    })
-
-        # TREND 2: FALLING "GOOD" METRICS
-        if "Solvency" in metric:
-            if vals[0] > vals[1] > vals[2]:
-                drop = vals[0] - vals[2]
-                if drop >= 0.2:
-                    alerts.append({
-                        "level": "warning", 
-                        "msg": f"Deteriorating Solvency: {entity} - Dropped from {vals[0]} to {vals[2]} ({years[0]} to {years[2]})."
-                    })
+        if "Solvency" in metric and vals[0] > vals[1] > vals[2] and (vals[0] - vals[2]) >= 0.2:
+            alerts.append({
+                "level": "warning",
+                "msg": f"Deteriorating Solvency: {entity} - dropped from {vals[0]:.2f} "
+                       f"to {vals[2]:.2f} ({years[0]} to {years[2]})."
+            })
 
     return alerts
 

@@ -35,17 +35,23 @@ const KEY_TO_COL = {
 // Line of Business comes first so the insurer list narrows to the relevant ones
 // (life vs general vs reinsurance); other views pick the entity first.
 const cascadeOrder = (dim) => {
-  if (dim === 'Insurer') return ['lobs', 'entities', 'classes', 'metrics', 'years', 'quarters'];
   // The Financials view reproduces whole statements, so it only needs the
   // insurer, the statement, and the years — no per-line-item picking.
   if (dim === 'Financials') return ['entities', 'lobs', 'years', 'quarters'];
+  // Insurer view: pick the insurer first, then narrow by line of business.
   return ['entities', 'lobs', 'classes', 'metrics', 'years', 'quarters'];
 };
 // What the "Entity" step is called per report view.
-const ENTITY_NOUNS = { Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers', Channel: 'Channels' };
+const ENTITY_NOUNS = {
+  Insurer: 'Insurers', Industry: 'Sectors', Country: 'Countries', Financials: 'Insurers',
+  Channel: 'Channels', State: 'States', Ombudsman: 'Centres', TPA: 'TPAs',
+};
 const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
 // Friendly name for the report-view dropdown.
-const viewLabel = (dim) => (dim === 'Financials' ? 'Statements & Reports' : `${dim}-wise View`);
+const VIEW_LABELS = {
+  Financials: 'Statements & Reports', Ombudsman: 'Ombudsman Centres', TPA: 'TPA Network',
+};
+const viewLabel = (dim) => VIEW_LABELS[dim] || `${dim}-wise View`;
 // Per-view overrides for the step labels (e.g. the Financials view reuses the
 // LOB/Class slots as Statement/Section).
 const STEP_LABEL_OVERRIDES = { Financials: { lobs: 'Statement', classes: 'Section', metrics: 'Line Item' } };

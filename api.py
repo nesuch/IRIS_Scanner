@@ -10,13 +10,14 @@ and to avoid re-executing app.py as a second module, app.py injects its own
 module object via `init_api(sys.modules[__name__])`. All shared objects (models,
 db, login helpers, private helpers) are then reached through `_app`.
 """
+import base64
 import io
 import re
 import time
 from datetime import datetime
 
 import pandas as pd
-from flask import Blueprint, request, jsonify, session, send_file
+from flask import Blueprint, request, jsonify, session, send_file, Response
 
 import iris_brain as brain
 
@@ -796,6 +797,7 @@ def _flags_with_comments(user_email=None):
         "description": f.description, "target": f.target,
         "status": _norm_status(f.status),
         "created_at": m._format_dt_local(f.created_at),
+        "has_screenshot": bool(getattr(f, "screenshot", None)),
         "comments": comments_by_id.get(f.id, []),
     } for f in rows]
 
@@ -1009,11 +1011,38 @@ def api_flag_create():
     description = (data.get("description") or "").strip()[:2000] or None
     target = (data.get("target") or "").strip()[:300] or None
     detail = (data.get("detail") or "").strip()[:4000] or None
+    # Optional screenshot of the user's screen (base64 PNG data URL). Capped so a
+    # single flag can't bloat the DB / Litestream replica.
+    screenshot = data.get("screenshot") or ""
+    if not (isinstance(screenshot, str) and screenshot.startswith("data:image/")
+            and len(screenshot) <= 6_000_000):
+        screenshot = None
     m.db.session.add(m.Flag(user_email=m.current_user.email, kind=kind, reason=reason,
                             description=description, target=target, detail=detail,
+                            screenshot=screenshot,
                             status="Open", created_at=datetime.utcnow()))
     m.db.session.commit()
     return jsonify({"ok": True, "message": "Thanks — flag submitted for review."}), 201
+
+
+@api_bp.get("/flag/<int:flag_id>/screenshot")
+def api_flag_screenshot(flag_id):
+    """Serve a flag's captured screenshot (admin, or the flag's own author)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    m = _app
+    f = m.Flag.query.get(flag_id)
+    if not f or not f.screenshot:
+        return jsonify({"ok": False, "message": "No screenshot"}), 404
+    is_admin = getattr(m.current_user, "is_admin", False)
+    if not is_admin and f.user_email != m.current_user.email:
+        return jsonify({"ok": False}), 403
+    try:
+        header, b64 = f.screenshot.split(",", 1)
+        mime = header.split(";")[0].replace("data:", "") or "image/png"
+        return Response(base64.b64decode(b64), mimetype=mime)
+    except Exception:
+        return jsonify({"ok": False, "message": "Corrupt screenshot"}), 500
 
 
 @api_bp.post("/admin/flag/<int:flag_id>/status")

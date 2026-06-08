@@ -196,6 +196,13 @@ table.data tbody tr:hover { background: var(--paper); }
 /* ---------- Flag modal target ---------- */
 .flag-target { font-size: 12px; color: var(--muted); background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 11px; margin-bottom: 14px; word-break: break-word; }
 .flag-target i { color: var(--accent); margin-right: 6px; }
+.flag-shot { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.flag-shot-toggle { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; user-select: none; }
+.flag-shot-toggle input { width: 15px; height: 15px; flex: 0 0 auto; }
+.flag-shot-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); }
+.flag-shot-preview { display: block; margin-top: 10px; max-width: 100%; max-height: 170px; border: 1px solid var(--line); border-radius: var(--r-sm); object-fit: contain; background: var(--paper); }
+.fb-shot-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--accent); text-decoration: none; }
+.fb-shot-link:hover { text-decoration: underline; }
 
 /* ---------- Feedback thread (shared: admin + profile) ---------- */
 .fb-thread { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--line-strong); padding-left: 10px; }

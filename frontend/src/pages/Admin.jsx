@@ -380,6 +380,11 @@ export default function Admin() {
                         <td style={{ whiteSpace: 'normal', minWidth: 280 }}>
                           {!isFb && r.target && <div className="fb-target"><i className="fas fa-location-dot" /> {r.target}</div>}
                           {(isFb ? r.message : r.description) || <span style={{ color: 'var(--faint)' }}>—</span>}
+                          {!isFb && r.has_screenshot && (
+                            <a className="fb-shot-link" href={`/api/flag/${r.id}/screenshot`} target="_blank" rel="noreferrer">
+                              <i className="fas fa-image" /> View screenshot
+                            </a>
+                          )}
                           {r.comments?.length > 0 && (
                             <div className="fb-thread">
                               {r.comments.map((c, i) => (

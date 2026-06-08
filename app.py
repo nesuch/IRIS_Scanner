@@ -212,6 +212,7 @@ class Flag(db.Model):
     description = db.Column(db.Text, nullable=True)
     target = db.Column(db.String(300), nullable=True)   # source/clause id or report context
     detail = db.Column(db.Text, nullable=True)          # snapshot (clause text / row json)
+    screenshot = db.Column(db.Text, nullable=True)      # base64 PNG data URL of the user's screen
     status = db.Column(db.String(16), nullable=False, default="Open")  # Open | Resolved | Dismissed
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
@@ -503,6 +504,9 @@ def _ensure_database_schema():
         },
         "feedback_entries": {
             "status": "VARCHAR(16) NOT NULL DEFAULT 'Open'",
+        },
+        "flags": {
+            "screenshot": "TEXT",
         },
     }
 

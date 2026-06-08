@@ -110,6 +110,9 @@ PHASE9_REPORTS_CLASS = [
     ("Part I", "15", "Individual Death Claims", "Nos."),
     ("Part I", "17", "Group Death Claims", "Nos."),
     ("Part II", "53", "Status of Claims", "Nos."),
+]
+# Ombudsman performance -> own "Ombudsman" view (entity = centre, not insurer).
+PHASE9C_OMBUDSMAN = [
     ("Part I", "38", "Ombudsman Performance (Life)", "Nos."),
     ("Part II", "57", "Ombudsman Performance (General & Health)", "Nos."),
 ]
@@ -154,11 +157,11 @@ PHASE14_NESTED = [
 # State x insurer cross-tabs -> entity=insurer, class=state. (part, sheet, lob,
 # base metric, unit). Sectors come from the part (6/8/29 Life, 54 Non-Life, 96 Life).
 PHASE12_CROSSTAB = [
-    ("Part I", "6", "Individual New Business by State", "New Business", "₹Crore"),
-    ("Part I", "8", "Group New Business by State", "New Business", "₹Crore"),
-    ("Part I", "29", "Offices by State", "No. of Offices", "Nos."),
-    ("Part II", "54", "Offices by State", "No. of Offices", "Nos."),
-    ("Part V", "96", "Individual Agents by State", "No. of Agents", "Nos."),
+    ("Part I", "6", "Individual New Business (Life)", "New Business", "₹Crore"),
+    ("Part I", "8", "Group New Business (Life)", "New Business", "₹Crore"),
+    ("Part I", "29", "Offices (Life)", "No. of Offices", "Nos."),
+    ("Part II", "54", "Offices (General & Health)", "No. of Offices", "Nos."),
+    ("Part V", "96", "Individual Agents (Life)", "No. of Agents", "Nos."),
 ]
 
 # Industry-aggregate tables -> Industry view. (part, sheet, entity, lob/base, row_as, unit)
@@ -220,7 +223,7 @@ PHASE5_QUARTERLY = [
 # Rows whose entity label is a group header / aggregate, not a real insurer.
 SKIP_ENTITIES = re.compile(
     r"^(public sector|private sector|standalone health|stand-alone health|"
-    r"speciali[sz]ed|grand total|industry|total|sub[- ]?total|all india).*?$"
+    r"speciali[sz]ed|grand total|industry|total|sub[- ]?total|all india|notes?\b).*?$"
     r"|.*\btotal\b\)?$|.*\baverage$|.*cancelled.*",
     re.I,
 )
@@ -335,7 +338,9 @@ def _stamp(rows, part, sector=None):
     the part default (e.g. health-by-life tables hold *life* insurers)."""
     sec = sector or SECTOR_OF.get(part, "")
     for r in rows:
-        r["_sector"] = r["dimension"] if r["dimension"] in ("State", "Channel", "Industry") else sec
+        r["_sector"] = (r["dimension"]
+                        if r["dimension"] in ("State", "Channel", "Industry", "Ombudsman", "TPA")
+                        else sec)
     return rows
 
 
@@ -789,9 +794,9 @@ _SUBMETRIC_VOCAB = ("polic", "premium", "lives", "scheme", "persons", "amount",
 
 
 def convert_state_insurer_crosstab(ws, lob, base_metric, fallback_unit="₹Crore",
-                                   dimension=DIMENSION):
-    """State (rows) x insurer (col group) x year [x sub-metric]. Flattened to
-    entity=insurer, class_of_business=state so all three axes survive (6/8/29/54/96)."""
+                                   dimension="State"):
+    """State (rows) x insurer (col group) x year [x sub-metric]. Lives in the State
+    view: entity=state, class_of_business=insurer so all three axes survive (6/8/29/54/96)."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     yr = next((i for i, r in enumerate(grid[:8])
@@ -831,9 +836,9 @@ def convert_state_insurer_crosstab(ws, lob, base_metric, fallback_unit="₹Crore
             else:
                 metric = f"{base_metric} ({unit})"
             out.append({
-                "dimension": dimension, "entity": insurer, "metric": metric,
+                "dimension": dimension, "entity": state, "metric": metric,
                 "value": value, "financial_year": fy, "quarter": QUARTER,
-                "line_of_business": lob, "class_of_business": state,
+                "line_of_business": lob, "class_of_business": insurer,
             })
     return out
 
@@ -1625,7 +1630,7 @@ def main():
     # One-off tables: TPA hospitals (77), network providers (78), claims aging (66).
     for part, sheet, fn, args_ in [
         ("Part III", "77", convert_snapshot,
-         dict(statement="TPA Network Hospitals", year="2022-23", fallback_unit="Nos.")),
+         dict(statement="Network Hospitals", year="2022-23", fallback_unit="Nos.", dimension="TPA")),
         ("Part III", "78", convert_insurer_state_providers,
          dict(lob="Network Providers by State", year="2024-25", fallback_unit="Nos.")),
         ("Part III", "66", convert_industry_channel,
@@ -1652,8 +1657,8 @@ def main():
         if not match:
             continue
         rows = convert_state_insurer_crosstab(wb[match], lob, base_metric, fallback_unit=fb_unit)
-        print(f"   {part} t{sheet:>3} [Insurer/{lob[:22]}] -> {len(rows)} rows | "
-              f"insurers={len(set(r['entity'] for r in rows))} | states={len(set(r['class_of_business'] for r in rows))}")
+        print(f"   {part} t{sheet:>3} [State/{lob[:22]}] -> {len(rows)} rows | "
+              f"states={len(set(r['entity'] for r in rows))} | insurers={len(set(r['class_of_business'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, report, fb_unit in PHASE11_MEASURES:
@@ -1665,6 +1670,16 @@ def main():
                                         dimension=FIN_DIMENSION, class_of_business="General")
         print(f"   {part} t{sheet:>3} [Reports/{report[:24]}] -> {len(rows)} rows | "
               f"entities={len(set(r['entity'] for r in rows))} | items={len(set(r['metric'] for r in rows))}")
+        all_rows.extend(_stamp(rows, part))
+
+    for part, sheet, report, fb_unit in PHASE9C_OMBUDSMAN:
+        wb = _open(args.parts_dir, part)
+        match = wb and next((s for s in wb.sheetnames if s.strip() == sheet), None)
+        if not match:
+            continue
+        rows = convert_class_matrix(wb[match], report, dimension="Ombudsman", fallback_unit=fb_unit)
+        print(f"   {part} t{sheet:>3} [Ombudsman/{report[:18]}] -> {len(rows)} rows | "
+              f"centres={len(set(r['entity'] for r in rows))}")
         all_rows.extend(_stamp(rows, part))
 
     for part, sheet, report, fb_unit in PHASE9B_LIFE_HEALTH:
