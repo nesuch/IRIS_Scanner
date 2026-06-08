@@ -755,6 +755,21 @@ def load_master_data_engine():
             UNIFIED_DF.loc[bare, 'Financial_Year'] = fy[bare].apply(
                 lambda y: f"{int(y) - 1}-{y[2:]}")
 
+        # Collapse the Part tables' invented industry-aggregate names onto the
+        # Handbook's official sector names so the Industry view shows one entity
+        # per sector instead of near-duplicates.
+        _INDUSTRY_ALIASES = {
+            "Life Insurers (Industry)": "Life Insurance Sector",
+            "General Insurers (Industry)": "General Insurance Sector",
+            "General, Health & RE (Industry)": "General Insurance Sector",
+            "Non-Life & Reinsurers (Industry)": "General Insurance Sector",
+            "Health Industry": "Health Insurance Sector",
+        }
+        if {'Dimension', 'Entity'} <= set(UNIFIED_DF.columns):
+            ind = UNIFIED_DF['Dimension'] == 'Industry'
+            UNIFIED_DF.loc[ind, 'Entity'] = UNIFIED_DF.loc[ind, 'Entity'].map(
+                lambda e: _INDUSTRY_ALIASES.get(e, e))
+
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
         print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
 
