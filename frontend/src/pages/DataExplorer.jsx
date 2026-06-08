@@ -136,10 +136,17 @@ function FilterModal({ options, initial, onApply, onClose }) {
     return prune({ ...d, [key]: [...all] });
   });
   const clearCat = (key) => setDraft((d) => prune({ ...d, [key]: [] }));
-  // Switching dimension clears prior selections (they belong to the old dimension).
-  const changeDim = (dim) => setDraft((d) => ({
-    ...d, dimension: dim, entities: [], metrics: [], years: [], quarters: [], lobs: [], classes: [],
-  }));
+  // Switching dimension clears prior selections (they belong to the old dimension)
+  // and resets the active step to the new view's first step — otherwise a step
+  // that doesn't exist in the new view (e.g. "metrics" when moving to Statements &
+  // Reports) would linger and show the wrong option list under "Insurers".
+  const changeDim = (dim) => {
+    setCat(cascadeOrder(dim)[0]);
+    setSearch('');
+    setDraft((d) => ({
+      ...d, dimension: dim, entities: [], metrics: [], years: [], quarters: [], lobs: [], classes: [],
+    }));
+  };
 
   // Gated stepper: a step stays locked until every prior step has a selection,
   // so the user must follow the cascade order (steps with no available options
@@ -158,7 +165,9 @@ function FilterModal({ options, initial, onApply, onClose }) {
   // switching the report view, which reorders the steps).
   useEffect(() => {
     const ci = order.indexOf(cat);
-    if (isLocked(ci)) { setCat(order[firstOpen]); setSearch(''); }
+    // ci === -1: the active step doesn't exist in this view (e.g. left over from
+    // another report view) — fall back to the first open step.
+    if (ci === -1 || isLocked(ci)) { setCat(order[firstOpen] ?? order[0]); setSearch(''); }
   }, [firstOpen, draft.dimension]);
 
   const count = draft.entities.length + draft.metrics.length;
