@@ -985,8 +985,10 @@ def convert_insurer_state_providers(ws, lob, year, fallback_unit="Nos.", dimensi
 
 
 def convert_industry_3col(ws, entity, fallback_unit="₹Crore", dimension="Industry"):
-    """Industry: rows=plan, columns=year>par/non-par>premium-type. LOB=plan,
-    class=par, metric=premium-type (table 4 segment-wise life premium)."""
+    """Industry: rows are a (Linked/Non-Linked) SECTION header followed by product
+    types (Life/Health/Pension/Annuity); columns = year > par/non-par >
+    premium-type. LOB = "<section> - <type>" so the section isn't lost and the
+    LOB doesn't collide with the summary sheets' plain "Life"/"Health" (table 4)."""
     raw = list(ws.iter_rows(values_only=True))
     grid = [[_clean(c) for c in r] for r in raw]
     yr = next((i for i, r in enumerate(grid[:8])
@@ -997,13 +999,20 @@ def convert_industry_3col(ws, entity, fallback_unit="₹Crore", dimension="Indus
     par_row = _ffill(grid[yr + 1])
     ptype_row = grid[yr + 2]
     unit = _find_unit(grid[:yr]) or fallback_unit
-    out = []
+    out, section = [], ""
     for r in raw[yr + 3:]:
-        plan = _clean(r[0]) if r else ""
-        if not plan or SKIP_ENTITIES.match(plan) or _FOOTNOTE.search(plan):
+        label = _clean(r[0]) if r else ""
+        if not label or _FOOTNOTE.search(label):
             continue
-        if plan.isupper():
-            plan = plan.title()
+        row_vals = [_to_number(r[ci]) for ci in range(1, len(r))]
+        if not any(v is not None for v in row_vals):     # a section header (no data)
+            section = re.sub(r"\s*\(.*", "", label).strip()   # "Linked (Individual…)" -> "Linked"
+            continue
+        if SKIP_ENTITIES.match(label):
+            continue
+        if label.isupper():
+            label = label.title()
+        lob = f"{section} - {label}" if section else label
         for ci in range(1, len(r)):
             fy = year_row[ci] if ci < len(year_row) else ""
             ptype = _clean(ptype_row[ci]) if ci < len(ptype_row) else ""
@@ -1017,7 +1026,7 @@ def convert_industry_3col(ws, entity, fallback_unit="₹Crore", dimension="Indus
                 "dimension": dimension, "entity": entity,
                 "metric": _submetric(ptype, unit), "value": value,
                 "financial_year": fy, "quarter": QUARTER,
-                "line_of_business": plan, "class_of_business": par or DEFAULT_CLASS,
+                "line_of_business": lob, "class_of_business": par or DEFAULT_CLASS,
             })
     return out
 
@@ -1635,8 +1644,11 @@ def main():
          dict(lob="Network Providers", year="2024-25", fallback_unit="Nos.")),
         ("Part III", "66", convert_industry_channel,
          dict(entity="Health Industry", lob="Claims Development & Aging", fallback_unit="₹Lakh")),
-        ("Part I", "4", convert_industry_3col,
-         dict(entity="Life Insurers (Industry)", fallback_unit="₹Crore")),
+        # Table 4 (segment-wise total premium of life insurers) intentionally not
+        # ingested: a messy historical breakdown (Linked/Non-Linked × par × premium
+        # type with derived Grand Total / Percentage columns and a redundant
+        # combined section). The same linked/non-linked premium is cleanly
+        # available per-insurer in Table 12 (Insurer view).
         ("Part II", "55", convert_insurer_obligation, dict(fallback_unit="Per cent")),
         ("Part II", "43", convert_type_table,
          dict(entity="General Insurers (Industry)", lob="Policies Issued",

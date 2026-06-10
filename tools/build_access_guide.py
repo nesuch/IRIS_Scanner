@@ -33,6 +33,7 @@ PATHS = {
     "TPA": "TPA Network → pick TPA → Statement = «{pick}» → Fin Year",
 }
 SEG = "the segment (Fire / Marine / Motor / Health / …)"
+PLAN_SEG = "the plan-segment (Linked - Life, Non-Linked - Pension, Non-Linked - Health, …)"
 # Better LOB hint for configs whose LOB is read from the table (lob index None).
 NONE_PICK = {
     "PHASE14_NESTED": "the plan / category (Linked, Non-Linked, ULIP, Traditional, Individual/Group)",
@@ -73,7 +74,6 @@ ONE_OFFS = [
     ("Part III", "77", "TPA", "Network Hospitals"),
     ("Part III", "78", "State", "Network Providers"),
     ("Part III", "66", "Industry", "Claims Development & Aging"),
-    ("Part I", "4", "Industry", SEG),
     ("Part II", "55", "Insurer", "Rural / Social Sector Obligations"),
     ("Part II", "43", "Industry", "Policies Issued"),
 ]
@@ -114,7 +114,7 @@ def main():
     rows = []
     seen = set()
 
-    generic = {SEG, *NONE_PICK.values()}
+    generic = {SEG, PLAN_SEG, *NONE_PICK.values()}
 
     def add(part, sheet, view, pick):
         key = (part, sheet, view, pick)

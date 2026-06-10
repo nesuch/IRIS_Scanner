@@ -460,6 +460,15 @@ export default function DataExplorer() {
     setFilters(blankFilters());
   }
 
+  // From the access guide: jump to a table's view and pre-select its line of
+  // business / statement, then open the filter modal so the user picks the entity.
+  function applyGuide({ dimension, pick }) {
+    const lobs = pick && options?.by_dim?.[dimension]?.lobs?.includes(pick) ? [pick] : [];
+    setFilters({ ...blankFilters(dimension), lobs });
+    setGuideOpen(false);
+    setModal(true);
+  }
+
   function exportExcel() {
     api.download('/data/download', filters, 'IRIS_Financial_Report.xlsx').catch((e) => toast.error(e.message));
   }
