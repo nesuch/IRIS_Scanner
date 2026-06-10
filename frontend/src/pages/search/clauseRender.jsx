@@ -7,7 +7,7 @@ import { Fragment } from 'react';
 // both blue, hard to tell apart and too close to the blue system UI).
 export const TYPE_STYLES = {
   ACT:        { label: 'ACT (The Law)',   color: '#92400e', bg: 'rgba(245,158,11,0.14)', bar: '#d97706' }, // amber
-  REGULATION: { label: 'REGULATION',      color: '#6d28d9', bg: 'rgba(139,92,246,0.12)', bar: '#7c3aed' }, // violet
+  REGULATION: { label: 'REGULATION',      color: '#15803d', bg: 'rgba(34,197,94,0.13)',  bar: '#16a34a' }, // green
   MASTER:     { label: 'MASTER CIRCULAR', color: '#0f766e', bg: 'rgba(20,184,166,0.14)', bar: '#14b8a6' }, // teal
   CIRCULAR:   { label: 'CIRCULAR',        color: '#1d4ed8', bg: 'rgba(37,99,235,0.10)',  bar: '#2563eb' }, // blue
   GUIDELINE:  { label: 'GUIDELINE',       color: '#9f1239', bg: 'rgba(244,63,94,0.10)',  bar: '#e11d48' }, // rose

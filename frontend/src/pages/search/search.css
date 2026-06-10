@@ -77,6 +77,16 @@
 .clause-body { font-size: 14px; line-height: 1.55; color: var(--ink); }
 .clause-line { white-space: pre-wrap; overflow-wrap: anywhere; }
 .clause-head strong { color: var(--navy-700, #1a237e); }
+/* Admin clause tag editor */
+.clause-tags-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.clause-tags-label { font-size: 11px; color: var(--muted); font-weight: 600; }
+.clause-tags-label i { margin-right: 4px; color: var(--faint); }
+.clause-tag { font-size: 11px; color: var(--navy-700, #1a237e); background: var(--paper-2, #f1f5f9); padding: 2px 9px; border-radius: var(--r-pill); }
+.clause-tag-empty { font-size: 11px; color: var(--faint); font-style: italic; }
+.clause-tag-edit { font-size: 11px; font-weight: 600; color: var(--accent); background: none; border: none; cursor: pointer; padding: 2px 4px; }
+.clause-tag-edit:hover { text-decoration: underline; }
+.clause-retag { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 260px; }
+.clause-retag .input { flex: 1; padding: 6px 10px; font-size: 12.5px; }
 /* Parliamentary Q&A results inside search */
 .pq-results { margin-bottom: 18px; }
 .pq-band { background: rgba(26,35,126,0.08); color: var(--navy-700, #1a237e); border-left-color: var(--navy-700, #1a237e); display: flex; align-items: center; gap: 8px; }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api.js';
 import { TYPE_STYLES, ClauseBody, groupByType } from './search/clauseRender.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
@@ -30,6 +31,45 @@ function fmtClauseDate(d) {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return d;
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Admin-only inline tag editor on a clause card (drives tag search).
+function ClauseTags({ m }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const [tags, setTags] = useState(m.tags || []);
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!user?.is_admin) return null;
+
+  async function save() {
+    setBusy(true);
+    try {
+      const r = await api.post('/clause/retag', { id: m.id, source: m.source, tags: val });
+      setTags(r.tags || []); setEditing(false); toast.success('Tags updated');
+    } catch (e) { toast.error(e.message || 'Could not update'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="clause-tags-row">
+      {!editing ? (
+        <>
+          <span className="clause-tags-label"><i className="fas fa-tags" /> Tags:</span>
+          {tags.length ? tags.map((t) => <span key={t} className="clause-tag">{t}</span>)
+            : <span className="clause-tag-empty">none</span>}
+          <button className="clause-tag-edit" onClick={() => { setVal(tags.join(', ')); setEditing(true); }}>Edit</button>
+        </>
+      ) : (
+        <span className="clause-retag">
+          <input className="input" value={val} autoFocus onChange={(e) => setVal(e.target.value)} placeholder="comma-separated tags" />
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '…' : 'Save'}</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
+        </span>
+      )}
+    </div>
+  );
 }
 
 function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
@@ -108,6 +148,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
                   </span>
                 </div>
                 <ClauseBody text={m.raw_text} keywords={resp.highlight || []} />
+                <ClauseTags m={m} />
               </div>
             ))}
           </div>

@@ -132,37 +132,68 @@ def load_knowledge_base(force_reload=False):
 
     # 3. Build Vocab / Tags (Only if not already built)
     if not ALL_UNIQUE_TAGS or force_reload:
-        ALL_UNIQUE_TAGS.clear(); ALL_DOC_NAMES.clear(); TAG_INGREDIENTS.clear(); KNOWN_VOCAB.clear(); NORMALIZED_TAG_LOOKUP.clear()
-        
-        # Load Synonyms
-        for k in SYNONYM_MAP.keys(): KNOWN_VOCAB.add(k)
-        for v_list in SYNONYM_MAP.values(): 
-            for v in v_list: KNOWN_VOCAB.add(v)
-        
-        # Process Tags from DB
-        for idx, row in df.iterrows():
-            ALL_DOC_NAMES.add(row["Source_Doc"])
-            row_tags = str(row["Regulatory_Tags"])
-            
-            if row_tags:
-                for tag in [t.strip().lower() for t in row_tags.split(",")]:
-                    clean_tag = tag.replace("_", " ")
-                    if len(clean_tag) < 2: continue
-                    ALL_UNIQUE_TAGS.add(clean_tag)
-                    
-                    normalized = normalize_tag_text(clean_tag)
-                    if normalized:
-                        NORMALIZED_TAG_LOOKUP[normalized] = clean_tag
-
-                    ingredients = set()
-                    for w in re.findall(r"\w+", clean_tag):
-                        if w in STOP_WORDS: continue
-                        KNOWN_VOCAB.add(str(w)) 
-                        ingredients.add(get_stem(w))
-                    if ingredients: TAG_INGREDIENTS[clean_tag] = ingredients
+        _rebuild_vocab(df)
 
     KB_CACHE_DF = df
     return df
+
+
+def _rebuild_vocab(df):
+    """(Re)build the tag vocabulary / autocomplete data from the clause DataFrame.
+    Called on load and after an in-app tag edit so search reflects changes."""
+    ALL_UNIQUE_TAGS.clear(); ALL_DOC_NAMES.clear(); TAG_INGREDIENTS.clear(); KNOWN_VOCAB.clear(); NORMALIZED_TAG_LOOKUP.clear()
+
+    for k in SYNONYM_MAP.keys(): KNOWN_VOCAB.add(k)
+    for v_list in SYNONYM_MAP.values():
+        for v in v_list: KNOWN_VOCAB.add(v)
+
+    for _, row in df.iterrows():
+        ALL_DOC_NAMES.add(row["Source_Doc"])
+        row_tags = str(row["Regulatory_Tags"])
+        if row_tags:
+            for tag in [t.strip().lower() for t in row_tags.split(",")]:
+                clean_tag = tag.replace("_", " ")
+                if len(clean_tag) < 2: continue
+                ALL_UNIQUE_TAGS.add(clean_tag)
+                normalized = normalize_tag_text(clean_tag)
+                if normalized:
+                    NORMALIZED_TAG_LOOKUP[normalized] = clean_tag
+                ingredients = set()
+                for w in re.findall(r"\w+", clean_tag):
+                    if w in STOP_WORDS: continue
+                    KNOWN_VOCAB.add(str(w))
+                    ingredients.add(get_stem(w))
+                if ingredients: TAG_INGREDIENTS[clean_tag] = ingredients
+
+
+def clause_tags(clause_id, source):
+    """Current tags (list) for one clause, from the in-memory knowledge base."""
+    df = KB_CACHE_DF
+    if df is None or df.empty: return []
+    mask = (df["Clause_ID"].astype(str) == str(clause_id)) & (df["Source_Doc"].astype(str) == str(source))
+    sub = df.loc[mask, "Regulatory_Tags"]
+    if not len(sub): return []
+    return [t.strip() for t in str(sub.iloc[0]).split(",") if t.strip()]
+
+
+def update_clause_tags(clause_id, source, tags):
+    """Admin in-app edit: persist a clause's tags to SQL, update the in-memory KB
+    and rebuild the tag vocabulary so search reflects it immediately. Returns the
+    new tag list, or None if the clause wasn't found."""
+    global KB_CACHE_DF
+    tags = (tags or "").strip()
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.execute(
+        "UPDATE regulatory_clauses SET regulatory_tags=? WHERE clause_id=? AND source_doc=?",
+        (tags, str(clause_id), str(source)))
+    conn.commit(); changed = cur.rowcount; conn.close()
+    if not changed:
+        return None
+    if KB_CACHE_DF is not None and not KB_CACHE_DF.empty:
+        mask = (KB_CACHE_DF["Clause_ID"].astype(str) == str(clause_id)) & (KB_CACHE_DF["Source_Doc"].astype(str) == str(source))
+        KB_CACHE_DF.loc[mask, "Regulatory_Tags"] = tags
+        _rebuild_vocab(KB_CACHE_DF)
+    return [t.strip() for t in tags.split(",") if t.strip()]
 
 def get_autocomplete_data():
     vocab = {"CONCEPTS": []}

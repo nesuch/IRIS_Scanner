@@ -186,6 +186,7 @@ def _match_payload(m):
         "header": m.get("header", ""),
         "raw_text": str(m.get("raw_text", "")),
         "pdf_url": ("/static/" + pdf_path) if pdf_path else None,
+        "tags": brain.clause_tags(m.get("id", ""), m.get("source", "")),
         **_doc_status(m.get("source", "")),
     }
 
@@ -431,6 +432,22 @@ def api_pq_retag(pid):
     r.tags = (data.get("tags") or "").strip()
     _app.db.session.commit()
     return jsonify({"ok": True, "tags": [t.strip() for t in r.tags.split(",") if t.strip()]})
+
+
+@api_bp.post("/clause/retag")
+def api_clause_retag():
+    """Admin-only: edit a clause's tags in-app (persists + refreshes search)."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    cid = (data.get("id") or "").strip()
+    source = (data.get("source") or "").strip()
+    if not cid or not source:
+        return jsonify({"ok": False, "message": "Missing clause id/source"}), 400
+    new_tags = brain.update_clause_tags(cid, source, data.get("tags") or "")
+    if new_tags is None:
+        return jsonify({"ok": False, "message": "Clause not found"}), 404
+    return jsonify({"ok": True, "tags": new_tags})
 
 
 @api_bp.get("/clause-suggest")
