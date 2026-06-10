@@ -187,6 +187,7 @@ def _match_payload(m):
         "raw_text": str(m.get("raw_text", "")),
         "pdf_url": ("/static/" + pdf_path) if pdf_path else None,
         "tags": brain.clause_tags(m.get("id", ""), m.get("source", "")),
+        "html": brain.clause_html(m.get("id", ""), m.get("source", "")),
         **_doc_status(m.get("source", "")),
     }
 

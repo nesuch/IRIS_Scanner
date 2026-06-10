@@ -235,6 +235,22 @@ class PqDocument(db.Model):
     docx_filename = db.Column(db.String(300), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+
+class ClauseVersion(db.Model):
+    """Audit/restore snapshot of a clause's content, written before each in-app
+    edit. Lets admins see history and revert (important for regulatory text)."""
+    __tablename__ = "clause_versions"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    clause_id = db.Column(db.String(120), nullable=False, index=True)
+    source_doc = db.Column(db.String(255), nullable=False, index=True)
+    html = db.Column(db.Text, nullable=True)
+    body_text = db.Column(db.Text, nullable=True)
+    tags = db.Column(db.Text, nullable=True)
+    edited_by = db.Column(db.String(255), nullable=True)
+    edited_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
 # ==========================================
@@ -526,6 +542,11 @@ def _ensure_database_schema():
         },
         "flags": {
             "screenshot": "TEXT",
+        },
+        "regulatory_clauses": {
+            "clause_html": "TEXT",          # rich edited body (HTML); null => render clause_text
+            "updated_at": "DATETIME",
+            "updated_by": "VARCHAR(255)",
         },
     }
 

@@ -176,6 +176,20 @@ def clause_tags(clause_id, source):
     return [t.strip() for t in str(sub.iloc[0]).split(",") if t.strip()]
 
 
+def clause_html(clause_id, source):
+    """The rich edited HTML body for a clause, or '' if it hasn't been edited
+    in-app (in which case the plain clause_text is rendered instead)."""
+    df = KB_CACHE_DF
+    if df is None or df.empty or "clause_html" not in df.columns:
+        return ""
+    mask = (df["Clause_ID"].astype(str) == str(clause_id)) & (df["Source_Doc"].astype(str) == str(source))
+    sub = df.loc[mask, "clause_html"]
+    if not len(sub):
+        return ""
+    v = sub.iloc[0]
+    return str(v) if pd.notna(v) and str(v).strip() else ""
+
+
 def update_clause_tags(clause_id, source, tags):
     """Admin in-app edit: persist a clause's tags to SQL, update the in-memory KB
     and rebuild the tag vocabulary so search reflects it immediately. Returns the

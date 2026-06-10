@@ -147,7 +147,9 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
                     <button className="flag-btn" title="Flag this clause" onClick={() => onFlag(m)}><i className="fas fa-flag" /></button>
                   </span>
                 </div>
-                <ClauseBody text={m.raw_text} keywords={resp.highlight || []} />
+                {m.html
+                  ? <div className="clause-html" dangerouslySetInnerHTML={{ __html: m.html }} />
+                  : <ClauseBody text={m.raw_text} keywords={resp.highlight || []} />}
                 <ClauseTags m={m} />
               </div>
             ))}
