@@ -32,14 +32,13 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
       try {
         const { default: html2canvas } = await import('html2canvas');
         await new Promise((r) => setTimeout(r, 250));  // let fonts/paint settle
-        // Capture just the visible viewport (what the user is looking at) at real
-        // pixel density — avoids the tall white space of a full-scroll capture.
+        // Full-page capture (this is the variant that rendered the page text
+        // crisply); the onclone fixes below also restore the wordmark + colours.
         const canvas = await html2canvas(document.body, {
           scale: Math.min(window.devicePixelRatio || 1, 2),
           logging: false, useCORS: true, backgroundColor: '#ffffff',
-          width: window.innerWidth, height: window.innerHeight,
-          windowWidth: window.innerWidth, windowHeight: window.innerHeight,
-          scrollX: 0, scrollY: 0,
+          windowWidth: document.documentElement.scrollWidth,
+          windowHeight: document.documentElement.scrollHeight,
           ignoreElements: (el) => el.classList?.contains('modal-overlay'),
           onclone: (doc) => {
             const s = doc.createElement('style');
