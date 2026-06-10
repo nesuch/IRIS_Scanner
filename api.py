@@ -12,6 +12,7 @@ db, login helpers, private helpers) are then reached through `_app`.
 """
 import base64
 import io
+import os
 import re
 import time
 from datetime import datetime
@@ -402,6 +403,41 @@ def api_data_statement_download():
             download_name=f"IRIS_{safe}.xlsx",
         )
     return jsonify({"ok": False, "message": "No statement data."}), 400
+
+
+_GUIDE_PATH = os.path.join(os.path.dirname(__file__), "knowledge_base",
+                           "IRIS_Handbook_Access_Guide.xlsx")
+_GUIDE_CACHE = {}
+
+
+def _load_access_guide():
+    if "rows" not in _GUIDE_CACHE:
+        try:
+            df = pd.read_excel(_GUIDE_PATH).fillna("")
+            _GUIDE_CACHE["rows"] = df.to_dict("records")
+        except Exception as e:
+            print(f"access guide load error: {e}")
+            _GUIDE_CACHE["rows"] = []
+    return _GUIDE_CACHE["rows"]
+
+
+@api_bp.get("/guide")
+def api_guide():
+    """Handbook→IRIS access guide as JSON, for the in-app searchable viewer."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    return jsonify({"rows": _load_access_guide()})
+
+
+@api_bp.get("/guide/download")
+def api_guide_download():
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    if not os.path.exists(_GUIDE_PATH):
+        return jsonify({"ok": False, "message": "Guide not available."}), 404
+    return send_file(_GUIDE_PATH,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name="IRIS_Handbook_Access_Guide.xlsx")
 
 
 @api_bp.post("/data/download")

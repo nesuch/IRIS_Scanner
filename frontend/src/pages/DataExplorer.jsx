@@ -3,6 +3,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import { Modal, EmptyState, TypingDots } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import FlagModal from '../components/FlagModal.jsx';
+import AccessGuideModal from '../components/AccessGuideModal.jsx';
 import ReportCharts from './data/ReportCharts.jsx';
 import { api } from '../api.js';
 import './data/data.css';
@@ -414,6 +415,7 @@ export default function DataExplorer() {
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [view, setView] = useState('chart');
 
   useEffect(() => {
@@ -468,6 +470,9 @@ export default function DataExplorer() {
             {report && filterCount > 0 && <span className="filter-badge">{filterCount}</span>}
           </button>
           <span className="active-filters-text">{summary}</span>
+          <button className="btn btn-ghost btn-sm guide-btn" onClick={() => setGuideOpen(true)}>
+            <i className="fas fa-circle-question" /> Where's this data?
+          </button>
           <button className="reset-link" onClick={resetDashboard}>Reset Dashboard</button>
         </div>
 
@@ -548,6 +553,8 @@ export default function DataExplorer() {
           detail={JSON.stringify({ filters, columns: report?.columns })}
           onClose={() => setFlagOpen(false)} />
       )}
+
+      {guideOpen && <AccessGuideModal onClose={() => setGuideOpen(false)} />}
     </>
   );
 }
