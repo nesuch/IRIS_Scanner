@@ -301,7 +301,7 @@ def search_by_clause_number(raw_query, df, sources=None, limit=12):
     if df is None or df.empty:
         return []
     q = _num_key(str(raw_query).lstrip("/"))
-    if len(q) < 2:
+    if not q:
         return []
     scoped = df
     if sources:
@@ -311,14 +311,23 @@ def search_by_clause_number(raw_query, df, sources=None, limit=12):
         if row.get("Is_Header"):
             continue
         text = str(row.get("Clause_Text", ""))
-        cid_key = _num_key(row.get("Clause_ID", ""))
-        lead_key = _num_key(text[:48])
-        if q in cid_key:
-            rank = (0, cid_key.find(q))
-        elif q in lead_key:
-            rank = (1, lead_key.find(q))
-        elif q in _num_key(text):           # number cited inside the clause body
-            rank = (2, _num_key(text).find(q))
+        cid = str(row.get("Clause_ID", ""))
+        # The clause's own number = the leading number of its text ("11) …" -> 11)
+        # or the last segment of its id ("MCH-CH1-011" -> 011).
+        lead = re.match(r"^[\W_]*([0-9]+[a-z]*)", text.lower())
+        lead_num = _num_key(lead.group(1)) if lead else ""
+        cid_tail = _num_key(cid.rsplit("-", 1)[-1])
+        cid_key, lead_key = _num_key(cid), _num_key(text[:48])
+        if q in (lead_num, cid_tail):                 # exact clause-number match
+            rank = (0, 0)
+        elif lead_num.startswith(q) or cid_tail.startswith(q):
+            rank = (1, len(lead_num or cid_tail))
+        elif q in cid_key:
+            rank = (2, cid_key.find(q))
+        elif len(q) >= 2 and q in lead_key:           # number near the start of the text
+            rank = (3, lead_key.find(q))
+        elif len(q) >= 2 and q in _num_key(text):     # number cited inside the body
+            rank = (4, _num_key(text).find(q))
         else:
             continue
         out.append((rank, {

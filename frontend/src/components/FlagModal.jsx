@@ -38,6 +38,12 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
           windowWidth: document.documentElement.scrollWidth,
           windowHeight: document.documentElement.scrollHeight,
           ignoreElements: (el) => el.classList?.contains('modal-overlay'),
+          // Force full opacity / no mid-flight animations so the capture isn't faint.
+          onclone: (doc) => {
+            const s = doc.createElement('style');
+            s.textContent = '*{animation:none!important;transition:none!important;opacity:1!important;filter:none!important;}';
+            doc.head.appendChild(s);
+          },
         });
         if (alive) setShot(canvas.toDataURL('image/jpeg', 0.9));
       } catch {

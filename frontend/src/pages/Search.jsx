@@ -24,6 +24,14 @@ const MODULE_META = {
   nonlife: { title: 'Non-Life Department', icon: 'fa-shield-halved', scope: 'Regulatory Framework (General Insurance)' },
 };
 
+// Dates as DD MMM YYYY (e.g. 29 May 2024).
+function fmtClauseDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return d;
+  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
   const copy = async (text) => {
@@ -77,17 +85,17 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
                   <span className="clause-header">{m.header}</span>
                   <span className="sep">|</span>
                   <span className="clause-id">Clause: {m.id}</span>
-                  {m.doc_status && (
-                    <span className={`clause-status ${m.doc_status.toLowerCase() === 'repealed' ? 'cs-repealed' : 'cs-active'}`}
-                      title={m.doc_status.toLowerCase() === 'repealed'
-                        ? `Repealed${m.repealed_on ? ' on ' + m.repealed_on : ''}`
-                        : `In force${m.effective_date ? ' from ' + m.effective_date : ''}`}>
-                      <i className={`fas ${m.doc_status.toLowerCase() === 'repealed' ? 'fa-ban' : 'fa-circle-check'}`} />
-                      {m.doc_status.toLowerCase() === 'repealed'
-                        ? `Repealed${m.repealed_on ? ` ${m.repealed_on}` : ''}`
-                        : `Active${m.effective_date ? ` · from ${m.effective_date}` : ''}`}
-                    </span>
-                  )}
+                  {m.doc_status && (() => {
+                    const rep = m.doc_status.toLowerCase() === 'repealed';
+                    return (
+                      <span className={`clause-status ${rep ? 'cs-repealed' : 'cs-active'}`}>
+                        <i className={`fas ${rep ? 'fa-ban' : 'fa-circle-check'}`} />
+                        {rep
+                          ? `Repealed${m.repealed_on ? ` ${fmtClauseDate(m.repealed_on)}` : ''}`
+                          : `Active${m.effective_date ? ` · from ${fmtClauseDate(m.effective_date)}` : ''}`}
+                      </span>
+                    );
+                  })()}
                   <span className="clause-actions">
                     {m.pdf_url && (
                       <button className="pane-btn" title="Open PDF in side pane" onClick={() => onOpenPane(m)}><i className="fas fa-table-columns" /> Pane</button>
@@ -395,7 +403,7 @@ export default function Search({ module }) {
                 ))}
               </div>
             )}
-            <textarea className="search-input" placeholder="Ask IRIS…   ·   tip: type / then a clause no. (e.g. /64VB or /4(1)(i))" value={query}
+            <textarea className="search-input" placeholder="Ask IRIS…   ·   type / for a clause number" value={query}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
             <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
               <i className="fas fa-magnifying-glass" /> <span className="btn-label">Search</span>

@@ -20,6 +20,9 @@ export default function PageHeader({ fullForm, title, scope, children }) {
       </div>
       <div className="header-actions">
         {children}
+        <Link to="/downloads" className="header-icon-btn" title="Downloads — Acts, Regulations & Circulars" aria-label="Downloads">
+          <i className="fas fa-folder-tree" />
+        </Link>
         <Notifications />
         <Link to="/profile" className="header-avatar" title={user?.display_name || user?.email || 'Profile'}>
           {user?.avatar
