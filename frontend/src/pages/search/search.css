@@ -130,6 +130,10 @@
 .suggestion-item:last-child { border-bottom: none; }
 .suggestion-item:hover { background: var(--paper); }
 .badge-concept { background: rgba(13,148,136,0.12); color: var(--accent); }
+.clause-sugg { gap: 12px; }
+.clause-sugg-main { display: flex; gap: 9px; align-items: baseline; min-width: 0; }
+.clause-sugg .clause-id { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.clause-sugg .clause-snip { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 900px) {
   .search-shell { height: 100dvh; }

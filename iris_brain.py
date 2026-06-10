@@ -288,6 +288,51 @@ def search_tags_only(keyword_tuples, df, module="universal"):
             })
     return sort_matches(matches)
 
+def _num_key(s):
+    """Strip everything but letters/digits for space/bracket-insensitive matching:
+    '64 V B' / '64vb' / '64(VB)' all collapse to '64vb'."""
+    return re.sub(r"[^a-z0-9]", "", str(s).lower())
+
+
+def search_by_clause_number(raw_query, df, sources=None, limit=12):
+    """Find clauses by their number (e.g. 64VB, 4(1)(i), 110), ignoring spaces and
+    brackets. Triggered when the user prefixes the query with '/'. Matches the
+    clause id and the clause's leading text; clause-id hits rank first."""
+    if df is None or df.empty:
+        return []
+    q = _num_key(str(raw_query).lstrip("/"))
+    if len(q) < 2:
+        return []
+    scoped = df
+    if sources:
+        scoped = df[df["Source_Doc"].isin(set(sources))]
+    out = []
+    for _, row in scoped.iterrows():
+        if row.get("Is_Header"):
+            continue
+        text = str(row.get("Clause_Text", ""))
+        cid_key = _num_key(row.get("Clause_ID", ""))
+        lead_key = _num_key(text[:48])
+        if q in cid_key:
+            rank = (0, cid_key.find(q))
+        elif q in lead_key:
+            rank = (1, lead_key.find(q))
+        elif q in _num_key(text):           # number cited inside the clause body
+            rank = (2, _num_key(text).find(q))
+        else:
+            continue
+        out.append((rank, {
+            "source": row.get("Source_Doc", "UNKNOWN"),
+            "type": row.get("Doc_Type", "UNKNOWN"),
+            "priority": row.get("Priority", 99),
+            "id": str(row.get("Clause_ID", "")).strip(),
+            "header": row.get("Context_Header", ""),
+            "raw_text": str(row.get("Clause_Text", "")),
+        }))
+    out.sort(key=lambda x: x[0])
+    return [m for _, m in out[:limit]]
+
+
 def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):
     scoped_df: pd.DataFrame = filter_df_by_module(df, module)
     if scoped_df.empty: return []

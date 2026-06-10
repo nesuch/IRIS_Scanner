@@ -230,6 +230,17 @@ export default function Search({ module }) {
   function onInput(e) {
     const val = e.target.value;
     setQuery(val);
+    // Clause-number mode: "/" then a number (e.g. /64VB, /4 (1) (i)).
+    if (val.trimStart().startsWith('/')) {
+      const key = val.replace(/[^a-z0-9]/gi, '');
+      if (key.length < 2) { setSuggestions([]); return; }
+      const params = new URLSearchParams({ q: val.trim() });
+      if (allDocs.length && selected.size < allDocs.length) [...selected].forEach((s) => params.append('source', s));
+      api.get(`/clause-suggest?${params.toString()}`)
+        .then((d) => setSuggestions((d.suggestions || []).map((s) => ({ ...s, clause: true }))))
+        .catch(() => setSuggestions([]));
+      return;
+    }
     const words = val.toLowerCase().split(/[\s,]+/);
     const lastWord = words[words.length - 1];
     if (lastWord.length < 2) { setSuggestions([]); return; }
@@ -242,6 +253,13 @@ export default function Search({ module }) {
   }
 
   function selectSuggestion(value) {
+    // A clause suggestion runs the lookup immediately; a tag suggestion is appended.
+    if (value && typeof value === 'object' && value.clause) {
+      setSuggestions([]);
+      setQuery('');
+      runSearch(`/${value.id}`, value.id);
+      return;
+    }
     const val = query;
     const lastSpace = val.lastIndexOf(' ');
     const next = lastSpace === -1 ? value + ' ' : val.substring(0, lastSpace + 1) + value + ' ';
@@ -353,13 +371,20 @@ export default function Search({ module }) {
             {suggestions.length > 0 && (
               <div className="suggestions-box">
                 {suggestions.map((s, i) => (
-                  <div className="suggestion-item" key={i} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
-                    <span>{s}</span><span className="badge badge-concept">Concept</span>
-                  </div>
+                  s && typeof s === 'object' && s.clause ? (
+                    <div className="suggestion-item clause-sugg" key={i} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
+                      <span className="clause-sugg-main"><span className="clause-id">{s.id}</span> <span className="clause-snip">{s.snippet}</span></span>
+                      <span className="badge badge-navy">{s.source}</span>
+                    </div>
+                  ) : (
+                    <div className="suggestion-item" key={i} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
+                      <span>{s}</span><span className="badge badge-concept">Concept</span>
+                    </div>
+                  )
                 ))}
               </div>
             )}
-            <textarea className="search-input" placeholder="Ask IRIS..." value={query}
+            <textarea className="search-input" placeholder="Ask IRIS…   ·   tip: type / then a clause no. (e.g. /64VB or /4(1)(i))" value={query}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
             <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
               <i className="fas fa-magnifying-glass" /> <span className="btn-label">Search</span>

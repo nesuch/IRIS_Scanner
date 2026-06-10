@@ -205,6 +205,19 @@ def _build_chips(kw_tuples, original_query):
     return chips
 
 
+@api_bp.get("/clause-suggest")
+def api_clause_suggest():
+    """Typeahead for the '/'-prefixed clause-number search."""
+    q = request.args.get("q", "")
+    sources = request.args.getlist("source") or None
+    KB_DF = brain.load_knowledge_base()
+    rows = brain.search_by_clause_number(q, KB_DF, sources=sources, limit=8)
+    out = [{"id": r["id"], "source": r["source"], "type": r["type"],
+            "snippet": (str(r["raw_text"])[:90] + ("…" if len(str(r["raw_text"])) > 90 else ""))}
+           for r in rows]
+    return jsonify({"suggestions": out})
+
+
 @api_bp.post("/search")
 def api_search():
     data = request.get_json(silent=True) or request.form
@@ -246,6 +259,21 @@ def api_search():
             "matches": [_match_payload(m) for m in matches],
             "chips": [],
             "note": None if matches else f"No additional matches found in {module.capitalize()} module.",
+        })
+
+    # --- Clause-number lookup (query starts with "/") ---
+    if query.lstrip().startswith("/"):
+        matches = _scope(brain.search_by_clause_number(query, KB_DF, sources=sources))
+        try:
+            email = _app.current_user.email if _app.current_user.is_authenticated else None
+            _app._record_search(email, module, query, len(matches))
+        except Exception:
+            pass
+        return jsonify({
+            "ok": True, "module": module, "kind": "clause_number",
+            "query_label": query, "keywords": [], "highlight": [],
+            "matches": [_match_payload(m) for m in matches], "chips": [],
+            "note": None if matches else "No clause found with that number in the selected documents.",
         })
 
     # --- Greeting ---
