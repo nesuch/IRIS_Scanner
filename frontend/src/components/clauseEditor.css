@@ -21,7 +21,11 @@
 .ce-content { outline: none; }
 .ce-content .ProseMirror { outline: none; min-height: 180px; }
 .ce-content .ProseMirror:focus { outline: none; }
-.ce-content table { width: max-content; }
+/* Editor tables: normal table layout + clear borders (override the rendered
+   .clause-html display:block, which is for horizontal-scroll in read views). */
+.ce-content .ProseMirror table { display: table; width: auto; border-collapse: collapse; margin: 12px 0; }
+.ce-content .ProseMirror td, .ce-content .ProseMirror th { border: 1px solid #cbd5e1; padding: 6px 9px; min-width: 50px; vertical-align: top; }
+.ce-content .ProseMirror th { background: #f1f5f9; font-weight: 700; }
 .ce-content .ProseMirror table td, .ce-content .ProseMirror table th { position: relative; }
 .ce-content .ProseMirror .selectedCell:after { content: ''; position: absolute; inset: 0; background: rgba(13,148,136,0.12); pointer-events: none; }
 .ce-content p.is-editor-empty:first-child::before { content: 'Write the clause…'; color: var(--faint); float: left; height: 0; pointer-events: none; }
