@@ -302,7 +302,8 @@ export default function Admin() {
           </div></div>
         </Section>
 
-        <Section icon="fa-magnifying-glass" title="Recent Search Queries">
+        <Section icon="fa-magnifying-glass" title="Recent Search Queries"
+          action={<button className="btn btn-ghost btn-sm" onClick={() => clearAudit('/admin/clear-search-logs', 'Search Queries')}>Clear Search Queries</button>}>
           <p className="admin-help">What users are searching for across the knowledge base (latest 100).</p>
           <div className="table-wrap log-scroll"><div className="table-scroll">
             <table className="data">

@@ -735,6 +735,21 @@ def api_admin_clear_reset_audit():
     return jsonify({"ok": True})
 
 
+@api_bp.post("/admin/clear-search-logs")
+def api_admin_clear_search_logs():
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    try:
+        m.SearchLog.query.delete()
+        m.db.session.commit()
+        m._record_admin_audit(m.current_user.email, "clear_search_logs", "success")
+    except Exception as e:
+        print(f"clear search logs error: {e}")
+        return jsonify({"ok": False}), 500
+    return jsonify({"ok": True})
+
+
 @api_bp.post("/admin/clear-audit-logs")
 def api_admin_clear_audit_logs():
     if not _require_admin():

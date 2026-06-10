@@ -174,8 +174,8 @@ export default function Profile() {
                     {r.comments?.length > 0 && (
                       <div className="fb-thread">
                         {r.comments.map((c, i) => (
-                          <div key={i} className={`fb-comment ${c.is_admin ? 'admin' : ''}`}>
-                            <span className="fb-author">{c.is_admin ? 'IRIS Team' : 'You'}</span> {c.body}
+                          <div key={i} className={`fb-comment ${c.is_admin && c.author_email !== profile.email ? 'admin' : ''}`}>
+                            <span className="fb-author">{c.author_email === profile.email ? 'You' : (c.is_admin ? 'IRIS Team' : c.author_email)}</span> {c.body}
                             <span className="fb-cdate">{c.created_at}</span>
                           </div>
                         ))}

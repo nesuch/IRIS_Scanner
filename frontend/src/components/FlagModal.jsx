@@ -31,13 +31,15 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
     (async () => {
       try {
         const { default: html2canvas } = await import('html2canvas');
+        // Capture at the screen's real pixel density (cap at 2×) for a sharp image.
         const canvas = await html2canvas(document.body, {
-          scale: 0.6, logging: false, useCORS: true, backgroundColor: '#ffffff',
+          scale: Math.min(window.devicePixelRatio || 1, 2),
+          logging: false, useCORS: true, backgroundColor: '#ffffff',
           windowWidth: document.documentElement.scrollWidth,
           windowHeight: document.documentElement.scrollHeight,
           ignoreElements: (el) => el.classList?.contains('modal-overlay'),
         });
-        if (alive) setShot(canvas.toDataURL('image/jpeg', 0.7));
+        if (alive) setShot(canvas.toDataURL('image/jpeg', 0.9));
       } catch {
         if (alive) setShot(null);
       } finally {
