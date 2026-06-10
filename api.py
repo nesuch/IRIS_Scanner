@@ -178,10 +178,12 @@ def api_reset_password_valid(token):
 # SEARCH  (mirrors handle_search; returns structured data instead of HTML)
 # ----------------------------------------------------------------------------
 def _doc_pdf_url(source):
-    """Prefer an admin-attached PDF for this document; else the bundled static PDF."""
+    """Prefer an admin-attached PDF for this document; else the bundled static PDF.
+    Includes a version param so a replaced PDF busts the viewer/HTTP cache."""
     asset = _app.DocumentAsset.query.filter_by(source_doc=str(source)).first()
     if asset and asset.pdf_filename:
-        return f"/api/doc-pdf/{asset.id}/download"
+        v = int(asset.uploaded_at.timestamp()) if asset.uploaded_at else 0
+        return f"/api/doc-pdf/{asset.id}/download?v={v}"
     p = _app.resolve_pdf_path(str(source).strip().upper())
     return ("/static/" + p) if p else None
 
@@ -488,7 +490,7 @@ def api_doc_pdf_upload():
     asset.uploaded_by = getattr(m.current_user, "email", "") or ""
     asset.uploaded_at = datetime.utcnow()
     m.db.session.commit()
-    return jsonify({"ok": True, "pdf_url": f"/api/doc-pdf/{asset.id}/download"})
+    return jsonify({"ok": True, "pdf_url": f"/api/doc-pdf/{asset.id}/download?v={int(asset.uploaded_at.timestamp())}"})
 
 
 @api_bp.get("/doc-pdf/<int:aid>/download")
