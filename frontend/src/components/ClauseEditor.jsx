@@ -34,16 +34,15 @@ const EXTENSIONS = [
 
 // Reusable editor core: toolbar + editable area + save. Used inline by the
 // Document Studio module and inside the modal below.
-// Strip Word/Office clipboard cruft (mso styles, <o:p>, conditional comments)
-// that otherwise stops ProseMirror from parsing a pasted table.
+// Remove only Word/Office structural cruft (conditional comments, <o:p>, w: tags)
+// so a pasted table parses — but KEEP inline styles so bold/italic/alignment from
+// the original document survive (ProseMirror drops styles it doesn't understand).
 function cleanPastedHTML(html) {
   if (!/mso-|MsoNormal|schemas-microsoft|<o:p/i.test(html)) return html;
   return html
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<\/?o:p[^>]*>/gi, '')
-    .replace(/<\/?w:[^>]*>/gi, '')
-    .replace(/\sstyle="[^"]*"/gi, '')
-    .replace(/\sclass="Mso[^"]*"/gi, '');
+    .replace(/<\/?w:[^>]*>/gi, '');
 }
 
 export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {

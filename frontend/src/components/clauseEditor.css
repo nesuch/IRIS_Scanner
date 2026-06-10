@@ -21,13 +21,14 @@
 .ce-content { outline: none; }
 .ce-content .ProseMirror { outline: none; min-height: 180px; }
 .ce-content .ProseMirror:focus { outline: none; }
-/* Editor tables: normal table layout + clear borders (override the rendered
-   .clause-html display:block, which is for horizontal-scroll in read views). */
-.ce-content .ProseMirror table { display: table; width: auto; border-collapse: collapse; margin: 12px 0; }
-.ce-content .ProseMirror td, .ce-content .ProseMirror th { border: 1px solid #cbd5e1; padding: 6px 9px; min-width: 50px; vertical-align: top; }
-.ce-content .ProseMirror th { background: #f1f5f9; font-weight: 700; }
-.ce-content .ProseMirror table td, .ce-content .ProseMirror table th { position: relative; }
-.ce-content .ProseMirror .selectedCell:after { content: ''; position: absolute; inset: 0; background: rgba(13,148,136,0.12); pointer-events: none; }
+/* Editor tables: fixed layout + dark borders + working resize handles + cell
+   selection (override the rendered .clause-html display:block of read views). */
+.ce-content .ProseMirror table { display: table; table-layout: fixed; width: auto; border-collapse: collapse; margin: 12px 0; overflow: hidden; }
+.ce-content .ProseMirror td, .ce-content .ProseMirror th { border: 1px solid #334155; padding: 6px 9px; min-width: 56px; vertical-align: top; box-sizing: border-box; position: relative; }
+.ce-content .ProseMirror th { background: #eef2f7; font-weight: 700; }
+.ce-content .ProseMirror .selectedCell:after { content: ''; position: absolute; inset: 0; background: rgba(13,148,136,0.18); pointer-events: none; z-index: 2; }
+.ce-content .ProseMirror .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; background: var(--accent); pointer-events: none; }
+.ce-content .ProseMirror.resize-cursor { cursor: col-resize; }
 .ce-content p.is-editor-empty:first-child::before { content: 'Write the clause…'; color: var(--faint); float: left; height: 0; pointer-events: none; }
 
 .ce-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); flex-wrap: wrap; }
