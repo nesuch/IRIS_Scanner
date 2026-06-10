@@ -435,6 +435,55 @@ def api_pq_retag(pid):
     return jsonify({"ok": True, "tags": [t.strip() for t in r.tags.split(",") if t.strip()]})
 
 
+@api_bp.get("/clause/docs")
+def api_clause_docs():
+    """Admin: documents in the knowledge base, with clause + edited counts."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    df = brain.load_knowledge_base()
+    if df is None or df.empty:
+        return jsonify({"docs": []})
+    has_html = "clause_html" in df.columns
+    docs = []
+    for src, g in df.groupby("Source_Doc"):
+        edited = int(g["clause_html"].apply(lambda v: bool(pd.notna(v) and str(v).strip())).sum()) if has_html else 0
+        pdf_path = _app.resolve_pdf_path(str(src).strip().upper())
+        docs.append({
+            "source": str(src),
+            "type": str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
+            "clauses": int(len(g)),
+            "edited": edited,
+            "pdf_url": ("/static/" + pdf_path) if pdf_path else None,
+        })
+    docs.sort(key=lambda d: d["source"].lower())
+    return jsonify({"docs": docs})
+
+
+@api_bp.get("/clause/list")
+def api_clause_list_for_doc():
+    """Admin: ordered clauses of one document for the editor workspace."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    source = (request.args.get("source") or "").strip()
+    df = brain.load_knowledge_base()
+    if df is None or df.empty:
+        return jsonify({"clauses": []})
+    sub = df[df["Source_Doc"].astype(str) == source]
+    has_html = "clause_html" in sub.columns
+    out = []
+    for _, r in sub.iterrows():
+        txt = str(r.get("Clause_Text", ""))
+        edited = bool(has_html and pd.notna(r.get("clause_html")) and str(r.get("clause_html")).strip())
+        out.append({
+            "id": str(r.get("Clause_ID", "")).strip(),
+            "header": str(r.get("Context_Header", "")),
+            "is_header": bool(r.get("Is_Header")),
+            "edited": edited,
+            "preview": re.sub(r"\s+", " ", txt)[:90],
+        })
+    return jsonify({"source": source, "clauses": out})
+
+
 def _clause_text_to_html(text):
     """Seed the editor from a legacy plain-text/markdown clause: lines -> <p>,
     a line ending in ':' -> bold heading, GFM table blocks -> <table>."""

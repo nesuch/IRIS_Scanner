@@ -21,6 +21,7 @@ const SECTIONS = [
       { to: '/data', icon: 'fa-chart-line', text: 'Data Explorer' },
       { to: '/compliance', icon: 'fa-gavel', text: 'Compliance Cockpit' },
       { to: '/downloads', icon: 'fa-folder-tree', text: 'Downloads' },
+      { to: '/studio', icon: 'fa-pen-ruler', text: 'Document Studio', adminOnly: true },
     ],
   },
   {

@@ -12,50 +12,20 @@ import { useToast } from './Toast.jsx';
 import { api } from '../api.js';
 import './clauseEditor.css';
 
-// Admin rich-text editor for a clause. Loads the current content (existing HTML,
-// or a seed converted from the legacy plain-text/markdown clause), lets the admin
-// format it, and saves HTML + plain text back.
-export default function ClauseEditorModal({ clause, onClose, onSaved }) {
-  const toast = useToast();
-  const [html, setHtml] = useState(null);
+const EXTENSIONS = [
+  StarterKit,
+  Underline,
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Table.configure({ resizable: true }),
+  TableRow, TableHeader, TableCell,
+];
 
-  useEffect(() => {
-    api.get(`/clause/edit?id=${encodeURIComponent(clause.id)}&source=${encodeURIComponent(clause.source)}`)
-      .then((d) => setHtml(d.html || '<p></p>'))
-      .catch((e) => { toast.error(e.message || 'Could not open editor'); onClose(); });
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="ce-overlay" onMouseDown={onClose}>
-      <div className="ce-modal" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="ce-head">
-          <div>
-            <div className="ce-title">Edit clause</div>
-            <div className="ce-sub">{clause.source} · {clause.id}</div>
-          </div>
-          <button className="ce-close" onClick={onClose} aria-label="Close">&times;</button>
-        </div>
-        {html === null
-          ? <div className="ce-loading"><Spinner size={16} /> Loading…</div>
-          : <Inner clause={clause} initialHtml={html} onClose={onClose} onSaved={onSaved} />}
-      </div>
-    </div>
-  );
-}
-
-function Inner({ clause, initialHtml, onClose, onSaved }) {
+// Reusable editor core: toolbar + editable area + save. Used inline by the
+// Document Studio module and inside the modal below.
+export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Table.configure({ resizable: true }),
-      TableRow, TableHeader, TableCell,
-    ],
-    content: initialHtml,
-  });
+  const editor = useEditor({ extensions: EXTENSIONS, content: initialHtml || '<p></p>' });
 
   async function save() {
     if (!editor) return;
@@ -66,7 +36,7 @@ function Inner({ clause, initialHtml, onClose, onSaved }) {
         html: editor.getHTML(), text: editor.getText(),
       });
       toast.success('Clause saved');
-      onSaved(r.html);
+      onSaved?.(r.html);
     } catch (e) { toast.error(e.message || 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -77,7 +47,7 @@ function Inner({ clause, initialHtml, onClose, onSaved }) {
   );
 
   return (
-    <>
+    <div className="ce-panel">
       <div className="ce-toolbar">
         {editor && (
           <>
@@ -103,14 +73,43 @@ function Inner({ clause, initialHtml, onClose, onSaved }) {
         <EditorContent editor={editor} className="clause-html ce-content" />
       </div>
       <div className="ce-foot">
-        <span className="ce-hint">Formatting and tables are preserved. The original is kept in version history.</span>
+        <span className="ce-hint">Formatting + tables preserved. The previous version is kept in history.</span>
         <span className="ce-actions">
-          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
+          {onCancel && <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>}
           <button className="btn btn-primary btn-sm" onClick={save} disabled={busy || !editor}>
             {busy ? <Spinner size={14} color="#fff" /> : <i className="fas fa-check" />} Save clause
           </button>
         </span>
       </div>
-    </>
+    </div>
+  );
+}
+
+// Modal wrapper (used by the inline "Edit clause" in search).
+export default function ClauseEditorModal({ clause, onClose, onSaved }) {
+  const toast = useToast();
+  const [html, setHtml] = useState(null);
+
+  useEffect(() => {
+    api.get(`/clause/edit?id=${encodeURIComponent(clause.id)}&source=${encodeURIComponent(clause.source)}`)
+      .then((d) => setHtml(d.html || '<p></p>'))
+      .catch((e) => { toast.error(e.message || 'Could not open editor'); onClose(); });
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="ce-overlay" onMouseDown={onClose}>
+      <div className="ce-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="ce-head">
+          <div>
+            <div className="ce-title">Edit clause</div>
+            <div className="ce-sub">{clause.source} · {clause.id}</div>
+          </div>
+          <button className="ce-close" onClick={onClose} aria-label="Close">&times;</button>
+        </div>
+        {html === null
+          ? <div className="ce-loading"><Spinner size={16} /> Loading…</div>
+          : <ClauseEditorPanel clause={clause} initialHtml={html} onSaved={onSaved} onCancel={onClose} />}
+      </div>
+    </div>
   );
 }
