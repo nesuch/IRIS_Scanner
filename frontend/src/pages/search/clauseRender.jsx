@@ -95,7 +95,7 @@ export function ClauseBody({ text, keywords }) {
     }
     flushTable(idx);
     if (stripped.endsWith(':') && stripped.length) {
-      blocks.push(<div className="clause-line" key={idx}><strong>{line}</strong></div>);
+      blocks.push(<div className="clause-line clause-head" key={idx}><strong>{line}</strong></div>);
     } else {
       blocks.push(<div className="clause-line" key={idx}>{highlightInto(line, regex, idx)}</div>);
     }

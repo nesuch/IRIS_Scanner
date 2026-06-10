@@ -9,6 +9,7 @@ Run the Flask app once first so the pq_documents table exists, then:
     python tools/pq_to_iris.py "/path/to/PQ.docx" [--tags "dental, claims"]
 """
 import argparse
+import io
 import os
 import re
 import shutil
@@ -21,6 +22,22 @@ import docx as docxlib
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(HERE, "iris.db")
 STATIC_PQ_DIR = os.path.join(HERE, "static", "documents", "pqs")
+
+
+def parse_docx(src, filename=""):
+    """Render a PQ .docx (path or raw bytes) to HTML + text + metadata.
+    Returns a dict the CLI and the upload endpoint both use."""
+    fobj = io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else open(src, "rb")
+    try:
+        html = mammoth.convert_to_html(fobj, style_map="u => u").value
+    finally:
+        if not isinstance(src, (bytes, bytearray)):
+            fobj.close()
+    d = docxlib.Document(io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else src)
+    text = "\n".join(p.text for p in d.paragraphs if p.text.strip())
+    pq_no, house, subject, doc_date, title = _meta(text, filename or "")
+    return {"html": html, "text": text, "pq_no": pq_no, "house": house,
+            "subject": subject, "doc_date": doc_date, "title": title}
 
 
 def _meta(text, filename):
@@ -46,13 +63,10 @@ def main():
     ap.add_argument("--tags", default="", help="Comma-separated tags")
     args = ap.parse_args()
 
-    with open(args.docx, "rb") as fh:
-        # u => u keeps underlined headings (mammoth drops underline by default)
-        html = mammoth.convert_to_html(fh, style_map="u => u").value
-
-    d = docxlib.Document(args.docx)
-    text = "\n".join(p.text for p in d.paragraphs if p.text.strip())
-    pq_no, house, subject, doc_date, title = _meta(text, os.path.basename(args.docx))
+    parsed = parse_docx(args.docx, os.path.basename(args.docx))
+    html, text = parsed["html"], parsed["text"]
+    pq_no, house, subject, doc_date, title = (
+        parsed["pq_no"], parsed["house"], parsed["subject"], parsed["doc_date"], parsed["title"])
 
     os.makedirs(STATIC_PQ_DIR, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(args.docx))

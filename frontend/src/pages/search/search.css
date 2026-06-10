@@ -76,6 +76,19 @@
 
 .clause-body { font-size: 14px; line-height: 1.55; color: var(--ink); }
 .clause-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.clause-head strong { color: var(--navy-700, #1a237e); }
+/* Parliamentary Q&A results inside search */
+.pq-results { margin-bottom: 18px; }
+.pq-band { background: rgba(26,35,126,0.08); color: var(--navy-700, #1a237e); border-left-color: var(--navy-700, #1a237e); display: flex; align-items: center; gap: 8px; }
+.pq-result-card { border: 1px solid var(--line); border-radius: var(--r-md); padding: 13px 16px; margin-bottom: 9px; cursor: pointer; transition: 0.15s; background: var(--card); }
+.pq-result-card:hover { border-color: var(--navy-700, #1a237e); box-shadow: var(--sh-1); }
+.pq-result-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 5px; }
+.pq-result-title { font-size: 13.5px; font-weight: 600; color: var(--navy-700, var(--ink)); line-height: 1.4; }
+.pq-result-snip { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.pq-result-open { display: inline-block; margin-top: 7px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.pq-results .pq-house { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--navy-700, #1a237e); padding: 2px 8px; border-radius: var(--r-pill); }
+.pq-results .pq-no { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); }
+.pq-results .pq-date { font-size: 11px; color: var(--muted); margin-left: auto; }
 .clause-body .hl { background: linear-gradient(180deg, rgba(56,189,248,0.0) 55%, rgba(56,189,248,0.5) 55%); color: inherit; font-weight: 700; padding: 0 1px; border-radius: 2px; }
 .clause-md-table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
 .clause-md-table th, .clause-md-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }

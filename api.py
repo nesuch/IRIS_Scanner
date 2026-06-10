@@ -14,6 +14,7 @@ import base64
 import io
 import os
 import re
+import sys
 import time
 from datetime import datetime
 
@@ -21,6 +22,9 @@ import pandas as pd
 from flask import Blueprint, request, jsonify, session, send_file, Response
 
 import iris_brain as brain
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "tools"))
+from pq_to_iris import parse_docx, STATIC_PQ_DIR  # noqa: E402
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -302,6 +306,70 @@ def api_pq_get(pid):
     })
 
 
+@api_bp.post("/pq/upload")
+def api_pq_upload():
+    """Admin-only: upload a PQ .docx → render + store + make it searchable."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    f = request.files.get("file")
+    if not f or not f.filename.lower().endswith(".docx"):
+        return jsonify({"ok": False, "message": "Please upload a .docx file."}), 400
+    tags = (request.form.get("tags") or "").strip()
+    raw = f.read()
+    try:
+        parsed = parse_docx(raw, filename=f.filename)
+    except Exception as e:
+        print(f"PQ parse error: {e}")
+        return jsonify({"ok": False, "message": "Could not read that document."}), 400
+    m = _app
+    os.makedirs(STATIC_PQ_DIR, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
+    with open(os.path.join(STATIC_PQ_DIR, safe), "wb") as out:
+        out.write(raw)
+    row = m.PqDocument(
+        pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
+        subject=parsed["subject"], doc_date=parsed["doc_date"], tags=tags,
+        html=parsed["html"], body_text=parsed["text"], docx_filename=safe,
+        created_at=datetime.utcnow())
+    m.db.session.add(row)
+    m.db.session.commit()
+    return jsonify({"ok": True, "id": row.id, "title": row.title}), 201
+
+
+@api_bp.post("/pq/<int:pid>/delete")
+def api_pq_delete(pid):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    r = m.PqDocument.query.get_or_404(pid)
+    m.db.session.delete(r)
+    m.db.session.commit()
+    return jsonify({"ok": True})
+
+
+def _search_pqs(query, limit=8):
+    """Match Parliamentary Questions by tag/title/subject/body for the search view."""
+    m = _app
+    terms = [t for t in re.split(r"[^a-z0-9]+", query.lower()) if len(t) > 2]
+    if not terms:
+        return []
+    out = []
+    for r in m.PqDocument.query.order_by(m.PqDocument.id.desc()).all():
+        hay = " ".join([r.title or "", r.subject or "", r.tags or "", r.body_text or ""]).lower()
+        score = sum(1 for t in terms if t in hay)
+        if not score:
+            continue
+        body = r.body_text or ""
+        snip = body[:220] + ("…" if len(body) > 220 else "")
+        out.append((score, {
+            "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
+            "date": r.doc_date, "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+            "snippet": snip,
+        }))
+    out.sort(key=lambda x: -x[0])
+    return [p for _, p in out[:limit]]
+
+
 @api_bp.get("/clause-suggest")
 def api_clause_suggest():
     """Typeahead for the '/'-prefixed clause-number search."""
@@ -413,6 +481,7 @@ def api_search():
         "keywords": display_kws,
         "highlight": highlight_kws if tag_matches else display_kws,
         "matches": [_match_payload(m) for m in tag_matches],
+        "pqs": _search_pqs(query),
         "chips": _build_chips(kw_tuples, query),
         "note": note,
     })

@@ -1,20 +1,27 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
-import { EmptyState, PageLoading, Spinner } from '../components/UI.jsx';
+import { EmptyState, PageLoading, Spinner, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api.js';
 import './pqs/pqs.css';
 
 export default function Pqs() {
   const toast = useToast();
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
+  const [params, setParams] = useSearchParams();
   const [list, setList] = useState(null);
-  const [active, setActive] = useState(null);   // full PQ being read
+  const [active, setActive] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
-  useEffect(() => {
-    api.get('/pq').then((d) => setList(d.items || []))
+  function load() {
+    return api.get('/pq').then((d) => setList(d.items || []))
       .catch((e) => { toast.error(e.message || 'Could not load PQs'); setList([]); });
-  }, []);
+  }
+  useEffect(() => { load(); }, []);
 
   function open(id) {
     setLoading(true);
@@ -23,9 +30,14 @@ export default function Pqs() {
       .finally(() => setLoading(false));
   }
 
+  // Deep-link from search: /pqs?open=<id>
+  useEffect(() => {
+    const id = params.get('open');
+    if (id) { open(id); setParams({}, { replace: true }); }
+  }, [params]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!list) return (<><PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="IRDAI replies to Parliamentary Questions" /><div className="page-body"><PageLoading /></div></>);
 
-  // Reading view
   if (active) {
     return (
       <>
@@ -47,7 +59,6 @@ export default function Pqs() {
             {active.tags?.length > 0 && (
               <div className="pq-tags">{active.tags.map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
             )}
-            {/* Rendered docx — bold/italic/underline/tables preserved by mammoth */}
             <div className="pq-html" dangerouslySetInnerHTML={{ __html: active.html }} />
           </div>
         </div>
@@ -55,10 +66,11 @@ export default function Pqs() {
     );
   }
 
-  // List view
   return (
     <>
-      <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="IRDAI replies to Parliamentary Questions" />
+      <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="IRDAI replies to Parliamentary Questions">
+        {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
+      </PageHeader>
       <div className="page-body">
         {loading && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
         {list.length === 0 ? <EmptyState icon="fa-landmark">No Parliamentary Questions yet.</EmptyState>
@@ -81,6 +93,52 @@ export default function Pqs() {
             </div>
           )}
       </div>
+      {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); load(); }} />}
     </>
+  );
+}
+
+function UploadModal({ onClose, onDone }) {
+  const toast = useToast();
+  const [file, setFile] = useState(null);
+  const [tags, setTags] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!file) { toast.error('Choose a .docx file'); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('tags', tags);
+      const r = await api.post('/pq/upload', fd);
+      toast.success(`Added: ${r.title?.slice(0, 50) || 'PQ'}`);
+      onDone();
+    } catch (e) {
+      toast.error(e.message || 'Upload failed');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title="Upload Parliamentary Question" width="520px" onClose={onClose}
+      footer={(
+        <>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || !file}>
+            {busy ? <Spinner size={14} color="#fff" /> : <i className="fas fa-upload" />} Upload &amp; publish
+          </button>
+        </>
+      )}>
+      <p className="guide-intro">Upload the approved reply as a Word file. IRIS renders it on screen (formatting + tables preserved), keeps the original for download, and makes it searchable.</p>
+      <div className="field" style={{ marginBottom: 14 }}>
+        <label>Word document (.docx)</label>
+        <input className="input" type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      </div>
+      <div className="field">
+        <label>Tags <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(comma-separated — drives search)</span></label>
+        <input className="input" value={tags} onChange={(e) => setTags(e.target.value)}
+          placeholder="e.g. senior citizens, claim repudiation, grievance" />
+      </div>
+    </Modal>
   );
 }
