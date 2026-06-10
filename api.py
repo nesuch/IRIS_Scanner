@@ -181,6 +181,7 @@ def _match_payload(m):
         "header": m.get("header", ""),
         "raw_text": str(m.get("raw_text", "")),
         "pdf_url": ("/static/" + pdf_path) if pdf_path else None,
+        **_doc_status(m.get("source", "")),
     }
 
 
@@ -203,6 +204,73 @@ def _build_chips(kw_tuples, original_query):
         all_payload = "||".join([f"{t[0]}|{t[1]}" for t in kw_tuples])
         chips.append({"label": "Search All", "payload": all_payload, "kind": "all"})
     return chips
+
+
+_REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "knowledge_base", "document_registry.json")
+_REGISTRY_CACHE = {}
+
+
+def _load_registry():
+    """Document registry (hierarchy + active/repealed status). Cached by mtime."""
+    try:
+        mtime = os.path.getmtime(_REGISTRY_PATH)
+    except OSError:
+        return []
+    if _REGISTRY_CACHE.get("mtime") != mtime:
+        import json
+        with open(_REGISTRY_PATH, encoding="utf-8") as fh:
+            docs = (json.load(fh) or {}).get("documents", [])
+        _REGISTRY_CACHE.update(mtime=mtime, docs=docs,
+                               by_id={d["id"]: d for d in docs})
+    return _REGISTRY_CACHE.get("docs", [])
+
+
+def _doc_status(source):
+    d = _load_registry() and _REGISTRY_CACHE["by_id"].get(source)
+    if not d:
+        return {}
+    return {"doc_status": d.get("status", "Active"),
+            "effective_date": d.get("effective_date"),
+            "repealed_on": d.get("repealed_on")}
+
+
+@api_bp.get("/documents")
+def api_documents():
+    """Document tree (Act → Regulation → Circular) + download links + status, for
+    the Downloads page."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    docs = _load_registry()
+    # clause counts per document
+    counts = {}
+    try:
+        kb = brain.load_knowledge_base()
+        if kb is not None and not kb.empty:
+            counts = kb["Source_Doc"].value_counts().to_dict()
+    except Exception:
+        pass
+    nodes = {}
+    for d in docs:
+        pdf = _app.resolve_pdf_path(str(d["id"]).upper())
+        nodes[d["id"]] = {
+            "id": d["id"], "title": d.get("title", d["id"]), "type": d.get("type", "Document"),
+            "category": d.get("category", ""), "parent": d.get("parent"),
+            "status": d.get("status", "Active"),
+            "effective_date": d.get("effective_date"), "repealed_on": d.get("repealed_on"),
+            "repealed_by": d.get("repealed_by"),
+            "clauses": int(counts.get(d["id"], 0)),
+            "download_url": ("/static/" + pdf) if pdf else None,
+            "children": [],
+        }
+    roots, repealed = [], []
+    for n in nodes.values():
+        if n["status"].lower() == "repealed":
+            repealed.append(n)
+        elif n["parent"] and n["parent"] in nodes:
+            nodes[n["parent"]]["children"].append(n)
+        else:
+            roots.append(n)
+    return jsonify({"tree": roots, "repealed": repealed})
 
 
 @api_bp.get("/clause-suggest")

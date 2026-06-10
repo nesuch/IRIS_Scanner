@@ -77,6 +77,17 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
                   <span className="clause-header">{m.header}</span>
                   <span className="sep">|</span>
                   <span className="clause-id">Clause: {m.id}</span>
+                  {m.doc_status && (
+                    <span className={`clause-status ${m.doc_status.toLowerCase() === 'repealed' ? 'cs-repealed' : 'cs-active'}`}
+                      title={m.doc_status.toLowerCase() === 'repealed'
+                        ? `Repealed${m.repealed_on ? ' on ' + m.repealed_on : ''}`
+                        : `In force${m.effective_date ? ' from ' + m.effective_date : ''}`}>
+                      <i className={`fas ${m.doc_status.toLowerCase() === 'repealed' ? 'fa-ban' : 'fa-circle-check'}`} />
+                      {m.doc_status.toLowerCase() === 'repealed'
+                        ? `Repealed${m.repealed_on ? ` ${m.repealed_on}` : ''}`
+                        : `Active${m.effective_date ? ` · from ${m.effective_date}` : ''}`}
+                    </span>
+                  )}
                   <span className="clause-actions">
                     {m.pdf_url && (
                       <button className="pane-btn" title="Open PDF in side pane" onClick={() => onOpenPane(m)}><i className="fas fa-table-columns" /> Pane</button>

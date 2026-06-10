@@ -1,0 +1,71 @@
+{
+  "_comment": "Registry powering the Downloads tree and the Active/Repealed clause tags. Edit freely. 'parent' is another entry's id (a circular flows from a regulation, a regulation from an act). 'status' is Active or Repealed; set repealed_on / repealed_by when a document is superseded.",
+  "documents": [
+    {
+      "id": "Insurance Act 1938",
+      "title": "Insurance Act, 1938",
+      "type": "Act",
+      "category": "HEALTH",
+      "parent": null,
+      "status": "Active",
+      "effective_date": "1938-07-01",
+      "repealed_on": null,
+      "repealed_by": null
+    },
+    {
+      "id": "Irdai Act 1999",
+      "title": "IRDA Act, 1999",
+      "type": "Act",
+      "category": "HEALTH",
+      "parent": null,
+      "status": "Active",
+      "effective_date": "1999-12-29",
+      "repealed_on": null,
+      "repealed_by": null
+    },
+    {
+      "id": "Pphi Regulations 2024",
+      "title": "IRDAI (Protection of Policyholders' Interests) Regulations, 2024",
+      "type": "Regulation",
+      "category": "HEALTH",
+      "parent": "Irdai Act 1999",
+      "status": "Active",
+      "effective_date": "2024-04-01",
+      "repealed_on": null,
+      "repealed_by": null
+    },
+    {
+      "id": "Product Regulations 2024",
+      "title": "IRDAI (Insurance Products) Regulations, 2024",
+      "type": "Regulation",
+      "category": "HEALTH",
+      "parent": "Irdai Act 1999",
+      "status": "Active",
+      "effective_date": "2024-04-01",
+      "repealed_on": null,
+      "repealed_by": null
+    },
+    {
+      "id": "Pphi Master Circular 2024",
+      "title": "Master Circular on Protection of Policyholders' Interests, 2024",
+      "type": "Master Circular",
+      "category": "HEALTH",
+      "parent": "Pphi Regulations 2024",
+      "status": "Active",
+      "effective_date": "2024-09-05",
+      "repealed_on": null,
+      "repealed_by": null
+    },
+    {
+      "id": "Health Master Circular 2024",
+      "title": "Master Circular on Health Insurance Business, 2024",
+      "type": "Master Circular",
+      "category": "HEALTH",
+      "parent": "Product Regulations 2024",
+      "status": "Active",
+      "effective_date": "2024-05-29",
+      "repealed_on": null,
+      "repealed_by": null
+    }
+  ]
+}
