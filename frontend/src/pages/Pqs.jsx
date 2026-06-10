@@ -70,17 +70,17 @@ export default function Pqs() {
     return (
       <div className="search-shell">
         <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions" />
-        <div className="page-body">
-          <div className="pq-read-bar">
-            <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
-            <div className="pq-read-actions">
-              {isAdmin && <RetagControl pq={active} onSaved={(tags) => { setActive({ ...active, tags }); if (lastQuery) runSearch(lastQuery); }} />}
-              {isAdmin && <button className="btn btn-ghost btn-sm danger" onClick={() => del(active.id)}><i className="fas fa-trash" /> Delete</button>}
-              {active.download_url && (
-                <a className="btn btn-primary btn-sm" href={active.download_url} target="_blank" rel="noreferrer"><i className="fas fa-file-word" /> Download original (.docx)</a>
-              )}
-            </div>
+        <div className="pq-read-bar">
+          <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
+          <div className="pq-read-actions">
+            {isAdmin && <RetagControl pq={active} onSaved={(tags) => { setActive({ ...active, tags }); if (lastQuery) runSearch(lastQuery); }} />}
+            {isAdmin && <button className="btn btn-ghost btn-sm danger" onClick={() => del(active.id)}><i className="fas fa-trash" /> Delete</button>}
+            {active.download_url && (
+              <a className="btn btn-primary btn-sm" href={active.download_url} target="_blank" rel="noreferrer"><i className="fas fa-file-word" /> Download original (.docx)</a>
+            )}
           </div>
+        </div>
+        <div className="pq-read-scroll">
           <div className="pq-doc card">
             <div className="pq-doc-head">
               {active.house && <span className="pq-house">{active.house}</span>}
@@ -129,7 +129,6 @@ export default function Pqs() {
                       {p.date && <span className="pq-date">{p.date}</span>}
                     </div>
                     <div className="pq-card-title">{p.subject || p.title}</div>
-                    {p.snippet && <div className="pq-card-snip">{p.snippet}</div>}
                     {p.tags?.length > 0 && (
                       <div className="pq-tags">{p.tags.slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
                     )}

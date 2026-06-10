@@ -272,7 +272,8 @@ export default function Search({ module }) {
   }
 
   function selectSuggestion(value) {
-    // A clause suggestion runs the lookup immediately; a tag suggestion is appended.
+    // Click-and-go: a clause suggestion runs its lookup; a tag suggestion completes
+    // the query and searches immediately (no separate "press search" step).
     if (value && typeof value === 'object' && value.clause) {
       setSuggestions([]);
       setQuery('');
@@ -281,9 +282,10 @@ export default function Search({ module }) {
     }
     const val = query;
     const lastSpace = val.lastIndexOf(' ');
-    const next = lastSpace === -1 ? value + ' ' : val.substring(0, lastSpace + 1) + value + ' ';
-    setQuery(next);
+    const next = (lastSpace === -1 ? value : val.substring(0, lastSpace + 1) + value).trim();
     setSuggestions([]);
+    setQuery('');
+    runSearch(next);
   }
 
   function onKeyDown(e) {
