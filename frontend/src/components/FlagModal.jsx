@@ -31,28 +31,15 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
     (async () => {
       try {
         const { default: html2canvas } = await import('html2canvas');
-        await new Promise((r) => setTimeout(r, 250));  // let fonts/paint settle
-        // Full-page capture (this is the variant that rendered the page text
-        // crisply); the onclone fixes below also restore the wordmark + colours.
+        // Original capture — faint but consistently shows content across all
+        // modules (including Universal search). Kept simple on purpose.
         const canvas = await html2canvas(document.body, {
-          scale: Math.min(window.devicePixelRatio || 1, 2),
-          logging: false, useCORS: true, backgroundColor: '#ffffff',
+          scale: 0.6, logging: false, useCORS: true, backgroundColor: '#ffffff',
           windowWidth: document.documentElement.scrollWidth,
           windowHeight: document.documentElement.scrollHeight,
           ignoreElements: (el) => el.classList?.contains('modal-overlay'),
-          onclone: (doc) => {
-            const s = doc.createElement('style');
-            s.textContent =
-              // full opacity, no mid-flight animations, solid text fill (fixes faint capture)
-              '*{animation:none!important;transition:none!important;opacity:1!important;filter:none!important;-webkit-text-fill-color:currentColor!important;}'
-              // gradient-clipped "IRIS" wordmark -> solid (html2canvas can't clip-to-text)
-              + '.wm{-webkit-text-fill-color:#1a237e!important;color:#1a237e!important;background:none!important;}'
-              // overflow-wrap/word-break combo makes html2canvas drop body text nodes
-              + '.clause-line,.clause-body,.iris-bubble,.bubble{overflow-wrap:normal!important;word-break:normal!important;white-space:pre-wrap!important;}';
-            doc.head.appendChild(s);
-          },
         });
-        if (alive) setShot(canvas.toDataURL('image/jpeg', 0.9));
+        if (alive) setShot(canvas.toDataURL('image/jpeg', 0.7));
       } catch {
         if (alive) setShot(null);
       } finally {
