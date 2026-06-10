@@ -247,6 +247,31 @@ def update_clause_content(clause_id, source, html, text, editor=None):
     return True
 
 
+def delete_document(source, editor=None):
+    """Delete an entire document and all its clauses. Snapshots each clause to
+    clause_versions first (recoverable), then refreshes the in-memory KB.
+    Returns the number of clauses removed."""
+    global KB_CACHE_DF
+    now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
+    conn = sqlite3.connect(DB_NAME)
+    rows = conn.execute(
+        "SELECT clause_id, clause_html, clause_text, regulatory_tags FROM regulatory_clauses WHERE source_doc=?",
+        (str(source),)).fetchall()
+    if not rows:
+        conn.close()
+        return 0
+    tag = (editor or "") + " (doc delete)"
+    for r in rows:
+        conn.execute(
+            "INSERT INTO clause_versions (clause_id, source_doc, html, body_text, tags, edited_by, edited_at) "
+            "VALUES (?,?,?,?,?,?,?)", (r[0], str(source), r[1], r[2], r[3], tag, now))
+    conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=?", (str(source),))
+    conn.commit()
+    conn.close()
+    refresh_kb()
+    return len(rows)
+
+
 def update_clause_tags(clause_id, source, tags):
     """Admin in-app edit: persist a clause's tags to SQL, update the in-memory KB
     and rebuild the tag vocabulary so search reflects it immediately. Returns the

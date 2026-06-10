@@ -58,6 +58,22 @@ def load_doc_pdf(filename):
     return _load("docpdf", LOCAL_DOC_DIR, filename)
 
 
+def delete_doc_pdf(filename):
+    if not filename:
+        return
+    if _BUCKET:
+        try:
+            _bucket().blob(f"docpdf/{filename}").delete()
+        except Exception as e:
+            print(f"GCS delete error: {e}")
+    path = os.path.join(LOCAL_DOC_DIR, os.path.basename(filename))
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def _load(prefix, local_dir, filename):
     if not filename:
         return None

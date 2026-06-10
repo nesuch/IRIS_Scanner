@@ -54,6 +54,16 @@ export default function Studio() {
     return api.get('/clause/docs').then((d) => setDocs(d.docs || [])).catch(() => {});
   }
 
+  async function delDoc(d) {
+    if (!window.confirm(`Delete "${d.source}" and all ${d.clauses} clauses? This cannot be undone.`)) return;
+    try {
+      const r = await api.post('/clause/doc-delete', { source: d.source });
+      toast.success(`Deleted ${r.deleted} clauses`);
+      if (doc?.source === d.source) { setDoc(null); setActive(null); }
+      reloadDocs();
+    } catch (e) { toast.error(e.message || 'Could not delete'); }
+  }
+
   useEffect(() => {
     api.get('/clause/docs').then((d) => setDocs(d.docs || []))
       .catch((e) => { toast.error(e.message || 'Could not load documents'); setDocs([]); });
@@ -110,10 +120,12 @@ export default function Studio() {
               docs === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
                 : docs.length === 0 ? <EmptyState icon="fa-folder-open">No documents.</EmptyState>
                   : docs.map((d) => (
-                    <button key={d.source} className="studio-doc" onClick={() => openDoc(d)}>
+                    <div key={d.source} className="studio-doc" onClick={() => openDoc(d)} role="button" tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter') openDoc(d); }}>
+                      <button className="studio-doc-del" title="Delete document" onClick={(e) => { e.stopPropagation(); delDoc(d); }}><i className="fas fa-trash" /></button>
                       <span className="studio-doc-name">{d.source}</span>
                       <span className="studio-doc-meta">{d.clauses} clauses · {d.edited} edited</span>
-                    </button>
+                    </div>
                   ))
             ) : (
               clauses === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>

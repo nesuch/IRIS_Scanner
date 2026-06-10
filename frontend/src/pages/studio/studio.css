@@ -11,7 +11,11 @@
 .studio-rail-body { flex: 1; overflow-y: auto; min-height: 0; padding: 8px; }
 .studio-loading { display: flex; align-items: center; gap: 8px; color: var(--muted); padding: 16px; font-size: 13px; }
 
-.studio-doc { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 11px 13px; margin-bottom: 7px; cursor: pointer; transition: 0.14s; }
+.studio-doc { position: relative; display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 11px 13px; margin-bottom: 7px; cursor: pointer; transition: 0.14s; }
+.studio-doc-del { position: absolute; top: 9px; right: 9px; border: none; background: none; color: var(--faint); cursor: pointer; font-size: 12px; padding: 4px; border-radius: var(--r-sm); transition: 0.14s; opacity: 0; }
+.studio-doc:hover .studio-doc-del { opacity: 1; }
+.studio-doc-del:hover { color: var(--bad); background: var(--bad-bg, #fee2e2); }
+.studio-doc .studio-doc-name { padding-right: 22px; }
 .studio-doc:hover { border-color: var(--accent); box-shadow: var(--sh-1); }
 .studio-doc-name { font-size: 13px; font-weight: 600; color: var(--ink); }
 .studio-doc-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); }

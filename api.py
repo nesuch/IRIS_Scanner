@@ -565,6 +565,27 @@ def api_clause_import_pdf():
                     "orphans": report.get("orphan_lines", 0), "spec_errors": spec_errors})
 
 
+@api_bp.post("/clause/doc-delete")
+def api_doc_delete():
+    """Admin: delete an entire document (all clauses + attached PDF)."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    source = (data.get("source") or "").strip()
+    if not source:
+        return jsonify({"ok": False, "message": "Missing document"}), 400
+    n = brain.delete_document(source, getattr(_app.current_user, "email", "") or "")
+    asset = _app.DocumentAsset.query.filter_by(source_doc=source).first()
+    if asset:
+        try:
+            storage.delete_doc_pdf(asset.pdf_filename)
+        except Exception as e:
+            print(f"doc pdf delete: {e}")
+        _app.db.session.delete(asset)
+        _app.db.session.commit()
+    return jsonify({"ok": True, "deleted": n})
+
+
 @api_bp.post("/clause/doc-pdf")
 def api_doc_pdf_upload():
     """Admin: attach/replace the original source PDF for a document."""
