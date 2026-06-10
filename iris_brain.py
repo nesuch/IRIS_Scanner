@@ -306,40 +306,38 @@ def search_by_clause_number(raw_query, df, sources=None, limit=12):
     scoped = df
     if sources:
         scoped = df[df["Source_Doc"].isin(set(sources))]
-    out = []
-    for _, row in scoped.iterrows():
-        if row.get("Is_Header"):
-            continue
-        text = str(row.get("Clause_Text", ""))
-        cid = str(row.get("Clause_ID", ""))
-        # The clause's own number = the leading number of its text ("11) …" -> 11)
-        # or the last segment of its id ("MCH-CH1-011" -> 011).
-        lead = re.match(r"^[\W_]*([0-9]+[a-z]*)", text.lower())
-        lead_num = _num_key(lead.group(1)) if lead else ""
-        cid_tail = _num_key(cid.rsplit("-", 1)[-1])
-        cid_key, lead_key = _num_key(cid), _num_key(text[:48])
-        if q in (lead_num, cid_tail):                 # exact clause-number match
-            rank = (0, 0)
-        elif lead_num.startswith(q) or cid_tail.startswith(q):
-            rank = (1, len(lead_num or cid_tail))
-        elif q in cid_key:
-            rank = (2, cid_key.find(q))
-        elif len(q) >= 2 and q in lead_key:           # number near the start of the text
-            rank = (3, lead_key.find(q))
-        elif len(q) >= 2 and q in _num_key(text):     # number cited inside the body
-            rank = (4, _num_key(text).find(q))
-        else:
-            continue
-        out.append((rank, {
+
+    def _payload(row):
+        return {
             "source": row.get("Source_Doc", "UNKNOWN"),
             "type": row.get("Doc_Type", "UNKNOWN"),
             "priority": row.get("Priority", 99),
             "id": str(row.get("Clause_ID", "")).strip(),
             "header": row.get("Context_Header", ""),
             "raw_text": str(row.get("Clause_Text", "")),
-        }))
-    out.sort(key=lambda x: x[0])
-    return [m for _, m in out[:limit]]
+        }
+
+    # Tier the matches: a clause's OWN number (exact, then prefix) is what the user
+    # means by "/64". Body mentions ("clause 55 cites section 64") are only a
+    # fallback used when nothing is actually numbered like the query.
+    exact, prefix, loose = [], [], []
+    for _, row in scoped.iterrows():
+        if row.get("Is_Header"):
+            continue
+        text = str(row.get("Clause_Text", ""))
+        cid = str(row.get("Clause_ID", ""))
+        lead = re.match(r"^[\W_]*([0-9]+[a-z]*)", text.lower())
+        lead_num = _num_key(lead.group(1)) if lead else ""
+        cid_tail = _num_key(cid.rsplit("-", 1)[-1])
+        if q == lead_num or q == cid_tail:
+            exact.append(_payload(row))
+        elif lead_num.startswith(q) or cid_tail.startswith(q):
+            prefix.append((len(lead_num or cid_tail), _payload(row)))
+        elif len(q) >= 2 and (q in _num_key(cid) or q in _num_key(text)):
+            loose.append(_payload(row))
+    prefix.sort(key=lambda x: x[0])
+    primary = exact + [p for _, p in prefix]
+    return (primary or loose)[:limit]
 
 
 def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):

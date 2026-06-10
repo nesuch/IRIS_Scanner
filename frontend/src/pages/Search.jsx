@@ -252,7 +252,7 @@ export default function Search({ module }) {
     // Clause-number mode: "/" then a number (e.g. /64VB, /4 (1) (i)).
     if (val.trimStart().startsWith('/')) {
       const key = val.replace(/[^a-z0-9]/gi, '');
-      if (key.length < 2) { setSuggestions([]); return; }
+      if (key.length < 1) { setSuggestions([]); return; }
       const params = new URLSearchParams({ q: val.trim() });
       if (allDocs.length && selected.size < allDocs.length) [...selected].forEach((s) => params.append('source', s));
       api.get(`/clause-suggest?${params.toString()}`)
@@ -340,6 +340,7 @@ export default function Search({ module }) {
       </div>
 
       <div className="input-area">
+        {!query && <div className="search-tip">Type a question — or <b>/</b> then a clause number (e.g. <b>/64</b>)</div>}
         <form className="input-inner" onSubmit={onSubmit} autoComplete="off">
           <div className="search-wrapper">
             <div className="doc-filter" ref={docFilterRef}>
@@ -403,7 +404,7 @@ export default function Search({ module }) {
                 ))}
               </div>
             )}
-            <textarea className="search-input" placeholder="Ask IRIS…   ·   type / for a clause number" value={query}
+            <textarea className="search-input" placeholder="Ask IRIS…" value={query}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
             <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
               <i className="fas fa-magnifying-glass" /> <span className="btn-label">Search</span>

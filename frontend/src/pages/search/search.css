@@ -137,6 +137,8 @@
 .clause-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 2px 8px; border-radius: var(--r-pill); }
 .clause-status.cs-active { color: #2e7d32; background: #e8f5e9; }
 .clause-status.cs-repealed { color: #c62828; background: #ffebee; }
+.search-tip { text-align: center; font-size: 11.5px; color: var(--muted); margin-bottom: 7px; }
+.search-tip b { color: var(--accent); font-family: var(--mono); font-weight: 700; }
 
 @media (max-width: 900px) {
   .search-shell { height: 100dvh; }

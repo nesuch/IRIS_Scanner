@@ -31,6 +31,7 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
     (async () => {
       try {
         const { default: html2canvas } = await import('html2canvas');
+        await new Promise((r) => setTimeout(r, 250));  // let fonts/paint settle
         // Capture at the screen's real pixel density (cap at 2×) for a sharp image.
         const canvas = await html2canvas(document.body, {
           scale: Math.min(window.devicePixelRatio || 1, 2),
@@ -38,10 +39,13 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
           windowWidth: document.documentElement.scrollWidth,
           windowHeight: document.documentElement.scrollHeight,
           ignoreElements: (el) => el.classList?.contains('modal-overlay'),
-          // Force full opacity / no mid-flight animations so the capture isn't faint.
           onclone: (doc) => {
             const s = doc.createElement('style');
-            s.textContent = '*{animation:none!important;transition:none!important;opacity:1!important;filter:none!important;}';
+            // Full opacity + no mid-flight animations (fixes faint capture); and
+            // normalise overflow-wrap/word-break which makes html2canvas drop the
+            // body text nodes (leaving only the bold heading visible).
+            s.textContent = '*{animation:none!important;transition:none!important;opacity:1!important;filter:none!important;}'
+              + '.clause-line,.clause-body,.iris-bubble,.bubble{overflow-wrap:normal!important;word-break:normal!important;white-space:pre-wrap!important;}';
             doc.head.appendChild(s);
           },
         });
