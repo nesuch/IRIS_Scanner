@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import './pdfViewer.css';
 
 // Render PDFs in-app (pages drawn to canvas) so they always display inline,
 // regardless of the browser's "download PDFs" setting. Pages render lazily as

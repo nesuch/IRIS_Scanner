@@ -1,0 +1,14 @@
+/* PdfViewer self-contained styles — imported by the component so it's styled
+   wherever it's used (search pane + Document Studio), not only on the search page. */
+.pdfv { flex: 1; display: flex; flex-direction: column; min-height: 0; background: #525659; position: relative; }
+.pdfv-toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 6px; background: #3a3f44; color: #e2e8f0; }
+.pdfv-zoom { width: 26px; height: 26px; border: 1px solid #565c63; background: #2c3034; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+.pdfv-zoom:hover { background: #3a4046; }
+.pdfv-zoom-lbl { font-family: var(--mono); font-size: 12px; min-width: 46px; text-align: center; }
+.pdfv-scroll { flex: 1; overflow: auto; padding: 14px; text-align: center; }
+.pdfv-page { position: relative; margin: 0 auto 14px; background: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+.pdfv-page canvas { display: block; }
+.pdfv-page .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; opacity: 1; z-index: 2; text-align: left; }
+.pdfv-page .textLayer span, .pdfv-page .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
+.pdfv-page .textLayer ::selection { background: rgba(13, 148, 136, 0.35); }
+.pdfv-msg { position: absolute; top: 60px; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #e2e8f0; font-size: 14px; pointer-events: none; }
