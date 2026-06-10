@@ -4,7 +4,7 @@ import { useToast } from './Toast.jsx';
 import { api } from '../api.js';
 
 // Reference guide: which IRIS view + filter path reaches each Handbook table.
-export default function AccessGuideModal({ onClose }) {
+export default function AccessGuideModal({ onClose, onApply }) {
   const toast = useToast();
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
@@ -54,17 +54,26 @@ export default function AccessGuideModal({ onClose }) {
         <div className="guide-table-wrap">
           <table className="guide-table">
             <thead>
-              <tr><th>Table</th><th>Handbook Title</th><th>IRIS View</th><th>How to access</th></tr>
+              <tr><th>Table</th><th>Handbook Title</th><th>IRIS View</th><th>How to access</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={4} className="guide-empty">No tables match.</td></tr>
+                <tr><td colSpan={5} className="guide-empty">No tables match.</td></tr>
               ) : filtered.map((r, i) => (
                 <tr key={i}>
                   <td className="guide-tno">{r.Part} · {r.Table}</td>
                   <td className="guide-title">{r['Handbook Table Title']}</td>
                   <td><span className="guide-viewchip">{r['IRIS View']}</span></td>
                   <td className="guide-path">{r['How to Access (filter path)']}</td>
+                  <td>
+                    {onApply && r.Dimension && (
+                      <button className="btn btn-primary btn-xs guide-open"
+                        title="Switch to this view and pre-select the line of business"
+                        onClick={() => { onApply({ dimension: r.Dimension, pick: r.Pick || '' }); onClose(); }}>
+                        Open <i className="fas fa-arrow-right" />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

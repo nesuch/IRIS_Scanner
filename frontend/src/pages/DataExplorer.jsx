@@ -422,6 +422,16 @@ export default function DataExplorer() {
     api.get('/data/options').then(setOptions).catch(() => toast.error('Could not load filter options'));
   }, []);
 
+  // From the access guide: jump to a view with its line of business pre-selected,
+  // then open the filter modal so the user just picks the entity (+ metric/year).
+  function applyGuide({ dimension, pick }) {
+    const next = blankFilters(dimension);
+    const validLobs = options?.by_dim?.[dimension]?.lobs || [];
+    if (pick && validLobs.includes(pick)) next.lobs = [pick];
+    setFilters(next);
+    setModal(true);
+  }
+
   async function applyFilters(draft) {
     setFilters(draft);
     setModal(false);
@@ -554,7 +564,7 @@ export default function DataExplorer() {
           onClose={() => setFlagOpen(false)} />
       )}
 
-      {guideOpen && <AccessGuideModal onClose={() => setGuideOpen(false)} />}
+      {guideOpen && <AccessGuideModal onClose={() => setGuideOpen(false)} onApply={applyGuide} />}
     </>
   );
 }

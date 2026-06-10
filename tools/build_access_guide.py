@@ -114,6 +114,8 @@ def main():
     rows = []
     seen = set()
 
+    generic = {SEG, *NONE_PICK.values()}
+
     def add(part, sheet, view, pick):
         key = (part, sheet, view, pick)
         if key in seen:
@@ -121,10 +123,16 @@ def main():
         seen.add(key)
         title = table_title(args.parts_dir, part, sheet)
         path = (PATHS.get(view, "{pick}").format(pick=pick))
+        # Structured fields for the in-app one-click "Open": the report view and the
+        # specific Line of Business / Statement to pre-select (blank if generic).
+        specific = "" if pick in generic else pick
+        if specific == "General":            # matches the engine's canonical LOB
+            specific = "General (All Segments)"
         rows.append({
             "Part": part, "Table": sheet, "Handbook Table Title": title,
             "IRIS View": {"Financials": "Statements & Reports"}.get(view, f"{view}-wise"),
             "How to Access (filter path)": path,
+            "Dimension": view, "Pick": specific,
         })
 
     for attr, view, lob_i in REGISTRY:
@@ -145,7 +153,8 @@ def main():
 
     summary_df = pd.DataFrame(
         [{"Part": p, "Table": t, "Handbook Table Title": title,
-          "IRIS View": f"{v}-wise", "How to Access (filter path)": path}
+          "IRIS View": f"{v}-wise", "How to Access (filter path)": path,
+          "Dimension": v, "Pick": ""}
          for p, t, v, title, path in SUMMARY_ROWS])
     df = pd.concat([df, summary_df], ignore_index=True)
 
@@ -156,6 +165,10 @@ def main():
         widths = {"A": 9, "B": 7, "C": 64, "D": 22, "E": 90}
         for col, w in widths.items():
             ws.column_dimensions[col].width = w
+        # F (Dimension) and G (Pick) drive the in-app one-click open; hide them so
+        # the downloaded spreadsheet stays clean (pandas still reads hidden cols).
+        for col in ("F", "G"):
+            ws.column_dimensions[col].hidden = True
         for cell in ws[1]:
             cell.font = openpyxl.styles.Font(bold=True, color="FFFFFF")
             cell.fill = openpyxl.styles.PatternFill("solid", fgColor="1A237E")
