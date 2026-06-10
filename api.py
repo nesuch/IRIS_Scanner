@@ -278,14 +278,36 @@ def api_documents():
     return jsonify({"tree": roots, "repealed": repealed})
 
 
+def _pq_snippet(body, limit=220):
+    """Skip the letterhead (Ref/date/address/Subject) and snippet the actual content."""
+    if not body:
+        return ""
+    m = re.search(r"Subject\s*:.*?(?:\n|$)", body, re.I) or re.search(r"Dear\s+Sir.*?(?:\n|$)", body, re.I)
+    rest = body[m.end():] if m else body
+    rest = re.sub(r"\s+", " ", rest).strip()
+    return rest[:limit] + ("…" if len(rest) > limit else "")
+
+
 def _pq_card(r):
-    body = r.body_text or ""
     return {
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
         "subject": r.subject, "date": r.doc_date,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
-        "snippet": body[:220] + ("…" if len(body) > 220 else ""),
+        "snippet": _pq_snippet(r.body_text or ""),
     }
+
+
+@api_bp.get("/pq/tags")
+def api_pq_tags():
+    """Distinct tags across all PQs — the typeahead vocabulary."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    tags = set()
+    for r in _app.PqDocument.query.all():
+        for t in (r.tags or "").split(","):
+            if t.strip():
+                tags.add(t.strip())
+    return jsonify({"tags": sorted(tags, key=str.lower)})
 
 
 @api_bp.get("/pq")
@@ -380,13 +402,11 @@ def _search_pqs(query, limit=8):
         score = sum(1 for t in terms if t in hay)
         if not score:
             continue
-        body = r.body_text or ""
-        snip = body[:220] + ("…" if len(body) > 220 else "")
         out.append((score, {
             "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
             "subject": r.subject, "date": r.doc_date,
             "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
-            "snippet": snip,
+            "snippet": _pq_snippet(r.body_text or ""),
         }))
     out.sort(key=lambda x: -x[0])
     return [p for _, p in out[:limit]]

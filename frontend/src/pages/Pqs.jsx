@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -19,7 +19,9 @@ export default function Pqs() {
   const [active, setActive] = useState(null);      // full reply being read (overlay)
   const [opening, setOpening] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const sugTimer = useRef(null);
+  const [allTags, setAllTags] = useState([]);
+
+  useEffect(() => { api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([])); }, []);
 
   async function runSearch(q) {
     if (!q.trim() || busy) return;
@@ -38,14 +40,13 @@ export default function Pqs() {
   function onInput(e) {
     const val = e.target.value;
     setQuery(val);
-    clearTimeout(sugTimer.current);
-    if (val.trim().length < 2) { setSuggestions([]); return; }
-    sugTimer.current = setTimeout(() => {
-      api.get(`/pq?q=${encodeURIComponent(val.trim())}`)
-        .then((d) => setSuggestions((d.items || []).slice(0, 6)))
-        .catch(() => setSuggestions([]));
-    }, 180);
+    const t = val.trim().toLowerCase();
+    if (t.length < 2) { setSuggestions([]); return; }
+    // Suggest matching tags (the PQ vocabulary), not whole documents.
+    setSuggestions(allTags.filter((tag) => tag.toLowerCase().includes(t)).slice(0, 8));
   }
+
+  function pickTag(tag) { setQuery(''); setSuggestions([]); runSearch(tag); }
 
   function open(id) {
     setOpening(true);
@@ -146,13 +147,10 @@ export default function Pqs() {
           <div className="search-wrapper">
             {suggestions.length > 0 && (
               <div className="suggestions-box">
-                {suggestions.map((s) => (
-                  <div className="suggestion-item clause-sugg" key={s.id} onMouseDown={(e) => { e.preventDefault(); setQuery(''); setSuggestions([]); open(s.id); }}>
-                    <span className="clause-sugg-main">
-                      <span className="clause-id">{s.pq_no ? `Q${s.pq_no}` : 'PQ'}</span>{' '}
-                      <span className="clause-snip">{s.subject || s.title}</span>
-                    </span>
-                    {s.house && <span className="badge badge-navy">{s.house}</span>}
+                {suggestions.map((s, i) => (
+                  <div className="suggestion-item" key={i} onMouseDown={(e) => { e.preventDefault(); pickTag(s); }}>
+                    <span><i className="fas fa-tag" style={{ fontSize: 10, color: 'var(--muted)', marginRight: 7 }} />{s}</span>
+                    <span className="badge badge-concept">Tag</span>
                   </div>
                 ))}
               </div>
