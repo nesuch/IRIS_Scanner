@@ -3,13 +3,15 @@ import { Fragment } from 'react';
 // Doc-type styles — ports app.py TYPE_STYLES, remapped onto the blue brand
 // palette (distinct by hue/lightness, all on-brand). ACT keeps a warm-gold law
 // accent for hierarchy clarity.
+// Distinct hue per doc type so they don't blur together (Regulation/Circular were
+// both blue, hard to tell apart and too close to the blue system UI).
 export const TYPE_STYLES = {
-  ACT:        { label: 'ACT (The Law)',   color: '#92400e', bg: 'rgba(245,158,11,0.12)', bar: '#d97706' },
-  REGULATION: { label: 'REGULATION',      color: '#1a237e', bg: 'rgba(26,35,126,0.10)',  bar: '#283593' },
-  MASTER:     { label: 'MASTER CIRCULAR', color: '#0e7490', bg: 'rgba(6,182,212,0.12)',  bar: '#06b6d4' },
-  CIRCULAR:   { label: 'CIRCULAR',        color: '#1d4ed8', bg: 'rgba(37,99,235,0.10)',  bar: '#2563eb' },
-  GUIDELINE:  { label: 'GUIDELINE',       color: '#334155', bg: 'rgba(100,116,139,0.12)', bar: '#64748b' },
-  UNKNOWN:    { label: 'DOCUMENT',        color: '#475569', bg: 'rgba(148,163,184,0.14)', bar: '#94a3b8' },
+  ACT:        { label: 'ACT (The Law)',   color: '#92400e', bg: 'rgba(245,158,11,0.14)', bar: '#d97706' }, // amber
+  REGULATION: { label: 'REGULATION',      color: '#6d28d9', bg: 'rgba(139,92,246,0.12)', bar: '#7c3aed' }, // violet
+  MASTER:     { label: 'MASTER CIRCULAR', color: '#0f766e', bg: 'rgba(20,184,166,0.14)', bar: '#14b8a6' }, // teal
+  CIRCULAR:   { label: 'CIRCULAR',        color: '#1d4ed8', bg: 'rgba(37,99,235,0.10)',  bar: '#2563eb' }, // blue
+  GUIDELINE:  { label: 'GUIDELINE',       color: '#9f1239', bg: 'rgba(244,63,94,0.10)',  bar: '#e11d48' }, // rose
+  UNKNOWN:    { label: 'DOCUMENT',        color: '#475569', bg: 'rgba(148,163,184,0.14)', bar: '#94a3b8' }, // slate
 };
 
 // Build a case-insensitive matcher for keywords + simple suffix variants,

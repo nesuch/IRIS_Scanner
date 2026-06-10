@@ -89,7 +89,7 @@
 .pq-results .pq-house { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--navy-700, #1a237e); padding: 2px 8px; border-radius: var(--r-pill); }
 .pq-results .pq-no { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); }
 .pq-results .pq-date { font-size: 11px; color: var(--muted); margin-left: auto; }
-.clause-body .hl { background: linear-gradient(180deg, rgba(56,189,248,0.0) 55%, rgba(56,189,248,0.5) 55%); color: inherit; font-weight: 700; padding: 0 1px; border-radius: 2px; }
+.clause-body .hl { background: rgba(250,204,21,0.45); color: inherit; font-weight: 700; padding: 0 2px; border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .clause-md-table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
 .clause-md-table th, .clause-md-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
 .clause-md-table th { background: var(--paper); font-weight: 600; }
