@@ -19,6 +19,7 @@ const Admin = lazy(() => import('./pages/Admin.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Feedback = lazy(() => import('./pages/Feedback.jsx'));
 const Downloads = lazy(() => import('./pages/Downloads.jsx'));
+const Pqs = lazy(() => import('./pages/Pqs.jsx'));
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="data" element={<Suspense fallback={<PageLoading />}><DataExplorer /></Suspense>} />
         <Route path="compliance" element={<Suspense fallback={<PageLoading />}><Compliance /></Suspense>} />
         <Route path="downloads" element={<Suspense fallback={<PageLoading />}><Downloads /></Suspense>} />
+        <Route path="pqs" element={<Suspense fallback={<PageLoading />}><Pqs /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<PageLoading />}><Analytics /></Suspense>} />
         <Route path="profile" element={<Suspense fallback={<PageLoading />}><Profile /></Suspense>} />
         <Route path="feedback" element={<Suspense fallback={<PageLoading />}><Feedback /></Suspense>} />

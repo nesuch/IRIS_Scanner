@@ -216,6 +216,25 @@ class Flag(db.Model):
     status = db.Column(db.String(16), nullable=False, default="Open")  # Open | Resolved | Dismissed
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+
+class PqDocument(db.Model):
+    """A Parliamentary Question reply, rendered to HTML for faithful in-app reading
+    (bold/italic/underline/tables preserved) with the original .docx kept for download."""
+    __tablename__ = "pq_documents"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    pq_no = db.Column(db.String(40), nullable=True, index=True)
+    house = db.Column(db.String(24), nullable=True)         # Lok Sabha / Rajya Sabha
+    title = db.Column(db.String(400), nullable=False)
+    subject = db.Column(db.Text, nullable=True)
+    doc_date = db.Column(db.String(40), nullable=True)
+    tags = db.Column(db.Text, nullable=True)                # comma-separated
+    html = db.Column(db.Text, nullable=False)               # mammoth-rendered body
+    body_text = db.Column(db.Text, nullable=True)           # plain text (search/preview)
+    docx_filename = db.Column(db.String(300), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
 # ==========================================

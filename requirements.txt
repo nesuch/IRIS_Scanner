@@ -6,3 +6,5 @@ openpyxl
 nltk
 gunicorn
 psycopg2-binary
+python-docx
+mammoth

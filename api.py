@@ -273,6 +273,35 @@ def api_documents():
     return jsonify({"tree": roots, "repealed": repealed})
 
 
+@api_bp.get("/pq")
+def api_pq_list():
+    """List Parliamentary Question replies for the Parliamentary Q&A view."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+    return jsonify({"items": [{
+        "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
+        "subject": r.subject, "date": r.doc_date,
+        "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+        "has_file": bool(r.docx_filename),
+    } for r in rows]})
+
+
+@api_bp.get("/pq/<int:pid>")
+def api_pq_get(pid):
+    """Full rendered HTML + metadata + original-file link for one PQ."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    r = _app.PqDocument.query.get_or_404(pid)
+    return jsonify({
+        "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
+        "subject": r.subject, "date": r.doc_date,
+        "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+        "html": r.html,
+        "download_url": (f"/static/documents/pqs/{r.docx_filename}" if r.docx_filename else None),
+    })
+
+
 @api_bp.get("/clause-suggest")
 def api_clause_suggest():
     """Typeahead for the '/'-prefixed clause-number search."""
