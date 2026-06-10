@@ -21,6 +21,7 @@
 .pq-card { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); padding: 16px 18px; cursor: pointer; transition: 0.16s; display: flex; flex-direction: column; gap: 9px; }
 .pq-card:hover { transform: translateY(-2px); box-shadow: var(--sh-3); border-color: var(--line-strong); }
 .pq-card-top, .pq-doc-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.pq-card .pq-card-top { padding-right: 22px; }   /* clear the absolute delete icon */
 .pq-house { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--navy-700, #1a237e); padding: 2px 9px; border-radius: var(--r-pill); }
 .pq-no { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); }
 .pq-date { font-size: 11.5px; color: var(--muted); margin-left: auto; }

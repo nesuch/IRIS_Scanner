@@ -105,7 +105,7 @@
 .chip-all { background: #fff; border-color: var(--line-strong); color: var(--muted); }
 
 /* ---- Input area ---- */
-.input-area { flex: 0 0 auto; padding: 16px 38px 26px; background: linear-gradient(180deg, transparent, var(--paper) 30%); }
+.input-area { flex: 0 0 auto; padding: 10px 38px 22px; background: var(--paper); }
 .input-inner { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-2); padding: 8px 12px; position: relative; transition: box-shadow 0.2s, border-color 0.2s; }
 /* Search submit is an icon-only square button (web + mobile). */
 .search-submit { padding: 0; width: 48px; height: 42px; flex: 0 0 auto; }

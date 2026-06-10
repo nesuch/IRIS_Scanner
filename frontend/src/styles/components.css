@@ -114,6 +114,13 @@
 /* ---------- Inputs ---------- */
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+/* File input — make the native "Choose file" button match the rest of the UI */
+input[type="file"].input { padding: 7px 10px; font-size: 13px; line-height: 1.5; }
+input[type="file"].input::file-selector-button {
+  font: inherit; font-size: 12px; color: var(--ink); background: var(--paper-2, #f1f5f9);
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 5px 13px; margin-right: 12px;
+  cursor: pointer; transition: background 0.15s; }
+input[type="file"].input::file-selector-button:hover { background: var(--line); }
 .input, .select, textarea.input {
   width: 100%; font-family: var(--sans); font-size: 14px; padding: 10px 13px; border: 1px solid var(--line-strong);
   background: #fff; border-radius: var(--r-sm); color: var(--ink); transition: border-color 0.16s, box-shadow 0.16s; outline: none;
@@ -149,7 +156,7 @@ table.data tbody tr:hover { background: var(--paper); }
 .modal-head h3 { margin: 0; font-family: var(--serif); font-size: 18px; color: var(--ink); }
 .modal-close { background: none; border: none; font-size: 20px; color: var(--faint); cursor: pointer; line-height: 1; }
 .modal-close:hover { color: var(--bad); }
-.modal-body { padding: 20px; overflow: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
+.modal-body { padding: 15px 20px 20px; overflow: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
 .modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line); }
 
 /* ---------- Empty state ---------- */

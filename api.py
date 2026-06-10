@@ -301,15 +301,22 @@ def _pq_card(r):
 
 @api_bp.get("/pq/tags")
 def api_pq_tags():
-    """Distinct tags across all PQs — the typeahead vocabulary."""
+    """Distinct tags across all PQs — the typeahead vocabulary. Deduplicated
+    case- and space-insensitively (so 'Dental' / 'dental insurance' collapse)."""
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
-    tags = set()
+    canon = {}  # normalised key -> display label (prefer the most Title-cased variant)
     for r in _app.PqDocument.query.all():
         for t in (r.tags or "").split(","):
-            if t.strip():
-                tags.add(t.strip())
-    return jsonify({"tags": sorted(tags, key=str.lower)})
+            t = t.strip()
+            if not t:
+                continue
+            key = re.sub(r"\s+", "", t.lower())
+            prev = canon.get(key)
+            # Keep the variant with more capitalised words (nicer display).
+            if prev is None or sum(c.isupper() for c in t) > sum(c.isupper() for c in prev):
+                canon[key] = t
+    return jsonify({"tags": sorted(canon.values(), key=str.lower)})
 
 
 @api_bp.get("/pq")
