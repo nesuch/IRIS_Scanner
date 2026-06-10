@@ -32,19 +32,23 @@ export default function FlagModal({ kind = 'clause', target, detail, onClose, re
       try {
         const { default: html2canvas } = await import('html2canvas');
         await new Promise((r) => setTimeout(r, 250));  // let fonts/paint settle
-        // Capture at the screen's real pixel density (cap at 2×) for a sharp image.
+        // Capture just the visible viewport (what the user is looking at) at real
+        // pixel density — avoids the tall white space of a full-scroll capture.
         const canvas = await html2canvas(document.body, {
           scale: Math.min(window.devicePixelRatio || 1, 2),
           logging: false, useCORS: true, backgroundColor: '#ffffff',
-          windowWidth: document.documentElement.scrollWidth,
-          windowHeight: document.documentElement.scrollHeight,
+          width: window.innerWidth, height: window.innerHeight,
+          windowWidth: window.innerWidth, windowHeight: window.innerHeight,
+          scrollX: 0, scrollY: 0,
           ignoreElements: (el) => el.classList?.contains('modal-overlay'),
           onclone: (doc) => {
             const s = doc.createElement('style');
-            // Full opacity + no mid-flight animations (fixes faint capture); and
-            // normalise overflow-wrap/word-break which makes html2canvas drop the
-            // body text nodes (leaving only the bold heading visible).
-            s.textContent = '*{animation:none!important;transition:none!important;opacity:1!important;filter:none!important;}'
+            s.textContent =
+              // full opacity, no mid-flight animations, solid text fill (fixes faint capture)
+              '*{animation:none!important;transition:none!important;opacity:1!important;filter:none!important;-webkit-text-fill-color:currentColor!important;}'
+              // gradient-clipped "IRIS" wordmark -> solid (html2canvas can't clip-to-text)
+              + '.wm{-webkit-text-fill-color:#1a237e!important;color:#1a237e!important;background:none!important;}'
+              // overflow-wrap/word-break combo makes html2canvas drop body text nodes
               + '.clause-line,.clause-body,.iris-bubble,.bubble{overflow-wrap:normal!important;word-break:normal!important;white-space:pre-wrap!important;}';
             doc.head.appendChild(s);
           },
