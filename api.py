@@ -278,18 +278,26 @@ def api_documents():
     return jsonify({"tree": roots, "repealed": repealed})
 
 
-@api_bp.get("/pq")
-def api_pq_list():
-    """List Parliamentary Question replies for the Parliamentary Q&A view."""
-    if not _app.current_user.is_authenticated:
-        return jsonify({"ok": False}), 401
-    rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
-    return jsonify({"items": [{
+def _pq_card(r):
+    body = r.body_text or ""
+    return {
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
         "subject": r.subject, "date": r.doc_date,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
-        "has_file": bool(r.docx_filename),
-    } for r in rows]})
+        "snippet": body[:220] + ("…" if len(body) > 220 else ""),
+    }
+
+
+@api_bp.get("/pq")
+def api_pq_list():
+    """List/search Parliamentary Question replies for the dedicated PQ view."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    q = (request.args.get("q") or "").strip()
+    if q:
+        return jsonify({"items": _search_pqs(q, limit=100)})
+    rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+    return jsonify({"items": [_pq_card(r) for r in rows]})
 
 
 @api_bp.get("/pq/<int:pid>")
@@ -376,11 +384,24 @@ def _search_pqs(query, limit=8):
         snip = body[:220] + ("…" if len(body) > 220 else "")
         out.append((score, {
             "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
-            "date": r.doc_date, "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+            "subject": r.subject, "date": r.doc_date,
+            "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
             "snippet": snip,
         }))
     out.sort(key=lambda x: -x[0])
     return [p for _, p in out[:limit]]
+
+
+@api_bp.post("/pq/<int:pid>/retag")
+def api_pq_retag(pid):
+    """Admin-only: update a PQ's tags (drives search)."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    r = _app.PqDocument.query.get_or_404(pid)
+    data = request.get_json(silent=True) or {}
+    r.tags = (data.get("tags") or "").strip()
+    _app.db.session.commit()
+    return jsonify({"ok": True, "tags": [t.strip() for t in r.tags.split(",") if t.strip()]})
 
 
 @api_bp.get("/clause-suggest")
@@ -494,7 +515,6 @@ def api_search():
         "keywords": display_kws,
         "highlight": highlight_kws if tag_matches else display_kws,
         "matches": [_match_payload(m) for m in tag_matches],
-        "pqs": _search_pqs(query),
         "chips": _build_chips(kw_tuples, query),
         "note": note,
     })

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { api } from '../api.js';
@@ -35,7 +34,6 @@ function fmtClauseDate(d) {
 
 function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
-  const navigate = useNavigate();
   const copy = async (text) => {
     try { await navigator.clipboard.writeText(text); toast.success('Clause text copied!'); }
     catch { toast.error('Could not copy'); }
@@ -62,7 +60,6 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   }
 
   const groups = groupByType(resp.matches || []);
-  const pqs = resp.pqs || [];
   const hasMatches = (resp.matches || []).length > 0;
 
   return (
@@ -73,26 +70,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
       {resp.kind === 'tags' && hasMatches && (
         <div className="iris-foundvia">Found via <strong>Tags</strong>: {(resp.keywords || []).join(', ')}</div>
       )}
-      {resp.note && !hasMatches && !pqs.length && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
-
-      {pqs.length > 0 && (
-        <div className="pq-results">
-          <div className="type-band pq-band"><i className="fas fa-landmark" /> PARLIAMENTARY Q&A</div>
-          {pqs.map((p) => (
-            <div className="pq-result-card" key={p.id} onClick={() => navigate(`/pqs?open=${p.id}`)} role="button" tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/pqs?open=${p.id}`); }}>
-              <div className="pq-result-top">
-                {p.house && <span className="pq-house">{p.house}</span>}
-                {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
-                {p.date && <span className="pq-date">{p.date}</span>}
-              </div>
-              <div className="pq-result-title">{p.title}</div>
-              <div className="pq-result-snip">{p.snippet}</div>
-              <span className="pq-result-open">Open full reply <i className="fas fa-arrow-right" /></span>
-            </div>
-          ))}
-        </div>
-      )}
+      {resp.note && !hasMatches && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
 
       {groups.map((g, gi) => {
         const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
