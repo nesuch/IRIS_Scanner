@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd # type: ignore
 import os
 import re
+from datetime import datetime
 import glob
 import difflib
 import io  # Required for Excel Export
@@ -188,6 +189,42 @@ def clause_html(clause_id, source):
         return ""
     v = sub.iloc[0]
     return str(v) if pd.notna(v) and str(v).strip() else ""
+
+
+def update_clause_content(clause_id, source, html, text, editor=None):
+    """Admin in-app rich edit of a clause. Snapshots the current content to
+    clause_versions (revert), persists the new HTML + derived plain text to SQL,
+    and updates the in-memory KB so search/render reflect it. Returns True, or
+    None if the clause wasn't found."""
+    global KB_CACHE_DF
+    html = html or ""
+    text = (text or "").strip()
+    now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.execute(
+        "SELECT clause_html, clause_text, regulatory_tags FROM regulatory_clauses WHERE clause_id=? AND source_doc=?",
+        (str(clause_id), str(source)))
+    prev = cur.fetchone()
+    if prev is None:
+        conn.close()
+        return None
+    conn.execute(
+        "INSERT INTO clause_versions (clause_id, source_doc, html, body_text, tags, edited_by, edited_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (str(clause_id), str(source), prev[0], prev[1], prev[2], editor or "", now))
+    conn.execute(
+        "UPDATE regulatory_clauses SET clause_html=?, clause_text=?, updated_at=?, updated_by=? "
+        "WHERE clause_id=? AND source_doc=?",
+        (html, text, now, editor or "", str(clause_id), str(source)))
+    conn.commit()
+    conn.close()
+    if KB_CACHE_DF is not None and not KB_CACHE_DF.empty:
+        if "clause_html" not in KB_CACHE_DF.columns:
+            KB_CACHE_DF["clause_html"] = None
+        mask = (KB_CACHE_DF["Clause_ID"].astype(str) == str(clause_id)) & (KB_CACHE_DF["Source_Doc"].astype(str) == str(source))
+        KB_CACHE_DF.loc[mask, "clause_html"] = html
+        KB_CACHE_DF.loc[mask, "Clause_Text"] = text
+    return True
 
 
 def update_clause_tags(clause_id, source, tags):

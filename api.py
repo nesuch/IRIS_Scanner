@@ -435,6 +435,79 @@ def api_pq_retag(pid):
     return jsonify({"ok": True, "tags": [t.strip() for t in r.tags.split(",") if t.strip()]})
 
 
+def _clause_text_to_html(text):
+    """Seed the editor from a legacy plain-text/markdown clause: lines -> <p>,
+    a line ending in ':' -> bold heading, GFM table blocks -> <table>."""
+    from html import escape
+    lines = str(text or "").split("\n")
+    out, tbl = [], []
+
+    def flush_tbl():
+        if not tbl:
+            return
+        rows = [r for r in tbl if not re.match(r"^\|[\s\-:|]+\|$", r.strip())]
+        cells_html = []
+        for i, r in enumerate(rows):
+            cells = [c.strip() for c in r.strip().strip("|").split("|")]
+            tag = "th" if i == 0 else "td"
+            cells_html.append("<tr>" + "".join(f"<{tag}>{escape(c)}</{tag}>" for c in cells) + "</tr>")
+        out.append("<table>" + "".join(cells_html) + "</table>")
+        tbl.clear()
+
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("|") and s.endswith("|"):
+            tbl.append(s)
+            continue
+        flush_tbl()
+        if not s:
+            continue
+        if s.endswith(":"):
+            out.append(f"<p><strong>{escape(s)}</strong></p>")
+        else:
+            out.append(f"<p>{escape(s)}</p>")
+    flush_tbl()
+    return "".join(out) or "<p></p>"
+
+
+@api_bp.get("/clause/edit")
+def api_clause_edit_get():
+    """Admin-only: initial rich-text content for editing a clause."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    cid = (request.args.get("id") or "").strip()
+    source = (request.args.get("source") or "").strip()
+    existing = brain.clause_html(cid, source)
+    if not existing:
+        # seed from the current plain-text/markdown clause
+        df = brain.KB_CACHE_DF
+        txt = ""
+        if df is not None and not df.empty:
+            mask = (df["Clause_ID"].astype(str) == cid) & (df["Source_Doc"].astype(str) == source)
+            sub = df.loc[mask, "Clause_Text"]
+            if len(sub):
+                txt = str(sub.iloc[0])
+        existing = _clause_text_to_html(txt)
+    return jsonify({"ok": True, "id": cid, "source": source, "html": existing})
+
+
+@api_bp.post("/clause/edit")
+def api_clause_edit_save():
+    """Admin-only: save edited clause HTML (+ derived plain text)."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    cid = (data.get("id") or "").strip()
+    source = (data.get("source") or "").strip()
+    if not cid or not source:
+        return jsonify({"ok": False, "message": "Missing clause id/source"}), 400
+    editor = getattr(_app.current_user, "email", "") or ""
+    ok = brain.update_clause_content(cid, source, data.get("html") or "", data.get("text") or "", editor)
+    if not ok:
+        return jsonify({"ok": False, "message": "Clause not found"}), 404
+    return jsonify({"ok": True, "html": data.get("html") or ""})
+
+
 @api_bp.post("/clause/retag")
 def api_clause_retag():
     """Admin-only: edit a clause's tags in-app (persists + refreshes search)."""

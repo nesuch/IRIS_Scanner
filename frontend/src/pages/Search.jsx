@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
+import ClauseEditorModal from '../components/ClauseEditor.jsx';
 import { api } from '../api.js';
 import { TYPE_STYLES, ClauseBody, groupByType } from './search/clauseRender.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
@@ -31,6 +32,32 @@ function fmtClauseDate(d) {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return d;
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Clause body + admin controls (rich-edit + tags). Holds a local HTML override
+// so an edit shows immediately without re-running the search.
+function ClauseContent({ m, keywords }) {
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
+  const [html, setHtml] = useState(m.html || '');
+  const [editing, setEditing] = useState(false);
+  return (
+    <>
+      {html
+        ? <div className="clause-html" dangerouslySetInnerHTML={{ __html: html }} />
+        : <ClauseBody text={m.raw_text} keywords={keywords} />}
+      {isAdmin && (
+        <div className="clause-admin-row">
+          <button className="clause-edit-btn" onClick={() => setEditing(true)}><i className="fas fa-pen-to-square" />Edit clause</button>
+        </div>
+      )}
+      <ClauseTags m={m} />
+      {editing && (
+        <ClauseEditorModal clause={m} onClose={() => setEditing(false)}
+          onSaved={(h) => { setHtml(h); setEditing(false); }} />
+      )}
+    </>
+  );
 }
 
 // Admin-only inline tag editor on a clause card (drives tag search).
@@ -147,10 +174,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
                     <button className="flag-btn" title="Flag this clause" onClick={() => onFlag(m)}><i className="fas fa-flag" /></button>
                   </span>
                 </div>
-                {m.html
-                  ? <div className="clause-html" dangerouslySetInnerHTML={{ __html: m.html }} />
-                  : <ClauseBody text={m.raw_text} keywords={resp.highlight || []} />}
-                <ClauseTags m={m} />
+                <ClauseContent m={m} keywords={resp.highlight || []} />
               </div>
             ))}
           </div>
