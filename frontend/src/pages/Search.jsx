@@ -342,7 +342,7 @@ export default function Search({ module }) {
       </div>
 
       <div className="input-area">
-        {!query && <div className="search-tip">Type a question — or <b>/</b> then a clause number (e.g. <b>/64</b>)</div>}
+        {empty && !query && <div className="search-tip">Type a question — or <b>/</b> then a clause number (e.g. <b>/64</b>)</div>}
         <form className="input-inner" onSubmit={onSubmit} autoComplete="off">
           <div className="search-wrapper">
             <div className="doc-filter" ref={docFilterRef}>
