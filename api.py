@@ -479,6 +479,28 @@ def api_clause_specs():
     return jsonify({"specs": ingest.list_specs()})
 
 
+@api_bp.post("/clause/detect-spec")
+def api_clause_detect_spec():
+    """Admin: rank existing specs by how well they segment the uploaded PDF."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    import ingest, tempfile
+    f = request.files.get("file")
+    if not f or not f.filename.lower().endswith(".pdf"):
+        return jsonify({"ok": False, "message": "Upload a PDF"}), 400
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    try:
+        tmp.write(f.read()); tmp.close()
+        ranked = ingest.detect_spec(tmp.name)
+    except Exception as e:
+        print(f"detect-spec error: {e}")
+        return jsonify({"ok": False, "message": "Could not read that PDF."}), 400
+    finally:
+        try: os.unlink(tmp.name)
+        except OSError: pass
+    return jsonify({"ok": True, "ranked": ranked})
+
+
 @api_bp.post("/clause/import-pdf")
 def api_clause_import_pdf():
     """Admin: PDF -> deterministic segmentation -> new document of editable clauses."""

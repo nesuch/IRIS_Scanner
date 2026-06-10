@@ -39,6 +39,54 @@ def load_spec(spec_id):
         return json.load(fh)
 
 
+def _filter_ignore(blocks, dropped, spec):
+    """Apply a spec's ignore_patterns to an already-extracted block list (so we
+    don't have to re-run pdfplumber per spec). Lines that match move to dropped."""
+    import re
+    pats = [re.compile(p) for p in spec.get("ignore_patterns", []) if p]
+    if not pats:
+        return blocks, dropped
+    kept, dl = [], list(dropped)
+    for b in blocks:
+        t = b.get("text", "") if b.get("kind") == "line" else ""
+        if t and any(p.search(t) for p in pats):
+            dl.append({"reason": "running_header"})
+        else:
+            kept.append(b)
+    return kept, dl
+
+
+def detect_spec(pdf_path, limit=5):
+    """Best-match spec for a PDF — deterministic and fast: extract ONCE, then for
+    each spec apply its ignore_patterns as a post-filter and segment. The truly
+    fitting spec leaves the fewest in-scope lines unassigned (orphans)."""
+    base_blocks, base_dropped = extract(pdf_path)
+    ranked = []
+    for s in list_specs():
+        spec = load_spec(s["id"])
+        if not spec:
+            continue
+        try:
+            blocks, dropped = _filter_ignore(base_blocks, base_dropped, spec)
+            for step in spec.get("preprocess", []):
+                if step == "explode_layout_tables":
+                    blocks = explode_layout_tables(blocks)
+            rows, inscope, excluded, assigned, spec_errors = segment(blocks, spec)
+            report = validate(blocks, dropped, inscope, excluded, assigned, rows)
+        except Exception:
+            continue
+        clauses = len(rows)
+        if clauses == 0:
+            continue
+        orphans = report.get("orphan_lines", 0)
+        score = (0 if spec_errors else 1_000_000) - orphans * 100 + min(clauses, 300)
+        ranked.append({"spec_id": s["id"], "doc_id": s["doc_id"], "score": score,
+                       "clauses": clauses, "orphans": orphans,
+                       "accounted": bool(report.get("fully_accounted")), "errors": bool(spec_errors)})
+    ranked.sort(key=lambda x: -x["score"])
+    return ranked[:limit]
+
+
 def segment_pdf(pdf_path, spec):
     """Run the deterministic pipeline. Returns (rows, report, spec_errors) where
     each row is {id, clause, tag}."""

@@ -170,8 +170,25 @@ function ImportModal({ onClose, onDone }) {
   const [docType, setDocType] = useState('REGULATION');
   const [category, setCategory] = useState('GENERAL');
   const [busy, setBusy] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detected, setDetected] = useState(null);
 
   useEffect(() => { api.get('/clause/specs').then((d) => setSpecs(d.specs || [])).catch(() => {}); }, []);
+
+  async function onFile(e) {
+    const f = e.target.files?.[0] || null;
+    setFile(f); setDetected(null);
+    if (!f) return;
+    if (!source.trim()) setSource(f.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' '));
+    setDetecting(true);
+    try {
+      const fd = new FormData(); fd.append('file', f);
+      const d = await api.post('/clause/detect-spec', fd);
+      const best = (d.ranked || [])[0];
+      if (best) { setSpecId(best.spec_id); setDetected(best); }
+    } catch { /* fall back to manual pick */ }
+    finally { setDetecting(false); }
+  }
 
   async function go() {
     if (!file || !specId || !source.trim()) { toast.error('PDF, spec and a document name are required'); return; }
@@ -200,7 +217,7 @@ function ImportModal({ onClose, onDone }) {
       <p className="guide-intro">Pick the matching document type — IRIS segments the PDF into editable clauses (deterministic, no AI) and keeps the PDF for reference/download.</p>
       <div className="field" style={{ marginBottom: 12 }}>
         <label>PDF file</label>
-        <input className="input" type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <input className="input" type="file" accept="application/pdf" onChange={onFile} />
       </div>
       <div className="field" style={{ marginBottom: 12 }}>
         <label>Document type (spec)</label>
@@ -208,6 +225,14 @@ function ImportModal({ onClose, onDone }) {
           <option value="">— select the matching document —</option>
           {specs.map((s) => <option key={s.id} value={s.id}>{s.doc_id || s.id}</option>)}
         </select>
+        {detecting && <div className="studio-detect"><Spinner size={12} /> Detecting best match…</div>}
+        {!detecting && detected && (
+          <div className="studio-detect">
+            <i className="fas fa-wand-magic-sparkles" /> Auto-detected: <strong>{detected.doc_id}</strong>
+            {' '}({detected.clauses} clauses{detected.orphans ? `, ${detected.orphans} unmatched lines` : ''}).
+            {detected.orphans > 0 && ' Check it’s the right type, or pick another.'}
+          </div>
+        )}
       </div>
       <div className="field" style={{ marginBottom: 12 }}>
         <label>Document name (as shown in IRIS)</label>
