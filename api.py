@@ -22,9 +22,10 @@ import pandas as pd
 from flask import Blueprint, request, jsonify, session, send_file, Response
 
 import iris_brain as brain
+import storage
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "tools"))
-from pq_to_iris import parse_docx, STATIC_PQ_DIR  # noqa: E402
+from pq_to_iris import parse_docx  # noqa: E402
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -302,8 +303,22 @@ def api_pq_get(pid):
         "subject": r.subject, "date": r.doc_date,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
         "html": r.html,
-        "download_url": (f"/static/documents/pqs/{r.docx_filename}" if r.docx_filename else None),
+        "download_url": (f"/api/pq/{r.id}/download" if r.docx_filename else None),
     })
+
+
+@api_bp.get("/pq/<int:pid>/download")
+def api_pq_download(pid):
+    """Stream the original .docx from storage (GCS in prod, local in dev)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    r = _app.PqDocument.query.get_or_404(pid)
+    data = storage.load_pq(r.docx_filename)
+    if data is None:
+        return jsonify({"ok": False, "message": "Original file not found."}), 404
+    return send_file(io.BytesIO(data),
+                     mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                     as_attachment=True, download_name=r.docx_filename)
 
 
 @api_bp.post("/pq/upload")
@@ -322,10 +337,8 @@ def api_pq_upload():
         print(f"PQ parse error: {e}")
         return jsonify({"ok": False, "message": "Could not read that document."}), 400
     m = _app
-    os.makedirs(STATIC_PQ_DIR, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
-    with open(os.path.join(STATIC_PQ_DIR, safe), "wb") as out:
-        out.write(raw)
+    storage.save_pq(safe, raw)   # GCS in prod, local disk in dev
     row = m.PqDocument(
         pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
         subject=parsed["subject"], doc_date=parsed["doc_date"], tags=tags,

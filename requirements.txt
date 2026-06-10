@@ -8,3 +8,4 @@ gunicorn
 psycopg2-binary
 python-docx
 mammoth
+google-cloud-storage
