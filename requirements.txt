@@ -9,3 +9,4 @@ psycopg2-binary
 python-docx
 mammoth
 google-cloud-storage
+pdfplumber

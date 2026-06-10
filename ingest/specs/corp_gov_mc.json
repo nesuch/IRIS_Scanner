@@ -1,0 +1,38 @@
+{
+  "doc_id": "CORP_GOV_MC",
+  "sheet_name": "Corporate Governance MC 2024",
+  "ignore_patterns": [
+    "\\.{6,}",
+    "^\\s*INDEX\\s*$",
+    "^\\s*Sd/-\\s*$"
+  ],
+  "scope_start": "^1\\.\\s+General\\s*$",
+  "containers": [
+    {
+      "head_match": "^Annexure[- ](\\d+)\\s*$",
+      "title_next_line": true,
+      "id_prefix": "CORP_GOV_MC-ANX{n}",
+      "clause_template": "Annexure {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    },
+    {
+      "head_match": "^Schedule[-\\s]?([IVX]+)\\s*$",
+      "title_next_line": true,
+      "id_prefix": "CORP_GOV_MC-SCH{n}",
+      "clause_template": "Schedule {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d{1,2}(?:\\.\\d{1,2})?)\\.?\\s+(?=[A-Z(])",
+    "delimiter": ":"
+  },
+  "default_section_prefix": "CORP_GOV_MC",
+  "tag_rule": {
+    "max_len": 300
+  },
+  "heading_on_own_line": true,
+  "merge_untitled_subsections": true
+}

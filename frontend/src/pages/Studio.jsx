@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
-import { Spinner, EmptyState } from '../components/UI.jsx';
+import { Spinner, EmptyState, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ClauseEditorPanel } from '../components/ClauseEditor.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
@@ -47,7 +47,12 @@ export default function Studio() {
   const [loadingClause, setLoadingClause] = useState(false);
   const [showPdf, setShowPdf] = useState(true);
   const [paneW, setPaneW] = useState(40);        // % width of PDF pane
+  const [importOpen, setImportOpen] = useState(false);
   const splitRef = useRef(null);
+
+  function reloadDocs() {
+    return api.get('/clause/docs').then((d) => setDocs(d.docs || [])).catch(() => {});
+  }
 
   useEffect(() => {
     api.get('/clause/docs').then((d) => setDocs(d.docs || []))
@@ -87,6 +92,7 @@ export default function Studio() {
   return (
     <div className="studio-shell">
       <PageHeader fullForm="Regulatory Library" title="Document Studio" scope="Edit clauses with the original document alongside">
+        {!doc && <button className="btn btn-primary btn-sm" onClick={() => setImportOpen(true)}><i className="fas fa-file-import" /> Import PDF</button>}
         {doc && <AttachPdf doc={doc} onAttached={(url) => { setDoc((d) => ({ ...d, pdf_url: url, has_uploaded_pdf: true })); setShowPdf(true); }} />}
         {doc?.pdf_url && (
           <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}>
@@ -150,6 +156,84 @@ export default function Studio() {
           )}
         </div>
       </div>
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); reloadDocs(); }} />}
     </div>
+  );
+}
+
+function ImportModal({ onClose, onDone }) {
+  const toast = useToast();
+  const [specs, setSpecs] = useState([]);
+  const [file, setFile] = useState(null);
+  const [specId, setSpecId] = useState('');
+  const [source, setSource] = useState('');
+  const [docType, setDocType] = useState('REGULATION');
+  const [category, setCategory] = useState('GENERAL');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { api.get('/clause/specs').then((d) => setSpecs(d.specs || [])).catch(() => {}); }, []);
+
+  async function go() {
+    if (!file || !specId || !source.trim()) { toast.error('PDF, spec and a document name are required'); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file); fd.append('spec_id', specId); fd.append('source', source.trim());
+      fd.append('doc_type', docType); fd.append('category', category);
+      const r = await api.post('/clause/import-pdf', fd);
+      toast.success(`Imported ${r.clauses} clauses${r.orphans ? ` (${r.orphans} unmatched lines)` : ''}`);
+      onDone();
+    } catch (e) { toast.error(e.message || 'Import failed'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title="Import document from PDF" width="560px" onClose={onClose}
+      footer={(
+        <>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary btn-sm" onClick={go} disabled={busy || !file || !specId || !source.trim()}>
+            {busy ? <Spinner size={14} color="#fff" /> : <i className="fas fa-file-import" />} Import &amp; create
+          </button>
+        </>
+      )}>
+      <p className="guide-intro">Pick the matching document type — IRIS segments the PDF into editable clauses (deterministic, no AI) and keeps the PDF for reference/download.</p>
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label>PDF file</label>
+        <input className="input" type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      </div>
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label>Document type (spec)</label>
+        <select className="input" value={specId} onChange={(e) => setSpecId(e.target.value)}>
+          <option value="">— select the matching document —</option>
+          {specs.map((s) => <option key={s.id} value={s.id}>{s.doc_id || s.id}</option>)}
+        </select>
+      </div>
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label>Document name (as shown in IRIS)</label>
+        <input className="input" value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. EoM Regulations 2024" />
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Type band</label>
+          <select className="input" value={docType} onChange={(e) => setDocType(e.target.value)}>
+            <option value="ACT">Act</option>
+            <option value="REGULATION">Regulation</option>
+            <option value="MASTER">Master Circular</option>
+            <option value="CIRCULAR">Circular</option>
+            <option value="GUIDELINE">Guideline</option>
+          </select>
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Department</label>
+          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="GENERAL">General</option>
+            <option value="HEALTH">Health</option>
+            <option value="LIFE">Life</option>
+            <option value="NONLIFE">Non-Life</option>
+          </select>
+        </div>
+      </div>
+    </Modal>
   );
 }

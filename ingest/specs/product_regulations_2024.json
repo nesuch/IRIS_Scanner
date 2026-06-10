@@ -1,0 +1,33 @@
+{
+  "doc_id": "PROD_REGS",
+  "sheet_name": "IRDAI Insurance Products Regulations 2024",
+  "language_filter": "drop_hindi",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA : EXTRAORDINARY",
+    "^[A-Z][A-Z .]+,\\s*Chairperson$",
+    "^\\[ADVT"
+  ],
+  "scope_start": "^CHAPTER-I$",
+  "containers": [
+    {
+      "head_match": "^(CHAPTER[- ][IVXLC]+)\\b\\s*(.*)$",
+      "title_next_line": true,
+      "id_prefix": "PROD_REGS-CH{n}",
+      "clause_template": "{head} {title}:",
+      "include": true
+    },
+    {
+      "head_match": "^(Schedule[- ]?[IVX]+)\\s*:?\\s*(.*)$",
+      "id_prefix": "PROD_REGS-SCH{n}",
+      "clause_template": "{head}: {title}:",
+      "include": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":"
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}

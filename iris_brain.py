@@ -139,6 +139,26 @@ def load_knowledge_base(force_reload=False):
     return df
 
 
+_KB_RENAME = {
+    "source_doc": "Source_Doc", "doc_category": "Doc_Category", "doc_type": "Doc_Type",
+    "clause_id": "Clause_ID", "clause_text": "Clause_Text", "context_header": "Context_Header",
+    "regulatory_tags": "Regulatory_Tags", "priority": "Priority", "is_header": "Is_Header",
+}
+
+
+def refresh_kb():
+    """Re-read regulatory_clauses into the in-memory KB and rebuild the tag vocab,
+    WITHOUT reloading the financial engine. Used after an import/bulk change."""
+    global KB_CACHE_DF
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT * FROM regulatory_clauses", conn)
+    conn.close()
+    df = df.rename(columns=_KB_RENAME)
+    KB_CACHE_DF = df
+    _rebuild_vocab(df)
+    return df
+
+
 def _rebuild_vocab(df):
     """(Re)build the tag vocabulary / autocomplete data from the clause DataFrame.
     Called on load and after an in-app tag edit so search reflects changes."""

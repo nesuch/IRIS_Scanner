@@ -1,0 +1,36 @@
+{
+  "doc_id": "NONLIFE_PRODUCTS_MC",
+  "sheet_name": "IRDAI Master Circular on General (Non-Life) Insurance Products 2024",
+  "ignore_patterns": [
+    "^Master Circular on General Insurance Business\\s*$",
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "^\\*{3,}\\s*$"
+  ],
+  "scope_start": "^Ref:\\s*IRDAI/NL/MSTCIR/MISC/90/06",
+  "default_section_prefix": "NONLIFE_PRODUCTS_MC",
+  "title_case_titles": true,
+  "containers": [
+    {"head_match": "^(Ref:\\s*IRDAI/NL/MSTCIR.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-PREAMBLE",
+     "clause_template": "Preamble:", "include": true, "collect_body": true},
+    {"head_match": "^(INDEX)\\s*$", "id_prefix": "NONLIFE_PRODUCTS_MC-INDEX",
+     "clause_template": "Index:", "include": true, "collect_body": true},
+    {"head_match": "^(Background)\\s*:?\\s*$", "id_prefix": "NONLIFE_PRODUCTS_MC-BACKGROUND",
+     "clause_template": "Background:", "include": true, "collect_body": true},
+    {"head_match": "^(Scope and applicability)\\s*:?\\s*$", "id_prefix": "NONLIFE_PRODUCTS_MC-SCOPE",
+     "clause_template": "Scope and Applicability:", "include": true, "collect_body": true},
+    {"head_match": "^Chapter\\s+([IVX]+)\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{head}",
+     "clause_template": "Chapter {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^([ABC])\\.\\s+([A-Z][A-Za-z &/-]{4,57})$", "id_prefix": "NONLIFE_PRODUCTS_MC-ChII-{head}",
+     "clause_template": "{head}. {title}:", "include": true, "collect_body": true},
+    {"head_match": "^([IVX]+)\\.\\s+((?:Motor|Surety|Trade Credit).*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-ChV-{n}",
+     "clause_template": "{head}. {title}:", "include": true, "collect_body": true},
+    {"head_match": "^([IVX]+)\\.\\s+((?:Returns Submission|Repeal of the Guidelines).*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-ChVI-{n}",
+     "clause_template": "{head}. {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Schedule\\s+([IVX]+)\\b\\s*(.*)$", "title_next_line": true, "id_prefix": "NONLIFE_PRODUCTS_MC-Schedule{head}",
+     "clause_template": "Schedule {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Annexure\\s+([ABC])\\b\\s*(.*)$", "title_next_line": true, "id_prefix": "NONLIFE_PRODUCTS_MC-Annexure{head}",
+     "clause_template": "Annexure {head}: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

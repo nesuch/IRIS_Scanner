@@ -1,0 +1,19 @@
+{
+  "doc_id": "EOM_MC",
+  "sheet_name": "EOM MC 2024",
+  "ignore_patterns": ["\\.{6,}", "^\\s*Contents\\s*$", "^Page\\s*\\d+\\s*\\|", "^\\s*Sd/-\\s*$"],
+  "scope_start": "^CHAPTER\\s*[-–]?\\s*I\\b",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s*[-–]?\\s*[IVXLC]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "EOM_MC-Chap{n}", "clause_template": "{head}: {title}:",
+     "include": true, "collect_body": true},
+    {"head_match": "^(Annexure[- ]?[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "EOM_MC-ANX{n}", "clause_template": "Annexure {n}: {title}:",
+     "include": true, "collect_body": true},
+    {"head_match": "^(Schedule[-\\s]?[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "EOM_MC-SCH{n}", "clause_template": "Schedule {n}: {title}:",
+     "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d{1,2}(?:\\.\\d{1,2})?)\\.?\\s+", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

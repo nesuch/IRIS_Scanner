@@ -1,0 +1,28 @@
+{
+  "doc_id": "IRDAI_ACT",
+  "sheet_name": "IRDAI ACT,1999",
+  "language_filter": "drop_hindi",
+  "ignore_patterns": [],
+  "scope_start": "^CHAPTER\\s+I$",
+  "containers": [
+    {
+      "head_match": "^(CHAPTER\\s+[IVXLC]+)$",
+      "title_next_line": true,
+      "id_prefix": "IRDAI_ACT-Chap{n}",
+      "clause_template": "{head}: {title}:",
+      "include": true
+    },
+    {
+      "head_match": "^(THE (?:FIRST|SECOND|THIRD) SCHEDULE)$",
+      "include": false,
+      "exclude_reason": "Schedules I-III are amendments to other Acts (out of scope)"
+    }
+  ],
+  "section": {
+    "match": "^[\\[“\"]?(\\d+[A-Z]?)\\.\\s",
+    "delimiter": ".—"
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}

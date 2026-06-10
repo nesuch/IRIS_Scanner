@@ -1,0 +1,27 @@
+{
+  "doc_id": "HEALTH_MC_ANNEX",
+  "sheet_name": "Health Insurance MC 2024 - Annexures",
+  "scope_start": "^Annexure\\s*[-\\u2013]?\\s*1\\b",
+  "ignore_patterns": [
+    "^\\d{1,3}$",
+    "^Place\\s*:?\\s*$",
+    "^Date\\s*:?\\s*$"
+  ],
+  "containers": [
+    {
+      "head_match": "(?i)^Annexure\\s*[-\\u2013]?\\s*(\\d+)",
+      "id_prefix": "HEALTH_MC_ANNEX-{n}",
+      "clause_template": "Annexure {n}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":"
+  },
+  "default_section_prefix": "HEALTH_MC_ANNEX",
+  "tag_rule": {
+    "max_len": 300
+  }
+}

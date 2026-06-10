@@ -1,0 +1,23 @@
+{
+  "doc_id": "PPHI_REGS",
+  "sheet_name": "IRDAI Protection of Policyholders Interests & Operations Regulations 2024",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "^\\d+\\s+GI/\\d+",
+    "^\\[ADVT",
+    "^[A-Z][A-Z .]+,\\s*Chairperson"
+  ],
+  "scope_start": "^1\\.\\s*Short Title",
+  "nest_sections": true,
+  "default_section_prefix": "PPHI_REGS",
+  "containers": [
+    {"head_match": "^(Part\\s*[-\\u2013]?\\s*A)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "PPHI_REGS-PtA", "clause_template": "Part A: {title}:", "include": true},
+    {"head_match": "^(Part\\s*[-\\u2013]?\\s*B)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "PPHI_REGS-PtB", "clause_template": "Part B: {title}:", "include": true},
+    {"head_match": "^(?:Chapter|CHAPTER)[\\s-]*(\\d+)\\s*$", "title_next_line": true,
+     "id_prefix": "PPHI_REGS-Ch{n}", "clause_template": "Chapter {n}: {title}:", "include": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

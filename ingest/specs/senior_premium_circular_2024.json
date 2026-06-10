@@ -1,0 +1,14 @@
+{
+  "doc_id": "SENIOR_PREMIUM_CIRC",
+  "sheet_name": "Senior Citizen Health Premium Revision Circular",
+  "scope_start": "^Review of revision in premium rates",
+  "default_section_prefix": "SENIOR_PREMIUM_CIRC",
+  "containers": [
+    {"head_match": "^(Review of revision.*)$", "id_prefix": "SENIOR_PREMIUM_CIRC-SUBJECT",
+     "clause_template": "Subject: {head}:", "include": true, "collect_body": true},
+    {"head_match": "^(\\d+)\\.\\s*$", "id_prefix": "SENIOR_PREMIUM_CIRC-{n}",
+     "clause_template": "Paragraph {n}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

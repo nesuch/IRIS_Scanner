@@ -1,0 +1,23 @@
+{
+  "doc_id": "EOM_REGS",
+  "sheet_name": "IRDAI EOM including Commission Regulations 2024",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "^\\d+\\s+GI/\\d+",
+    "^\\[ADVT",
+    "^[A-Z][A-Z .]+,\\s*Chairperson",
+    "^Reporting Segments:\\s*$"
+  ],
+  "scope_start": "^Part\\s*[-\\u2013]?\\s*I\\b",
+  "title_case_titles": true,
+  "nest_sections": true,
+  "default_section_prefix": "EOM_REGS",
+  "containers": [
+    {"head_match": "^(Part\\s*[-\\u2013]?\\s*[IVX]+)\\s*$", "title_next_line": true,
+     "id_prefix": "EOM_REGS-Pt{n}", "clause_template": "Part {n}: {title}:", "include": true},
+    {"head_match": "^(SCHEDULE\\s*[-\\u2013]?\\s*I)\\b\\s*(.*)$",
+     "id_prefix": "EOM_REGS-SCH1", "clause_template": "Schedule I: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

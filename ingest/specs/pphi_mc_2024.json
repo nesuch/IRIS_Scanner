@@ -1,0 +1,34 @@
+{
+  "doc_id": "PPHI_MC",
+  "sheet_name": "Protection of Policyholders Interests MC 2024",
+  "scope_start": "^Section I\\b",
+  "title_case_titles": true,
+  "ignore_patterns": [
+    "^\\s*\\d{0,3}\\s*[IjlJ1]?\\s*P\\s*a.{0,2}g.{0,2}e\\s*$",
+    "^[~_]+$",
+    "^Servicing of Policyholders$",
+    "^Ombudsman Awards$"
+  ],
+  "containers": [
+    {"head_match": "^(Section I)\\b\\s*[-\\u2013]?\\s*(.*)$", "id_prefix": "PPHI-S1A", "clause_template": "{head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(PART B)\\b\\s*:?\\s*(.*)$", "id_prefix": "PPHI-S1B", "clause_template": "{head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(Part C)\\b\\s*:?\\s*(.*)$", "id_prefix": "PPHI-S1C", "clause_template": "{head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(Section 2)\\b\\s*(.*)$", "id_prefix": "PPHI-S2", "clause_template": "{head}:", "include": true, "collect_body": true},
+    {"head_match": "^(Chapter I)\\b", "id_prefix": "PPHI-CH1", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(Chapter-II)\\b", "id_prefix": "PPHI-CH2", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTER 111)\\b", "id_prefix": "PPHI-CH3", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTER IV)\\b", "id_prefix": "PPHI-CH4", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTERV)\\b", "id_prefix": "PPHI-CH5", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTER-VI)\\b", "id_prefix": "PPHI-CH6", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTER VII)\\b", "id_prefix": "PPHI-CH7", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTER VIII)\\b", "id_prefix": "PPHI-CH8", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(CHAPTER IX)\\b", "id_prefix": "PPHI-CH9", "title_next_line": true, "clause_template": "{title}:", "include": true},
+    {"head_match": "^(SCHEDULE-A)\\b\\s*-?\\s*(.*)$", "id_prefix": "PPHI-SCHA", "clause_template": "Schedule A: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(Schedule B)\\s*$", "id_prefix": "PPHI-SCHB", "clause_template": "Schedule B:", "include": true, "collect_body": true},
+    {"head_match": "^[\\[I|]?\\s*Annexure\\s+(\\d+)\\b\\s*[:\\-\\u2013]?\\s*(.*)$", "id_prefix": "PPHI-ANX{n}", "clause_template": "Annexure {n}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(SCHEDULE-C)\\b\\s*(.*)$", "id_prefix": "PPHI-SCHC", "clause_template": "Schedule C: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(SCHEDULE-D)\\b\\s*(.*)$", "id_prefix": "PPHI-SCHD", "clause_template": "Schedule D: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.(?=\\s+\\D|[A-Z])", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

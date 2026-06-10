@@ -1,0 +1,28 @@
+{
+  "doc_id": "LIFE_PRODUCTS_MC",
+  "sheet_name": "IRDAI Master Circular on Life Insurance Products 2024",
+  "ignore_patterns": [
+    "^Ref:\\s*IRDAI/ACTL/MSTCIR",
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "^_{3,}\\s*$"
+  ],
+  "scope_start": "^1\\.\\s+This Master Circular is issued",
+  "chapter_match": "^Chapter\\s*[-\\u2013]\\s*(\\d+)\\b",
+  "default_section_prefix": "LIFE_PRODUCTS_MC",
+  "containers": [
+    {"head_match": "^(1)\\.\\s+This Master Circular is issued.*$", "id_prefix": "LIFE_PRODUCTS_MC-PREAMBLE",
+     "clause_template": "Preamble:", "include": true, "collect_body": true},
+    {"head_match": "^(INDEX)\\s*$", "id_prefix": "LIFE_PRODUCTS_MC-INDEX",
+     "clause_template": "Index:", "include": true, "collect_body": true},
+    {"head_match": "^Part\\s+[-\\u2013]\\s+([ABC])\\b\\s*:?\\s*(.*)$", "id_prefix": "LIFE_PRODUCTS_MC-Ch{parent}-Sec4-Part{head}",
+     "clause_template": "Part {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Part[-\\u2013]([ABC])\\b\\s*:?\\s*(.*)$", "id_prefix": "LIFE_PRODUCTS_MC-Ch{parent}-Sec5-Part{head}",
+     "clause_template": "Part {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Section\\s*[-\\u2013]?\\s*([IVX]+)\\s*:\\s*(.*)$", "id_prefix": "LIFE_PRODUCTS_MC-Ch{parent}-Sec{n}",
+     "clause_template": "Section {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Form\\s*No\\.?\\s*[-\\u2013]?\\s*(\\d+)\\b\\s*:?\\s*(.*)$", "id_prefix": "LIFE_PRODUCTS_MC-Form{n}",
+     "clause_template": "Form {n}: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

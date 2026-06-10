@@ -1,0 +1,26 @@
+{
+  "doc_id": "MAINT_INFO_REGS",
+  "sheet_name": "IRDAI Maintenance of Information by Regulated Entities & Sharing of Information by Authority Regulations 2024",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "^\\d+\\s+GI/\\d+",
+    "^\\[ADVT",
+    "^[A-Z][A-Z .]+,\\s*Chairperson",
+    "^Uploaded by Dte",
+    "^and Published by the Controller"
+  ],
+  "scope_start": "^1\\.\\s*Short title",
+  "default_section_prefix": "MAINT_INFO_REGS",
+  "containers": [
+    {"head_match": "^CHAPTER\\s*[-\\u2013]?\\s*(\\d+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "MAINT_INFO_REGS-Ch{n}", "clause_template": "Chapter {n}: {title}:", "include": true},
+    {"head_match": "^PART[-\\s]*([IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "MAINT_INFO_REGS-Ch3-Pt{n}", "clause_template": "Part {n}: {title}:", "include": true},
+    {"head_match": "^Schedule\\s*[-\\u2013]?\\s*([IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "MAINT_INFO_REGS-Sch{n}", "clause_template": "Schedule {n}: {title}:",
+     "include": true, "collect_body": true}
+  ],
+  "title_case_titles": true,
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

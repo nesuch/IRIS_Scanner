@@ -1,0 +1,30 @@
+{
+  "doc_id": "RUSO_MC",
+  "sheet_name": "RUSO MC 2025",
+  "ignore_patterns": [
+    "\\.{6,}",
+    "^\\s*Contents\\s*$",
+    "पृष्ठ",
+    "Page\\s*\\d+\\s*/\\s*\\d+",
+    "^\\s*Sd/-\\s*$"
+  ],
+  "scope_start": "^CHAPTER\\s*[-–—]?\\s*I\\b",
+  "containers": [
+    {
+      "head_match": "^(CHAPTER\\s*[-–—]?\\s*[IVXLC]+)\\b\\s*(.*)$",
+      "title_next_line": true,
+      "id_prefix": "RUSO_MC-Chap{n}",
+      "clause_template": "Chapter {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d{1,2})\\.\\s+",
+    "delimiter": ":"
+  },
+  "tag_rule": {
+    "max_len": 300
+  },
+  "title_case_titles": true
+}

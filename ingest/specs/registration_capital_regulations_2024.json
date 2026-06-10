@@ -1,0 +1,24 @@
+{
+  "doc_id": "REGCAP_REGS",
+  "sheet_name": "IRDAI Registration & Capital Regulations 2024",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "^\\d+\\s+GI/\\d+",
+    "^\\[ADVT",
+    "^[A-Z][A-Z .]+,\\s*Chairperson",
+    "^\\*{2,}$"
+  ],
+  "scope_start": "^CHAPTER\\s*I\\b",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s+[IVX]+)\\s*[-:]\\s*(.*)$", "title_wrap": true,
+     "id_prefix": "REGCAP_REGS-CH{n}", "clause_template": "Chapter {n}: {title}:", "include": true},
+    {"head_match": "^Schedule\\s+(\\d+)\\b\\s*:?\\s*(.*)$",
+     "id_prefix": "REGCAP_REGS-SCH{n}", "clause_template": "Schedule {n}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(FORM\\s+IRDAI/R\\d+)\\b\\s*(.*)$",
+     "id_prefix": "REGCAP_REGS-FORM-R3", "clause_template": "Form IRDAI/R3: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "nest_sections": true,
+  "default_section_prefix": "REGCAP_REGS",
+  "tag_rule": {"max_len": 300}
+}

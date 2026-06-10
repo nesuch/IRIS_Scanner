@@ -1,0 +1,19 @@
+{
+  "doc_id": "CORP_GOV_REGS",
+  "sheet_name": "IRDAI Corporate Governance for Insurers Regulations 2024",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "^\\d+\\s+GI/\\d+",
+    "^\\[ADVT",
+    "^[A-Z][A-Z .]+,\\s*Chairperson"
+  ],
+  "scope_start": "^CHAPTER\\s*[-\\u2013]?\\s*I\\b",
+  "nest_sections": true,
+  "default_section_prefix": "CORP_GOV_REGS",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s*[-\\u2013]?\\s*[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "CORP_GOV_REGS-CH{n}", "clause_template": "Chapter {n}: {title}:", "include": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

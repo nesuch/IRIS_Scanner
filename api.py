@@ -470,6 +470,79 @@ def api_clause_docs():
     return jsonify({"docs": docs})
 
 
+@api_bp.get("/clause/specs")
+def api_clause_specs():
+    """Admin: available document-type specs for PDF import."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    import ingest
+    return jsonify({"specs": ingest.list_specs()})
+
+
+@api_bp.post("/clause/import-pdf")
+def api_clause_import_pdf():
+    """Admin: PDF -> deterministic segmentation -> new document of editable clauses."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    import ingest, tempfile, sqlite3 as _sql
+    f = request.files.get("file")
+    spec_id = (request.form.get("spec_id") or "").strip()
+    source = (request.form.get("source") or "").strip()
+    doc_type = (request.form.get("doc_type") or "REGULATION").strip().upper()
+    category = (request.form.get("category") or "GENERAL").strip().upper()
+    if not f or not f.filename.lower().endswith(".pdf") or not spec_id or not source:
+        return jsonify({"ok": False, "message": "Provide a PDF, a spec, and a document name."}), 400
+
+    df = brain.load_knowledge_base()
+    if df is not None and not df.empty and (df["Source_Doc"].astype(str) == source).any():
+        return jsonify({"ok": False, "message": f"A document named '{source}' already exists. Use a new name."}), 409
+
+    spec = ingest.load_spec(spec_id)
+    if not spec:
+        return jsonify({"ok": False, "message": "Unknown spec."}), 400
+
+    raw = f.read()
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    try:
+        tmp.write(raw); tmp.close()
+        rows, report, spec_errors = ingest.segment_pdf(tmp.name, spec)
+    except Exception as e:
+        print(f"PDF import error: {e}")
+        return jsonify({"ok": False, "message": "Could not segment that PDF."}), 400
+    finally:
+        try: os.unlink(tmp.name)
+        except OSError: pass
+
+    if not rows:
+        return jsonify({"ok": False, "message": "No clauses were found — wrong spec for this document?"}), 400
+
+    # Insert the produced clauses as a new document.
+    conn = _sql.connect(brain.DB_NAME)
+    for r in rows:
+        clause = str(r.get("clause", ""))
+        header = clause.split("\n", 1)[0].rstrip(":")[:120]
+        is_header = 1 if clause.strip().endswith(":") and "\n" not in clause.strip() else 0
+        conn.execute(
+            "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, "
+            "clause_text, context_header, regulatory_tags, priority, is_header) VALUES (?,?,?,?,?,?,?,?,?)",
+            (source, category, doc_type, str(r.get("id", "")), clause, header,
+             str(r.get("tag", "")).replace("_", " "), 99, is_header))
+    conn.commit(); conn.close()
+
+    # Attach the source PDF to the new document, and refresh search.
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", source) + ".pdf"
+    storage.save_doc_pdf(safe, raw)
+    m = _app
+    asset = m.DocumentAsset(source_doc=source, pdf_filename=safe,
+                            uploaded_by=getattr(m.current_user, "email", "") or "",
+                            uploaded_at=datetime.utcnow())
+    m.db.session.add(asset)
+    m.db.session.commit()
+    brain.refresh_kb()
+    return jsonify({"ok": True, "source": source, "clauses": len(rows),
+                    "orphans": report.get("orphan_lines", 0), "spec_errors": spec_errors})
+
+
 @api_bp.post("/clause/doc-pdf")
 def api_doc_pdf_upload():
     """Admin: attach/replace the original source PDF for a document."""

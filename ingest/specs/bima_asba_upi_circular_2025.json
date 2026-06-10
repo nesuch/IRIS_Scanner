@@ -1,0 +1,20 @@
+{
+  "doc_id": "BIMA_ASBA_CIRC",
+  "sheet_name": "Bima-ASBA One-time UPI Mandate for Premium Blocking Circular 2025",
+  "keep_hindi": true,
+  "ignore_patterns": [
+    "P a g e",
+    "R K Sharma",
+    "Chief General Manager"
+  ],
+  "scope_start": "^Sub:\\s*One-time Mandate",
+  "default_section_prefix": "BIMA_ASBA_CIRC",
+  "containers": [
+    {"head_match": "^(Sub:\\s*One-time Mandate.*)$", "id_prefix": "BIMA_ASBA_CIRC-SUBJECT",
+     "clause_template": "Subject:", "include": true, "collect_body": true},
+    {"head_match": "^(\\d+)\\.\\s+(.*)$", "id_prefix": "BIMA_ASBA_CIRC-{n}",
+     "clause_template": "Clause {n}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

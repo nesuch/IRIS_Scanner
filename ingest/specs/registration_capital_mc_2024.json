@@ -1,0 +1,19 @@
+{
+  "doc_id": "REG_MC",
+  "sheet_name": "IRDAI Registration Capital Structure Transfer of Shares & Amalgamation of Insurers Master Circular 2024",
+  "ignore_patterns": [
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "^\\s*Table of Content\\s*$"
+  ],
+  "scope_start": "^Ref:\\s*IRDAI/F&I/CIR/78/5/2024",
+  "containers": [
+    {"head_match": "^(Ref:\\s*IRDAI.*)$", "id_prefix": "REG_MC-PREAMBLE",
+     "clause_template": "Preamble:", "include": true, "collect_body": true},
+    {"head_match": "^Chapter\\s*[-\\u2013]?\\s*([IVXLC]+)\\b\\s*[:.\\u2013-]*\\s*(.*)$", "id_prefix": "REG_MC-CH{n}",
+     "clause_template": "Chapter {n}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Annexure\\s*[-\\u2013]?\\s*(\\d+)\\b\\s*(.*)$", "id_prefix": "REG_MC-ANX{n}",
+     "clause_template": "Annexure {n}: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d{1,2})\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

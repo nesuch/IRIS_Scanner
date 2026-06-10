@@ -1,0 +1,43 @@
+{
+  "doc_id": "AFI_MC",
+  "sheet_name": "Actuarial Finance Investment MC",
+  "ignore_patterns": [
+    "\\.{6,}",
+    "^\\s*Contents\\s*$",
+    "पृष्ठ",
+    "Page\\s*\\d+\\s*of\\s*\\d+",
+    "^\\s*Sd/-\\s*$"
+  ],
+  "scope_start": "^Chapter\\s*1\\b",
+  "containers": [
+    {
+      "head_match": "^(Section\\s*[-–—]?\\s*[IVXLC]+)\\b\\s*[-:–]?\\s*(.*)$",
+      "id_prefix": "AFI_MC-Ch{parent}-Sec{n}",
+      "clause_template": "Section {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    },
+    {
+      "head_match": "^(Annexure\\s*[-–—]?\\s*(?:[IVXLC]+|ACTL[-A-Z0-9]+|\\d+))\\b\\s*[-:–]?\\s*(.*)$",
+      "id_prefix": "AFI_MC-ANX{n}",
+      "clause_template": "Annexure {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    },
+    {
+      "head_match": "^(Schedule\\s*[-–—]?\\s*[IVXLC]+)\\b\\s*[-:–]?\\s*(.*)$",
+      "id_prefix": "AFI_MC-SCH{n}",
+      "clause_template": "Schedule {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "tag_rule": {
+    "max_len": 300
+  },
+  "chapter_match": "^Chapter\\s*(\\d+)\\b",
+  "section": {
+    "match": "^(\\d+)\\.\\s+",
+    "delimiter": ":"
+  }
+}

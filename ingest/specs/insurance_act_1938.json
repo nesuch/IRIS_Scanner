@@ -1,0 +1,22 @@
+{
+  "doc_id": "INS_Act",
+  "sheet_name": "INSURANCE ACT,1938",
+  "ignore_patterns": [],
+  "scope_start": "^PART\\s+I\\b",
+  "containers": [
+    {
+      "head_match": "^(PART\\s+[IVXLC]+[A-Z]?)\\s*$",
+      "title_next_line": true,
+      "id_prefix": "INS-PART{n}",
+      "clause_template": "{head}: {title}:",
+      "include": true
+    }
+  ],
+  "section": {
+    "match": "^\\[?“?(\\d+[A-Z]*)\\.\\s",
+    "delimiter": ".—"
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "doc_id": "RSM_REGS",
+  "sheet_name": "IRDAI Rural Social Sector & Motor TP Obligations Regulations 2024",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "^\\d+\\s+GI/\\d+",
+    "^\\[ADVT",
+    "^[A-Z][A-Z .]+,\\s*Chairperson"
+  ],
+  "scope_start": "^CHAPTER\\s*[-\\u2013]?\\s*I\\b",
+  "title_case_titles": true,
+  "nest_sections": true,
+  "default_section_prefix": "RSM_REGS",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s*[-\\u2013]?\\s*[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "RSM_REGS-CH{n}", "clause_template": "Chapter {n}: {title}:", "include": true},
+    {"head_match": "^PART\\s+(\\d+|[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "RSM_REGS-Part{n}", "clause_template": "Part {n}: {title}:", "include": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}

@@ -1,0 +1,45 @@
+{
+  "doc_id": "HEALTH_MC",
+  "sheet_name": "Health Insurance MC 2024",
+  "preprocess": [
+    "explode_layout_tables"
+  ],
+  "ignore_patterns": [
+    "^Page\\s+\\d+\\s+of\\s+\\d+",
+    "^Master Circular on Health Insurance Business$",
+    "^Version:",
+    "^\\d{8}$",
+    "^Ref:\\s+IRDAI/",
+    "^To$",
+    "^All General Insurers",
+    "^Sub:\\s+Master Circular",
+    "^This has approval",
+    "^Ramana Rao",
+    "^Chief General Manager",
+    "^INDEX$",
+    "^\\.{6,}",
+    "^\\*{4}$",
+    "^Insurance Business$"
+  ],
+  "scope_start": "^Chapter\\s+I:",
+  "containers": [
+    {
+      "head_match": "^(Chapter\\s+[IVX]+):\\s*(.*)$",
+      "id_prefix": "HEALTH_MC-Ch{n}",
+      "clause_template": "{head}: {title}",
+      "include": true,
+      "collect_body": false
+    }
+  ],
+  "section": {
+    "match": "^(\\d+\\)|\\(\\d+\\)|[IVXLC]{1,4}\\.|[A-Z]\\.|\\d+\\.)\\s",
+    "delimiter": ":"
+  },
+  "heading_on_own_line": true,
+  "default_section_prefix": "HEALTH_MC",
+  "tag_rule": {
+    "max_len": 300
+  },
+  "chapter_from_container": true,
+  "nest_sections": true
+}

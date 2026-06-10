@@ -1,0 +1,28 @@
+{
+  "doc_id": "OPS_MC",
+  "sheet_name": "Operations and Allied Matters MC 2024",
+  "ignore_patterns": [
+    "\\.{6,}",
+    "^\\s*Contents\\s*$",
+    "^\\s*INDEX\\s*$",
+    "^\\s*Sd/-\\s*$",
+    "^Page\\s*\\d+\\s*(of|\\|)"
+  ],
+  "scope_start": "^CHAPTER\\s*[-\\u2013]?\\s*I\\b",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s*[-\\u2013]?\\s*[IVXLC]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "OPS_MC-CH{n}", "clause_template": "Chapter {n}: {title}:",
+     "include": true, "collect_body": true},
+    {"head_match": "^(Annexure\\s*[-\\u2013]?\\s*[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "OPS_MC-ANX{n}", "clause_template": "Annexure {n}: {title}:",
+     "include": true, "collect_body": true},
+    {"head_match": "^(SCHEDULE\\s*[-\\u2013]?\\s*A)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "OPS_MC-SCHA", "clause_template": "Schedule A: {title}:",
+     "include": true, "collect_body": true},
+    {"head_match": "^(SCHEDULE\\s*[-\\u2013]?\\s*B)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "OPS_MC-SCHB", "clause_template": "Schedule B: {title}:",
+     "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d{1,2}(?:\\.\\d{1,2})?)\\.?\\s+", "delimiter": ":"},
+  "tag_rule": {"max_len": 300}
+}
