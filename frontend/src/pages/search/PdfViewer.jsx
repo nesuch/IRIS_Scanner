@@ -95,7 +95,9 @@ export default function PdfViewer({ url }) {
     setStatus('loading');
     zoomRef.current = 100;
     setZoom(100);
-    const task = pdfjsLib.getDocument(url);
+    // withCredentials so cookie-authed PDF endpoints (e.g. attached document
+    // PDFs at /api/doc-pdf/...) load instead of 401-ing.
+    const task = pdfjsLib.getDocument({ url, withCredentials: true });
     task.promise.then(async (pdf) => {
       if (cancelled) { try { pdf.destroy(); } catch { /* noop */ } return; }
       docRef.current = pdf;

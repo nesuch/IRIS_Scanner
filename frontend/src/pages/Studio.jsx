@@ -31,7 +31,7 @@ function AttachPdf({ doc, onAttached }) {
     <>
       <input ref={ref} type="file" accept="application/pdf" hidden onChange={onFile} />
       <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ref.current?.click()}>
-        {busy ? <Spinner size={13} /> : <i className="fas fa-file-arrow-up" />} {doc.has_uploaded_pdf ? 'Replace PDF' : 'Attach PDF'}
+        {busy ? <Spinner size={13} /> : <i className="fas fa-file-arrow-up" />} {doc.pdf_url ? 'Replace PDF' : 'Attach PDF'}
       </button>
     </>
   );
@@ -140,8 +140,11 @@ export default function Studio() {
             <>
               <div className="studio-resizer" onMouseDown={startResize} title="Drag to resize" />
               <aside className="studio-pdf" style={{ flexBasis: `${paneW}%` }}>
-                <div className="studio-pdf-head"><i className="fas fa-file-pdf" /> {doc.source}</div>
-                <PdfViewer url={doc.pdf_url} />
+                <div className="studio-pdf-head">
+                  <i className="fas fa-file-pdf" /> {doc.source}
+                  <span className="studio-pdf-tag">{doc.has_uploaded_pdf ? 'uploaded' : 'bundled'}</span>
+                </div>
+                <PdfViewer key={doc.pdf_url} url={doc.pdf_url} />
               </aside>
             </>
           )}

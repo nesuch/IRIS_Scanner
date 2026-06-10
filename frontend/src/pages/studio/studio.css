@@ -40,6 +40,7 @@
 .studio-resizer:hover { background: var(--accent); }
 .studio-pdf { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
 .studio-pdf-head { padding: 9px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 7px; }
+.studio-pdf-tag { margin-left: auto; font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); background: var(--paper-2, #f1f5f9); padding: 2px 8px; border-radius: var(--r-pill); }
 
 @media (max-width: 900px) {
   .studio-rail { width: 220px; flex-basis: 220px; }
