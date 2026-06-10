@@ -285,6 +285,8 @@ def _pq_snippet(body, limit=220):
     m = re.search(r"Subject\s*:.*?(?:\n|$)", body, re.I) or re.search(r"Dear\s+Sir.*?(?:\n|$)", body, re.I)
     rest = body[m.end():] if m else body
     rest = re.sub(r"\s+", " ", rest).strip()
+    # Drop the standard covering-letter intro ("This has reference … seriatim for the same.")
+    rest = re.sub(r"^This has reference.*?seriatim for the same\.\s*", "", rest, flags=re.I).strip()
     return rest[:limit] + ("…" if len(rest) > limit else "")
 
 

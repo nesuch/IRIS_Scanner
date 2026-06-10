@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+
+const STORE_KEY = 'iris.sidebar.collapsed';
 
 const SECTIONS = [
   {
@@ -33,6 +36,14 @@ const SECTIONS = [
 
 export default function Sidebar({ open, onNavigate }) {
   const { user } = useAuth();
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
+  });
+  const toggle = (label) => setCollapsed((c) => {
+    const next = { ...c, [label]: !c[label] };
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
   return (
     <aside className={`sidebar ${open ? 'open' : ''}`}>
       <div className="sidebar-brand">
@@ -41,25 +52,31 @@ export default function Sidebar({ open, onNavigate }) {
       </div>
       <div className="sidebar-tagline">Exact regulation.<br />Zero hallucination.</div>
 
-      {SECTIONS.map((sec) => (
-        <div key={sec.label}>
-          <div className="nav-label">{sec.label}</div>
-          {sec.items
-            .filter((it) => !it.adminOnly || (user && user.is_admin))
-            .map((it) => (
-              <NavLink
-                key={it.to}
-                to={it.to}
-                end={it.end}
-                onClick={onNavigate}
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              >
-                <i className={`fas ${it.icon}`} />
-                <span>{it.text}</span>
-              </NavLink>
-            ))}
-        </div>
-      ))}
+      {SECTIONS.map((sec) => {
+        const isCol = !!collapsed[sec.label];
+        return (
+          <div className={`nav-group ${isCol ? 'is-collapsed' : ''}`} key={sec.label}>
+            <button type="button" className="nav-label nav-label-btn" onClick={() => toggle(sec.label)}>
+              <span>{sec.label}</span>
+              <i className="fas fa-chevron-down nav-chevron" />
+            </button>
+            {!isCol && sec.items
+              .filter((it) => !it.adminOnly || (user && user.is_admin))
+              .map((it) => (
+                <NavLink
+                  key={it.to}
+                  to={it.to}
+                  end={it.end}
+                  onClick={onNavigate}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                >
+                  <i className={`fas ${it.icon}`} />
+                  <span>{it.text}</span>
+                </NavLink>
+              ))}
+          </div>
+        );
+      })}
 
       <div className="nav-spacer" />
       <NavLink to="/logout" onClick={onNavigate} className="nav-item">

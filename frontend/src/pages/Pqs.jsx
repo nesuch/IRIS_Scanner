@@ -157,8 +157,8 @@ export default function Pqs() {
             )}
             <textarea className="search-input" placeholder="Search Parliamentary Questions — topic, subject, or tag…" value={query}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
-            <button type="submit" className="search-btn" disabled={busy} aria-label="Search">
-              {busy ? <Spinner size={16} color="#fff" /> : <i className="fas fa-magnifying-glass" />}
+            <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
+              {busy ? <Spinner size={16} color="#fff" /> : <i className="fas fa-magnifying-glass" />} <span className="btn-label">Search</span>
             </button>
           </div>
         </form>
