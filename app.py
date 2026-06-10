@@ -236,6 +236,19 @@ class PqDocument(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
+class DocumentAsset(db.Model):
+    """An original source PDF an admin attached to a document — shown in the
+    Studio pane and offered to users as a download for that document's clauses."""
+    __tablename__ = "document_assets"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_doc = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    pdf_filename = db.Column(db.String(300), nullable=True)
+    uploaded_by = db.Column(db.String(255), nullable=True)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
 class ClauseVersion(db.Model):
     """Audit/restore snapshot of a clause's content, written before each in-app
     edit. Lets admins see history and revert (important for regulatory text)."""

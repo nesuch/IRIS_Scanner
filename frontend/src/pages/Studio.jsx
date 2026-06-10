@@ -7,6 +7,36 @@ import PdfViewer from './search/PdfViewer.jsx';
 import { api } from '../api.js';
 import './studio/studio.css';
 
+function AttachPdf({ doc, onAttached }) {
+  const toast = useToast();
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  async function onFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) { toast.error('Choose a PDF file'); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('source', doc.source);
+      fd.append('file', file);
+      const r = await api.post('/clause/doc-pdf', fd);
+      toast.success('Original PDF attached');
+      onAttached(r.pdf_url);
+    } catch (e) { toast.error(e.message || 'Upload failed'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <>
+      <input ref={ref} type="file" accept="application/pdf" hidden onChange={onFile} />
+      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ref.current?.click()}>
+        {busy ? <Spinner size={13} /> : <i className="fas fa-file-arrow-up" />} {doc.has_uploaded_pdf ? 'Replace PDF' : 'Attach PDF'}
+      </button>
+    </>
+  );
+}
+
 export default function Studio() {
   const toast = useToast();
   const [docs, setDocs] = useState(null);
@@ -57,6 +87,7 @@ export default function Studio() {
   return (
     <div className="studio-shell">
       <PageHeader fullForm="Regulatory Library" title="Document Studio" scope="Edit clauses with the original document alongside">
+        {doc && <AttachPdf doc={doc} onAttached={(url) => { setDoc((d) => ({ ...d, pdf_url: url, has_uploaded_pdf: true })); setShowPdf(true); }} />}
         {doc?.pdf_url && (
           <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}>
             <i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}

@@ -177,15 +177,23 @@ def api_reset_password_valid(token):
 # ----------------------------------------------------------------------------
 # SEARCH  (mirrors handle_search; returns structured data instead of HTML)
 # ----------------------------------------------------------------------------
+def _doc_pdf_url(source):
+    """Prefer an admin-attached PDF for this document; else the bundled static PDF."""
+    asset = _app.DocumentAsset.query.filter_by(source_doc=str(source)).first()
+    if asset and asset.pdf_filename:
+        return f"/api/doc-pdf/{asset.id}/download"
+    p = _app.resolve_pdf_path(str(source).strip().upper())
+    return ("/static/" + p) if p else None
+
+
 def _match_payload(m):
-    pdf_path = _app.resolve_pdf_path(str(m.get("source", "")).strip().upper())
     return {
         "source": m.get("source", "UNKNOWN"),
         "type": m.get("type", "UNKNOWN"),
         "id": str(m.get("id", "")).strip(),
         "header": m.get("header", ""),
         "raw_text": str(m.get("raw_text", "")),
-        "pdf_url": ("/static/" + pdf_path) if pdf_path else None,
+        "pdf_url": _doc_pdf_url(m.get("source", "")),
         "tags": brain.clause_tags(m.get("id", ""), m.get("source", "")),
         "html": brain.clause_html(m.get("id", ""), m.get("source", "")),
         **_doc_status(m.get("source", "")),
@@ -447,16 +455,53 @@ def api_clause_docs():
     docs = []
     for src, g in df.groupby("Source_Doc"):
         edited = int(g["clause_html"].apply(lambda v: bool(pd.notna(v) and str(v).strip())).sum()) if has_html else 0
-        pdf_path = _app.resolve_pdf_path(str(src).strip().upper())
+        asset = _app.DocumentAsset.query.filter_by(source_doc=str(src)).first()
         docs.append({
             "source": str(src),
             "type": str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
             "clauses": int(len(g)),
             "edited": edited,
-            "pdf_url": ("/static/" + pdf_path) if pdf_path else None,
+            "pdf_url": _doc_pdf_url(str(src)),
+            "has_uploaded_pdf": bool(asset and asset.pdf_filename),
         })
     docs.sort(key=lambda d: d["source"].lower())
     return jsonify({"docs": docs})
+
+
+@api_bp.post("/clause/doc-pdf")
+def api_doc_pdf_upload():
+    """Admin: attach/replace the original source PDF for a document."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    source = (request.form.get("source") or "").strip()
+    f = request.files.get("file")
+    if not source or not f or not f.filename.lower().endswith(".pdf"):
+        return jsonify({"ok": False, "message": "Provide a document and a .pdf file."}), 400
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", source) + ".pdf"
+    storage.save_doc_pdf(safe, f.read())
+    m = _app
+    asset = m.DocumentAsset.query.filter_by(source_doc=source).first()
+    if asset is None:
+        asset = m.DocumentAsset(source_doc=source)
+        m.db.session.add(asset)
+    asset.pdf_filename = safe
+    asset.uploaded_by = getattr(m.current_user, "email", "") or ""
+    asset.uploaded_at = datetime.utcnow()
+    m.db.session.commit()
+    return jsonify({"ok": True, "pdf_url": f"/api/doc-pdf/{asset.id}/download"})
+
+
+@api_bp.get("/doc-pdf/<int:aid>/download")
+def api_doc_pdf_serve(aid):
+    """Stream an attached document PDF (inline) for viewing/download."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    a = _app.DocumentAsset.query.get_or_404(aid)
+    data = storage.load_doc_pdf(a.pdf_filename)
+    if data is None:
+        return jsonify({"ok": False, "message": "PDF not found"}), 404
+    return send_file(io.BytesIO(data), mimetype="application/pdf",
+                     as_attachment=False, download_name=f"{a.source_doc}.pdf")
 
 
 @api_bp.get("/clause/list")
