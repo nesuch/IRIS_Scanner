@@ -31,6 +31,10 @@ export default function Studio() {
   const [dragKey, setDragKey] = useState(null);
   const editorApi = useRef(null);
   const splitRef = useRef(null);
+  // Refs mirror state so the editor's (stale-closure) onChange always sees current values.
+  const clausesRef = useRef(clauses); clausesRef.current = clauses;
+  const activeKeyRef = useRef(activeKey); activeKeyRef.current = activeKey;
+  const burstRef = useRef({ key: null, t: 0 });
 
   useEffect(() => { reloadDocs(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   function reloadDocs() { return api.get('/clause/docs').then((d) => setDocs(d.docs || [])).catch(() => setDocs([])); }
@@ -53,10 +57,21 @@ export default function Studio() {
   const idx = () => (clauses ? clauses.findIndex((c) => c.key === activeKey) : -1);
   const active = clauses ? clauses.find((c) => c.key === activeKey) : null;
 
+  function pushHist() {
+    setHist((h) => [...h.slice(-49), JSON.stringify({ c: clausesRef.current, a: activeKeyRef.current })]);
+    setFuture([]);
+  }
+  // Coalesce a burst of edits (same target within 1s) into a single undo step.
+  function noteChange(burstKey) {
+    const now = Date.now(); const b = burstRef.current;
+    if (!(b.key === burstKey && now - b.t < 1000)) pushHist();
+    burstRef.current = { key: burstKey, t: now };
+  }
+
   // Push current state to history before a structural change.
   function commit(next, nextActive) {
-    setHist((h) => [...h.slice(-49), JSON.stringify({ c: clauses, a: activeKey })]);
-    setFuture([]);
+    pushHist();
+    burstRef.current = { key: null, t: 0 };   // structural op ends any edit burst
     setClauses(next);
     if (nextActive !== undefined) setActiveKey(nextActive);
     setRev((x) => x + 1);
@@ -80,11 +95,15 @@ export default function Studio() {
   // Continuous content edits from the editor — update active clause, mark dirty
   // (no history snapshot per keystroke; structural ops snapshot instead).
   function onEdit(html) {
-    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, html, edited: true, changed: true } : c)));
+    const key = activeKeyRef.current;
+    noteChange('content:' + key);
+    setClauses((cs) => cs.map((c) => (c.key === key ? { ...c, html, edited: true, changed: true } : c)));
     setDirty(true);
   }
   function setField(field, value) {
-    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, [field]: value, edited: true, changed: true } : c)));
+    const key = activeKeyRef.current;
+    noteChange(field + ':' + key);
+    setClauses((cs) => cs.map((c) => (c.key === key ? { ...c, [field]: value, edited: true, changed: true } : c)));
     setDirty(true);
   }
 
