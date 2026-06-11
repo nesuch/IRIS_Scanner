@@ -27,6 +27,7 @@ export default function Studio() {
   const [showRail, setShowRail] = useState(true);
   const [paneW, setPaneW] = useState(38);
   const [importOpen, setImportOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [dragKey, setDragKey] = useState(null);
   const editorApi = useRef(null);
   const splitRef = useRef(null);
@@ -118,6 +119,15 @@ export default function Studio() {
     c[i + 1] = { ...c[i + 1], html: c[i].html + c[i + 1].html };
     const keep = c[i + 1].key; c.splice(i, 1); commit(c, keep);
   }
+  function applyRestore(v) {
+    const i = idx(); if (i < 0) return;
+    const c = clone(clauses);
+    c[i] = { ...c[i], html: v.html, tags: [...(v.tags || [])] };
+    commit(c, activeKey);
+    setHistoryOpen(false);
+    toast.success('Version restored — Save to keep it');
+  }
+
   function splitClause() {
     const i = idx(); if (i < 0 || !editorApi.current) return;
     const { before, after } = editorApi.current.split();
@@ -213,6 +223,8 @@ export default function Studio() {
         <button title="Merge into clause above" onClick={mergeUp}><i className="fas fa-up-long" /> Merge ↑</button>
         <button title="Merge into clause below" onClick={mergeDown}><i className="fas fa-down-long" /> Merge ↓</button>
         <button className="danger" title="Delete clause" onClick={delClause}><i className="fas fa-trash" /> Delete</button>
+        <span className="ab-div" />
+        <button title="Version history" onClick={() => setHistoryOpen(true)} disabled={!active}><i className="fas fa-clock-rotate-left" /> History</button>
         <span className="ab-spacer" />
         <span className="ab-hint">Drag clauses to reorder</span>
       </div>
@@ -268,7 +280,38 @@ export default function Studio() {
           )}
         </div>
       </div>
+      {historyOpen && active && <HistoryModal source={doc.source} id={active.id} onRestore={applyRestore} onClose={() => setHistoryOpen(false)} />}
     </div>
+  );
+}
+
+function HistoryModal({ source, id, onRestore, onClose }) {
+  const toast = useToast();
+  const [versions, setVersions] = useState(null);
+  useEffect(() => {
+    api.get(`/clause/history?source=${encodeURIComponent(source)}&id=${encodeURIComponent(id)}`)
+      .then((d) => setVersions(d.versions || []))
+      .catch((e) => { toast.error(e.message || 'Could not load history'); onClose(); });
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  const fmt = (s) => (s ? s.replace('T', ' ').slice(0, 16) : '');
+  return (
+    <Modal title={`History — ${id}`} width="560px" onClose={onClose}>
+      {versions === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
+        : versions.length === 0 ? <p className="guide-intro">No prior versions yet. Versions are recorded each time you save, merge, or delete.</p>
+          : (
+            <div className="hist-list">
+              {versions.map((v) => (
+                <div className="hist-row" key={v.version_id}>
+                  <div className="hist-info">
+                    <div className="hist-meta">{fmt(v.edited_at)} · {v.edited_by || '—'}</div>
+                    <div className="hist-snip">{v.snippet || '(empty)'}</div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => onRestore(v)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          )}
+    </Modal>
   );
 }
 

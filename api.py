@@ -565,6 +565,29 @@ def api_clause_import_pdf():
                     "orphans": report.get("orphan_lines", 0), "spec_errors": spec_errors})
 
 
+@api_bp.get("/clause/history")
+def api_clause_history():
+    """Admin: prior versions of a clause (newest first) for review/restore."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    import sqlite3 as _sql
+    source = (request.args.get("source") or "").strip()
+    cid = (request.args.get("id") or "").strip()
+    conn = _sql.connect(brain.DB_NAME)
+    rows = conn.execute(
+        "SELECT id, html, body_text, tags, edited_by, edited_at FROM clause_versions "
+        "WHERE source_doc=? AND clause_id=? ORDER BY id DESC LIMIT 50", (source, cid)).fetchall()
+    conn.close()
+    out = []
+    for vid, html, body, tags, by, at in rows:
+        h = html or _clause_text_to_html(body or "")
+        snip = re.sub(r"\s+", " ", body or re.sub(r"<[^>]+>", " ", h))[:160]
+        out.append({"version_id": vid, "edited_by": by or "", "edited_at": at or "",
+                    "snippet": snip, "html": h,
+                    "tags": [t.strip() for t in (tags or "").split(",") if t.strip()]})
+    return jsonify({"source": source, "id": cid, "versions": out})
+
+
 @api_bp.get("/clause/doc-full")
 def api_clause_doc_full():
     """Admin: every clause of a document with full HTML + tags, in order — for the
