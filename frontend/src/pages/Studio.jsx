@@ -89,6 +89,30 @@ export default function Studio() {
     setClauses((cs) => cs.map((c) => (c.id === active.id ? { ...c, edited: true } : c)));
   }
 
+  function reloadClauses() {
+    if (!doc) return Promise.resolve();
+    return api.get(`/clause/list?source=${encodeURIComponent(doc.source)}`)
+      .then((r) => setClauses(r.clauses || [])).catch(() => {});
+  }
+
+  async function clauseOp(e, path, body, okMsg) {
+    e?.stopPropagation();
+    try { const r = await api.post(path, body); toast.success(okMsg); return r; }
+    catch (err) { toast.error(err.message || 'Action failed'); return null; }
+    finally { reloadClauses(); }
+  }
+
+  async function addBelow(e, c) {
+    const r = await clauseOp(e, '/clause/add', { source: doc.source, after_id: c.id }, 'Clause added');
+    if (r?.id) openClause({ id: r.id });
+  }
+  async function removeClause(e, c) {
+    e.stopPropagation();
+    if (!window.confirm(`Delete clause ${c.id}?`)) return;
+    if (active?.id === c.id) setActive(null);
+    clauseOp(null, '/clause/remove', { source: doc.source, id: c.id }, 'Clause deleted');
+  }
+
   function startResize(e) {
     e.preventDefault();
     const rect = splitRef.current?.getBoundingClientRect();
@@ -130,10 +154,20 @@ export default function Studio() {
             ) : (
               clauses === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
                 : clauses.map((c) => (
-                  <button key={c.id} className={`studio-clause ${active?.id === c.id ? 'is-active' : ''}`} onClick={() => openClause(c)}>
-                    <span className="studio-clause-id">{c.id}{c.edited && <i className="fas fa-pen studio-edited" title="Edited" />}</span>
-                    <span className="studio-clause-prev">{c.preview}</span>
-                  </button>
+                  <div key={c.id} className={`studio-clause ${active?.id === c.id ? 'is-active' : ''}`}>
+                    <div className="studio-clause-main" onClick={() => openClause(c)} role="button" tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter') openClause(c); }}>
+                      <span className="studio-clause-id">{c.id}{c.edited && <i className="fas fa-pen studio-edited" title="Edited" />}</span>
+                      <span className="studio-clause-prev">{c.preview}</span>
+                    </div>
+                    <div className="studio-clause-acts">
+                      <button title="Move up" onClick={(e) => clauseOp(e, '/clause/move', { source: doc.source, id: c.id, direction: 'up' }, 'Moved up')}><i className="fas fa-arrow-up" /></button>
+                      <button title="Move down" onClick={(e) => clauseOp(e, '/clause/move', { source: doc.source, id: c.id, direction: 'down' }, 'Moved down')}><i className="fas fa-arrow-down" /></button>
+                      <button title="Add clause below" onClick={(e) => addBelow(e, c)}><i className="fas fa-plus" /></button>
+                      <button title="Merge into clause above" onClick={(e) => clauseOp(e, '/clause/merge', { source: doc.source, id: c.id }, 'Merged up')}><i className="fas fa-up-long" /></button>
+                      <button title="Delete clause" className="danger" onClick={(e) => removeClause(e, c)}><i className="fas fa-trash" /></button>
+                    </div>
+                  </div>
                 ))
             )}
           </div>

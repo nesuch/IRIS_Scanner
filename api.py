@@ -540,15 +540,15 @@ def api_clause_import_pdf():
 
     # Insert the produced clauses as a new document.
     conn = _sql.connect(brain.DB_NAME)
-    for r in rows:
+    for i, r in enumerate(rows, 1):
         clause = str(r.get("clause", ""))
         header = clause.split("\n", 1)[0].rstrip(":")[:120]
         is_header = 1 if clause.strip().endswith(":") and "\n" not in clause.strip() else 0
         conn.execute(
             "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, "
-            "clause_text, context_header, regulatory_tags, priority, is_header) VALUES (?,?,?,?,?,?,?,?,?)",
+            "clause_text, context_header, regulatory_tags, priority, is_header, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (source, category, doc_type, str(r.get("id", "")), clause, header,
-             str(r.get("tag", "")).replace("_", " "), 99, is_header))
+             str(r.get("tag", "")).replace("_", " "), 99, is_header, i * 10))
     conn.commit(); conn.close()
 
     # Attach the source PDF to the new document, and refresh search.
@@ -632,6 +632,8 @@ def api_clause_list_for_doc():
     if df is None or df.empty:
         return jsonify({"clauses": []})
     sub = df[df["Source_Doc"].astype(str) == source]
+    if "sort_order" in sub.columns:
+        sub = sub.assign(_o=sub["sort_order"].fillna(sub.reset_index().index.to_numpy())).sort_values("_o", kind="stable")
     has_html = "clause_html" in sub.columns
     out = []
     for _, r in sub.iterrows():
@@ -718,6 +720,54 @@ def api_clause_edit_save():
     if not ok:
         return jsonify({"ok": False, "message": "Clause not found"}), 404
     return jsonify({"ok": True, "html": data.get("html") or ""})
+
+
+@api_bp.post("/clause/add")
+def api_clause_add():
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    d = request.get_json(silent=True) or {}
+    src, after = (d.get("source") or "").strip(), (d.get("after_id") or "").strip()
+    if not src or not after:
+        return jsonify({"ok": False, "message": "Missing source/after_id"}), 400
+    new_id = brain.add_clause(src, after, getattr(_app.current_user, "email", "") or "")
+    if not new_id:
+        return jsonify({"ok": False, "message": "Could not add clause"}), 400
+    return jsonify({"ok": True, "id": new_id})
+
+
+@api_bp.post("/clause/remove")
+def api_clause_remove():
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    d = request.get_json(silent=True) or {}
+    src, cid = (d.get("source") or "").strip(), (d.get("id") or "").strip()
+    if not brain.delete_clause(src, cid, getattr(_app.current_user, "email", "") or ""):
+        return jsonify({"ok": False, "message": "Clause not found"}), 404
+    return jsonify({"ok": True})
+
+
+@api_bp.post("/clause/merge")
+def api_clause_merge():
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    d = request.get_json(silent=True) or {}
+    src, cid = (d.get("source") or "").strip(), (d.get("id") or "").strip()
+    if not brain.merge_clause(src, cid, getattr(_app.current_user, "email", "") or ""):
+        return jsonify({"ok": False, "message": "Nothing to merge into (it may be the first clause)."}), 400
+    return jsonify({"ok": True})
+
+
+@api_bp.post("/clause/move")
+def api_clause_move():
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    d = request.get_json(silent=True) or {}
+    src, cid = (d.get("source") or "").strip(), (d.get("id") or "").strip()
+    direction = "up" if (d.get("direction") or "up") == "up" else "down"
+    if not brain.move_clause(src, cid, direction):
+        return jsonify({"ok": False, "message": "Can't move further."}), 400
+    return jsonify({"ok": True})
 
 
 @api_bp.post("/clause/retag")

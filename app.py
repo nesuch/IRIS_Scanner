@@ -560,6 +560,7 @@ def _ensure_database_schema():
             "clause_html": "TEXT",          # rich edited body (HTML); null => render clause_text
             "updated_at": "DATETIME",
             "updated_by": "VARCHAR(255)",
+            "sort_order": "INTEGER",        # clause ordering within a document (Studio)
         },
     }
 
@@ -572,6 +573,13 @@ def _ensure_database_schema():
                 continue
             db.session.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
             app.logger.warning("Backfilled missing column %s.%s", table_name, col_name)
+
+    # Seed clause ordering from row insertion order where not yet set.
+    if inspector.has_table("regulatory_clauses"):
+        try:
+            db.session.execute(text("UPDATE regulatory_clauses SET sort_order = rowid WHERE sort_order IS NULL"))
+        except Exception:
+            pass
 
     db.session.commit()
 

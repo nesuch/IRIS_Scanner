@@ -272,6 +272,109 @@ def delete_document(source, editor=None):
     return len(rows)
 
 
+def _snapshot(conn, clause_id, source, html, text, tags, editor, suffix=""):
+    conn.execute(
+        "INSERT INTO clause_versions (clause_id, source_doc, html, body_text, tags, edited_by, edited_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (clause_id, str(source), html, text, tags, (editor or "") + suffix,
+         datetime.utcnow().isoformat(sep=" ", timespec="seconds")))
+
+
+def _renumber(conn, source):
+    """Re-sequence a document's clauses (sort_order = 10, 20, 30 …) by current order."""
+    ids = conn.execute(
+        "SELECT clause_id FROM regulatory_clauses WHERE source_doc=? ORDER BY COALESCE(sort_order, rowid)",
+        (str(source),)).fetchall()
+    for i, (cid,) in enumerate(ids, 1):
+        conn.execute("UPDATE regulatory_clauses SET sort_order=? WHERE source_doc=? AND clause_id=?",
+                     (i * 10, str(source), cid))
+
+
+def add_clause(source, after_id, editor=None):
+    """Insert a new blank clause right after `after_id`. Returns the new id."""
+    conn = sqlite3.connect(DB_NAME)
+    meta = conn.execute("SELECT doc_category, doc_type FROM regulatory_clauses WHERE source_doc=? LIMIT 1",
+                        (str(source),)).fetchone()
+    if not meta:
+        conn.close(); return None
+    existing = {r[0] for r in conn.execute("SELECT clause_id FROM regulatory_clauses WHERE source_doc=?", (str(source),))}
+    n = 1
+    new_id = f"NEW-{n}"
+    while new_id in existing:
+        n += 1; new_id = f"NEW-{n}"
+    arow = conn.execute("SELECT COALESCE(sort_order, rowid) FROM regulatory_clauses WHERE source_doc=? AND clause_id=?",
+                        (str(source), str(after_id))).fetchone()
+    after_so = arow[0] if arow else 0
+    conn.execute(
+        "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, clause_text, "
+        "context_header, regulatory_tags, priority, is_header, sort_order, updated_by) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (str(source), meta[0], meta[1], new_id, "New clause:", "New clause", "", 99, 0, after_so + 5, editor or ""))
+    _renumber(conn, source)
+    conn.commit(); conn.close()
+    refresh_kb()
+    return new_id
+
+
+def delete_clause(source, clause_id, editor=None):
+    conn = sqlite3.connect(DB_NAME)
+    r = conn.execute("SELECT clause_html, clause_text, regulatory_tags FROM regulatory_clauses WHERE source_doc=? AND clause_id=?",
+                     (str(source), str(clause_id))).fetchone()
+    if not r:
+        conn.close(); return False
+    _snapshot(conn, clause_id, source, r[0], r[1], r[2], editor, " (delete)")
+    conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=? AND clause_id=?", (str(source), str(clause_id)))
+    _renumber(conn, source)
+    conn.commit(); conn.close()
+    refresh_kb()
+    return True
+
+
+def merge_clause(source, clause_id, editor=None):
+    """Merge a clause into the one immediately above it (by order)."""
+    conn = sqlite3.connect(DB_NAME)
+    seq = conn.execute("SELECT clause_id, clause_html, clause_text, regulatory_tags FROM regulatory_clauses "
+                       "WHERE source_doc=? ORDER BY COALESCE(sort_order, rowid)", (str(source),)).fetchall()
+    ids = [row[0] for row in seq]
+    if str(clause_id) not in ids:
+        conn.close(); return False
+    idx = ids.index(str(clause_id))
+    if idx == 0:
+        conn.close(); return False
+    prev, this = seq[idx - 1], seq[idx]
+    new_text = (prev[2] or "") + "\n" + (this[2] or "")
+    new_html = ((prev[1] or "") + (this[1] or "")) or None
+    _snapshot(conn, prev[0], source, prev[1], prev[2], prev[3], editor, " (merge)")
+    _snapshot(conn, this[0], source, this[1], this[2], this[3], editor, " (merge)")
+    now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
+    conn.execute("UPDATE regulatory_clauses SET clause_text=?, clause_html=?, updated_by=?, updated_at=? "
+                 "WHERE source_doc=? AND clause_id=?", (new_text, new_html, editor or "", now, str(source), prev[0]))
+    conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=? AND clause_id=?", (str(source), str(clause_id)))
+    _renumber(conn, source)
+    conn.commit(); conn.close()
+    refresh_kb()
+    return True
+
+
+def move_clause(source, clause_id, direction):
+    conn = sqlite3.connect(DB_NAME)
+    seq = conn.execute("SELECT clause_id, COALESCE(sort_order, rowid) FROM regulatory_clauses "
+                       "WHERE source_doc=? ORDER BY COALESCE(sort_order, rowid)", (str(source),)).fetchall()
+    ids = [row[0] for row in seq]
+    if str(clause_id) not in ids:
+        conn.close(); return False
+    idx = ids.index(str(clause_id))
+    swap = idx - 1 if direction == "up" else idx + 1
+    if swap < 0 or swap >= len(seq):
+        conn.close(); return False
+    a, b = seq[idx], seq[swap]
+    conn.execute("UPDATE regulatory_clauses SET sort_order=? WHERE source_doc=? AND clause_id=?", (b[1], str(source), a[0]))
+    conn.execute("UPDATE regulatory_clauses SET sort_order=? WHERE source_doc=? AND clause_id=?", (a[1], str(source), b[0]))
+    conn.commit(); conn.close()
+    refresh_kb()
+    return True
+
+
 def update_clause_tags(clause_id, source, tags):
     """Admin in-app edit: persist a clause's tags to SQL, update the in-memory KB
     and rebuild the tag vocabulary so search reflects it immediately. Returns the
