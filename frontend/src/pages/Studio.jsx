@@ -39,7 +39,7 @@ export default function Studio() {
     setDoc(d); setClauses(null); setActiveKey(null); setHist([]); setFuture([]); setDirty(false); setLoading(true);
     api.get(`/clause/doc-full?source=${encodeURIComponent(d.source)}`)
       .then((r) => {
-        const cs = (r.clauses || []).map((c) => ({ key: nk(), id: c.id, html: c.html || '<p></p>', tags: c.tags || [] }));
+        const cs = (r.clauses || []).map((c) => ({ key: nk(), id: c.id, html: c.html || '<p></p>', tags: c.tags || [], edited: !!c.edited, changed: false }));
         setClauses(cs); setActiveKey(cs[0]?.key || null); setRev((x) => x + 1);
       })
       .catch((e) => { toast.error(e.message || 'Could not open document'); setClauses([]); })
@@ -80,11 +80,11 @@ export default function Studio() {
   // Continuous content edits from the editor — update active clause, mark dirty
   // (no history snapshot per keystroke; structural ops snapshot instead).
   function onEdit(html) {
-    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, html } : c)));
+    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, html, edited: true, changed: true } : c)));
     setDirty(true);
   }
   function setField(field, value) {
-    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, [field]: value } : c)));
+    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, [field]: value, edited: true, changed: true } : c)));
     setDirty(true);
   }
 
@@ -99,7 +99,7 @@ export default function Studio() {
     const i = idx(); if (i < 0) return;
     const c = [...clone(clauses)];
     const k = nk();
-    c.splice(i + 1, 0, { key: k, id: uniqueId('NEW', clauses), html: '<p>New clause:</p>', tags: [] });
+    c.splice(i + 1, 0, { key: k, id: uniqueId('NEW', clauses), html: '<p>New clause:</p>', tags: [], edited: true, changed: true });
     commit(c, k);
   }
   function delClause() {
@@ -110,19 +110,19 @@ export default function Studio() {
   function mergeUp() {
     const i = idx(); if (i <= 0) { toast.error('No clause above'); return; }
     const c = clone(clauses);
-    c[i - 1] = { ...c[i - 1], html: c[i - 1].html + c[i].html };
+    c[i - 1] = { ...c[i - 1], html: c[i - 1].html + c[i].html, edited: true, changed: true };
     const keep = c[i - 1].key; c.splice(i, 1); commit(c, keep);
   }
   function mergeDown() {
     const i = idx(); if (i < 0 || i >= clauses.length - 1) { toast.error('No clause below'); return; }
     const c = clone(clauses);
-    c[i + 1] = { ...c[i + 1], html: c[i].html + c[i + 1].html };
+    c[i + 1] = { ...c[i + 1], html: c[i].html + c[i + 1].html, edited: true, changed: true };
     const keep = c[i + 1].key; c.splice(i, 1); commit(c, keep);
   }
   function applyRestore(v) {
     const i = idx(); if (i < 0) return;
     const c = clone(clauses);
-    c[i] = { ...c[i], html: v.html, tags: [...(v.tags || [])] };
+    c[i] = { ...c[i], html: v.html, tags: [...(v.tags || [])], edited: true, changed: true };
     commit(c, activeKey);
     setHistoryOpen(false);
     toast.success('Version restored — Save to keep it');
@@ -132,9 +132,9 @@ export default function Studio() {
     const i = idx(); if (i < 0 || !editorApi.current) return;
     const { before, after } = editorApi.current.split();
     const c = clone(clauses);
-    c[i] = { ...c[i], html: before };
+    c[i] = { ...c[i], html: before, edited: true, changed: true };
     const k = nk();
-    c.splice(i + 1, 0, { key: k, id: uniqueId(`${c[i].id}-b`, clauses), html: after, tags: [] });
+    c.splice(i + 1, 0, { key: k, id: uniqueId(`${c[i].id}-b`, clauses), html: after, tags: [], edited: true, changed: true });
     commit(c, c[i].key);
   }
 
@@ -153,9 +153,10 @@ export default function Studio() {
   async function save() {
     setSaving(true);
     try {
-      const payload = clauses.map((c) => ({ id: c.id, html: c.html, tags: c.tags }));
+      const payload = clauses.map((c) => ({ id: c.id, html: c.html, tags: c.tags, changed: !!c.changed }));
       const r = await api.post('/clause/doc-save', { source: doc.source, clauses: payload });
       toast.success(`Saved ${r.clauses} clauses`);
+      setClauses((cs) => cs.map((c) => ({ ...c, changed: false })));
       setDirty(false); setHist([]); setFuture([]); reloadDocs();
     } catch (e) { toast.error(e.message || 'Save failed'); }
     finally { setSaving(false); }
@@ -241,6 +242,7 @@ export default function Studio() {
                   onClick={() => setActiveKey(c.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setActiveKey(c.key); }}>
                   <i className="fas fa-grip-vertical studio-grip" />
                   <span className="studio-clause-id">{c.id}</span>
+                  {c.edited && <i className="fas fa-pen studio-edited" title="Edited" />}
                 </div>
               ))}
           </div>

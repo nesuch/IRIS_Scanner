@@ -266,28 +266,46 @@ def replace_document_clauses(source, clauses, editor=None):
     meta = conn.execute("SELECT doc_category, doc_type FROM regulatory_clauses WHERE source_doc=? LIMIT 1",
                         (str(source),)).fetchone()
     cat, dtype = (meta[0], meta[1]) if meta else ("GENERAL", "REGULATION")
-    for r in conn.execute("SELECT clause_id, clause_html, clause_text, regulatory_tags FROM regulatory_clauses WHERE source_doc=?",
-                          (str(source),)).fetchall():
-        _snapshot(conn, r[0], source, r[1], r[2], r[3], editor, " (doc save)")
-    conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=?", (str(source),))
-    seen = set()
+    existing = {}
+    for r in conn.execute("SELECT clause_id, clause_html, clause_text, regulatory_tags, updated_by, updated_at "
+                          "FROM regulatory_clauses WHERE source_doc=?", (str(source),)).fetchall():
+        existing[r[0]] = {"html": r[1], "text": r[2], "tags": r[3], "by": r[4], "at": r[5]}
+
+    # normalise incoming ids (unique)
+    seen = set(); norm = []
     for i, c in enumerate(clauses, 1):
         cid = (str(c.get("id", "")).strip() or f"C-{i}")
-        while cid in seen:                      # guard against duplicate ids
+        while cid in seen:
             cid = f"{cid}-{i}"
-        seen.add(cid)
+        seen.add(cid); norm.append((cid, c))
+
+    # snapshot clauses that are being removed
+    for oid, ex in existing.items():
+        if oid not in seen:
+            _snapshot(conn, oid, source, ex["html"], ex["text"], ex["tags"], editor, " (doc save: removed)")
+
+    conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=?", (str(source),))
+    for i, (cid, c) in enumerate(norm, 1):
         html = c.get("html") or ""
         text = _html_to_text(html)
         tags = c.get("tags", "")
         tags = ", ".join(tags) if isinstance(tags, list) else str(tags or "")
         header = (text.split("\n", 1)[0])[:120]
         is_header = 1 if (text.strip().endswith(":") and "\n" not in text.strip()) else 0
+        changed = bool(c.get("changed")) or (cid not in existing)
+        if changed and cid in existing:        # snapshot the prior content of a changed clause
+            ex = existing[cid]
+            _snapshot(conn, cid, source, ex["html"], ex["text"], ex["tags"], editor, " (doc save)")
+        if changed:
+            up_by, up_at = (editor or ""), now
+        else:                                  # untouched -> keep its prior edit attribution
+            up_by, up_at = existing[cid]["by"], existing[cid]["at"]
         conn.execute(
             "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, clause_text, "
             "context_header, regulatory_tags, priority, is_header, sort_order, clause_html, updated_by, updated_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(source), cat, dtype, cid, text, header, tags, 99, is_header, i * 10,
-             html or None, editor or "", now))
+             html or None, up_by, up_at))
     conn.commit()
     conn.close()
     refresh_kb()

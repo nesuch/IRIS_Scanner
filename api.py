@@ -602,10 +602,12 @@ def api_clause_doc_full():
     if "sort_order" in sub.columns:
         sub = sub.sort_values("sort_order", kind="stable", na_position="last")
     out = []
+    has_upd = "updated_by" in sub.columns
     for _, r in sub.iterrows():
         cid = str(r.get("Clause_ID", "")).strip()
         html = brain.clause_html(cid, source) or _clause_text_to_html(str(r.get("Clause_Text", "")))
-        out.append({"id": cid, "html": html,
+        edited = bool(has_upd and pd.notna(r.get("updated_by")) and str(r.get("updated_by")).strip())
+        out.append({"id": cid, "html": html, "edited": edited,
                     "tags": [t.strip() for t in str(r.get("Regulatory_Tags", "")).split(",") if t.strip()]})
     return jsonify({"source": source, "clauses": out})
 
