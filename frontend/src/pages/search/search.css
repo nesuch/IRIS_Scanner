@@ -182,7 +182,7 @@
   /* Compact, proportionate search bar on phones */
   .input-inner { padding: 7px 9px; }
   .search-wrapper { gap: 8px; }
-  .search-input { font-size: 14px; padding: 6px 4px; }
+  .search-input { font-size: 16px; padding: 6px 4px; }   /* >=16px stops iOS focus-zoom */
   .doc-filter-btn { width: 38px; height: 38px; }
   .search-submit { padding: 0; width: 42px; height: 38px; flex: 0 0 auto; }
   .search-submit .btn-label { display: none; }

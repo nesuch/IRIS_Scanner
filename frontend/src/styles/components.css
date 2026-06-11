@@ -127,6 +127,15 @@ input[type="file"].input::file-selector-button:hover { background: var(--line); 
 }
 .input:focus, .select:focus, textarea.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(13,148,136,0.14); }
 
+/* On mobile, form controls must be >=16px or iOS zooms the page when you focus
+   them. Placed after the base rules so it wins at equal specificity. */
+@media (max-width: 768px) {
+  .input, .select, textarea, select, input[type="text"], input[type="search"],
+  input[type="email"], input[type="password"], input[type="number"], input[type="tel"] {
+    font-size: 16px;
+  }
+}
+
 /* ---------- Stat cards ---------- */
 .stat-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .stat-card { position: relative; overflow: hidden; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px 20px; box-shadow: var(--sh-1); }
