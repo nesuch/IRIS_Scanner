@@ -24,6 +24,7 @@ export default function Studio() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showPdf, setShowPdf] = useState(true);
+  const [showRail, setShowRail] = useState(true);
   const [paneW, setPaneW] = useState(38);
   const [importOpen, setImportOpen] = useState(false);
   const [dragKey, setDragKey] = useState(null);
@@ -197,6 +198,7 @@ export default function Studio() {
     <div className="studio-shell">
       <PageHeader fullForm="Regulatory Library" title="Document Studio" scope={doc.source}>
         <button className="btn btn-ghost btn-sm" onClick={closeDoc}><i className="fas fa-arrow-left" /> Documents</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowRail((s) => !s)}><i className={`fas ${showRail ? 'fa-list-ul' : 'fa-list'}`} /> {showRail ? 'Hide clauses' : 'Show clauses'}</button>
         {doc.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}</button>}
         <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>{saving ? <Spinner size={13} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save{dirty ? ' *' : ''}</button>
       </PageHeader>
@@ -216,6 +218,7 @@ export default function Studio() {
       </div>
 
       <div className="studio-body">
+        {showRail && (
         <aside className="studio-rail">
           <div className="studio-rail-body">
             {clauses === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
@@ -230,6 +233,7 @@ export default function Studio() {
               ))}
           </div>
         </aside>
+        )}
 
         <div className="studio-main" ref={splitRef}>
           <div className="studio-editor">
@@ -238,10 +242,12 @@ export default function Studio() {
                 : (
                   <>
                     <div className="studio-meta">
-                      <label>Clause ID
+                      <label>
+                        <span className="studio-meta-lbl">Clause ID</span>
                         <input className="input" value={active.id} onChange={(e) => setField('id', e.target.value)} />
                       </label>
-                      <label>Tags <span className="studio-meta-hint">(comma-separated)</span>
+                      <label>
+                        <span className="studio-meta-lbl">Tags <span className="studio-meta-hint">(comma-separated)</span></span>
                         <input className="input" value={active.tags.join(', ')}
                           onChange={(e) => setField('tags', e.target.value.split(',').map((t) => t.trim()).filter(Boolean))} />
                       </label>
