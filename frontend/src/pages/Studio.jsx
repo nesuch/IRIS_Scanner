@@ -2,207 +2,266 @@ import { useEffect, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, EmptyState, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
-import { ClauseEditorPanel } from '../components/ClauseEditor.jsx';
+import StudioEditor from '../components/StudioEditor.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
 import { api } from '../api.js';
 import './studio/studio.css';
 
-function AttachPdf({ doc, onAttached }) {
-  const toast = useToast();
-  const ref = useRef(null);
-  const [busy, setBusy] = useState(false);
-  async function onFile(e) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf')) { toast.error('Choose a PDF file'); return; }
-    setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.append('source', doc.source);
-      fd.append('file', file);
-      const r = await api.post('/clause/doc-pdf', fd);
-      toast.success('Original PDF attached');
-      onAttached(r.pdf_url);
-    } catch (e) { toast.error(e.message || 'Upload failed'); }
-    finally { setBusy(false); }
-  }
-  return (
-    <>
-      <input ref={ref} type="file" accept="application/pdf" hidden onChange={onFile} />
-      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ref.current?.click()}>
-        {busy ? <Spinner size={13} /> : <i className="fas fa-file-arrow-up" />} {doc.pdf_url ? 'Replace PDF' : 'Attach PDF'}
-      </button>
-    </>
-  );
-}
+let KEYSEQ = 1;
+const nk = () => `k${KEYSEQ++}`;
+const clone = (cs) => cs.map((c) => ({ ...c, tags: [...c.tags] }));
 
 export default function Studio() {
   const toast = useToast();
   const [docs, setDocs] = useState(null);
-  const [doc, setDoc] = useState(null);          // selected document {source, pdf_url, ...}
-  const [clauses, setClauses] = useState(null);
-  const [active, setActive] = useState(null);    // { id, source } being edited
-  const [initialHtml, setInitialHtml] = useState(null);
-  const [loadingClause, setLoadingClause] = useState(false);
+  const [doc, setDoc] = useState(null);
+  const [clauses, setClauses] = useState(null);       // [{key,id,html,tags}]
+  const [activeKey, setActiveKey] = useState(null);
+  const [rev, setRev] = useState(0);                   // bumps to remount the editor on structural change
+  const [hist, setHist] = useState([]);
+  const [future, setFuture] = useState([]);
+  const [dirty, setDirty] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showPdf, setShowPdf] = useState(true);
-  const [paneW, setPaneW] = useState(40);        // % width of PDF pane
+  const [paneW, setPaneW] = useState(38);
   const [importOpen, setImportOpen] = useState(false);
+  const [dragKey, setDragKey] = useState(null);
+  const editorApi = useRef(null);
   const splitRef = useRef(null);
 
-  function reloadDocs() {
-    return api.get('/clause/docs').then((d) => setDocs(d.docs || [])).catch(() => {});
+  useEffect(() => { reloadDocs(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  function reloadDocs() { return api.get('/clause/docs').then((d) => setDocs(d.docs || [])).catch(() => setDocs([])); }
+
+  function openDoc(d) {
+    setDoc(d); setClauses(null); setActiveKey(null); setHist([]); setFuture([]); setDirty(false); setLoading(true);
+    api.get(`/clause/doc-full?source=${encodeURIComponent(d.source)}`)
+      .then((r) => {
+        const cs = (r.clauses || []).map((c) => ({ key: nk(), id: c.id, html: c.html || '<p></p>', tags: c.tags || [] }));
+        setClauses(cs); setActiveKey(cs[0]?.key || null); setRev((x) => x + 1);
+      })
+      .catch((e) => { toast.error(e.message || 'Could not open document'); setClauses([]); })
+      .finally(() => setLoading(false));
+  }
+  function closeDoc() {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
+    setDoc(null); setClauses(null); setActiveKey(null);
+  }
+
+  const idx = () => (clauses ? clauses.findIndex((c) => c.key === activeKey) : -1);
+  const active = clauses ? clauses.find((c) => c.key === activeKey) : null;
+
+  // Push current state to history before a structural change.
+  function commit(next, nextActive) {
+    setHist((h) => [...h.slice(-49), JSON.stringify({ c: clauses, a: activeKey })]);
+    setFuture([]);
+    setClauses(next);
+    if (nextActive !== undefined) setActiveKey(nextActive);
+    setRev((x) => x + 1);
+    setDirty(true);
+  }
+  function undo() {
+    if (!hist.length) return;
+    const prev = JSON.parse(hist[hist.length - 1]);
+    setFuture((f) => [JSON.stringify({ c: clauses, a: activeKey }), ...f]);
+    setHist((h) => h.slice(0, -1));
+    setClauses(prev.c); setActiveKey(prev.a); setRev((x) => x + 1); setDirty(true);
+  }
+  function redo() {
+    if (!future.length) return;
+    const nx = JSON.parse(future[0]);
+    setHist((h) => [...h, JSON.stringify({ c: clauses, a: activeKey })]);
+    setFuture((f) => f.slice(1));
+    setClauses(nx.c); setActiveKey(nx.a); setRev((x) => x + 1); setDirty(true);
+  }
+
+  // Continuous content edits from the editor — update active clause, mark dirty
+  // (no history snapshot per keystroke; structural ops snapshot instead).
+  function onEdit(html) {
+    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, html } : c)));
+    setDirty(true);
+  }
+  function setField(field, value) {
+    setClauses((cs) => cs.map((c) => (c.key === activeKey ? { ...c, [field]: value } : c)));
+    setDirty(true);
+  }
+
+  function uniqueId(base, list) {
+    let id = base; let n = 1;
+    const ids = new Set(list.map((c) => c.id));
+    while (ids.has(id)) { n += 1; id = `${base}-${n}`; }
+    return id;
+  }
+
+  function addClause() {
+    const i = idx(); if (i < 0) return;
+    const c = [...clone(clauses)];
+    const k = nk();
+    c.splice(i + 1, 0, { key: k, id: uniqueId('NEW', clauses), html: '<p>New clause:</p>', tags: [] });
+    commit(c, k);
+  }
+  function delClause() {
+    const i = idx(); if (i < 0 || clauses.length <= 1) { toast.error('Cannot delete the only clause'); return; }
+    const c = clone(clauses).filter((_, j) => j !== i);
+    commit(c, c[Math.min(i, c.length - 1)].key);
+  }
+  function mergeUp() {
+    const i = idx(); if (i <= 0) { toast.error('No clause above'); return; }
+    const c = clone(clauses);
+    c[i - 1] = { ...c[i - 1], html: c[i - 1].html + c[i].html };
+    const keep = c[i - 1].key; c.splice(i, 1); commit(c, keep);
+  }
+  function mergeDown() {
+    const i = idx(); if (i < 0 || i >= clauses.length - 1) { toast.error('No clause below'); return; }
+    const c = clone(clauses);
+    c[i + 1] = { ...c[i + 1], html: c[i].html + c[i + 1].html };
+    const keep = c[i + 1].key; c.splice(i, 1); commit(c, keep);
+  }
+  function splitClause() {
+    const i = idx(); if (i < 0 || !editorApi.current) return;
+    const { before, after } = editorApi.current.split();
+    const c = clone(clauses);
+    c[i] = { ...c[i], html: before };
+    const k = nk();
+    c.splice(i + 1, 0, { key: k, id: uniqueId(`${c[i].id}-b`, clauses), html: after, tags: [] });
+    commit(c, c[i].key);
+  }
+
+  // Drag to reorder
+  function onDrop(targetKey) {
+    if (!dragKey || dragKey === targetKey) { setDragKey(null); return; }
+    const c = clone(clauses);
+    const from = c.findIndex((x) => x.key === dragKey);
+    const to = c.findIndex((x) => x.key === targetKey);
+    const [moved] = c.splice(from, 1);
+    c.splice(to, 0, moved);
+    setDragKey(null);
+    commit(c, activeKey);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const payload = clauses.map((c) => ({ id: c.id, html: c.html, tags: c.tags }));
+      const r = await api.post('/clause/doc-save', { source: doc.source, clauses: payload });
+      toast.success(`Saved ${r.clauses} clauses`);
+      setDirty(false); setHist([]); setFuture([]); reloadDocs();
+    } catch (e) { toast.error(e.message || 'Save failed'); }
+    finally { setSaving(false); }
   }
 
   async function delDoc(d) {
     if (!window.confirm(`Delete "${d.source}" and all ${d.clauses} clauses? This cannot be undone.`)) return;
-    try {
-      const r = await api.post('/clause/doc-delete', { source: d.source });
-      toast.success(`Deleted ${r.deleted} clauses`);
-      if (doc?.source === d.source) { setDoc(null); setActive(null); }
-      reloadDocs();
-    } catch (e) { toast.error(e.message || 'Could not delete'); }
-  }
-
-  useEffect(() => {
-    api.get('/clause/docs').then((d) => setDocs(d.docs || []))
-      .catch((e) => { toast.error(e.message || 'Could not load documents'); setDocs([]); });
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  function openDoc(d) {
-    setDoc(d); setActive(null); setInitialHtml(null); setClauses(null);
-    api.get(`/clause/list?source=${encodeURIComponent(d.source)}`)
-      .then((r) => setClauses(r.clauses || []))
-      .catch((e) => { toast.error(e.message || 'Could not load clauses'); setClauses([]); });
-  }
-
-  function openClause(c) {
-    setActive({ id: c.id, source: doc.source }); setInitialHtml(null); setLoadingClause(true);
-    api.get(`/clause/edit?id=${encodeURIComponent(c.id)}&source=${encodeURIComponent(doc.source)}`)
-      .then((d) => setInitialHtml(d.html || '<p></p>'))
-      .catch((e) => { toast.error(e.message || 'Could not open clause'); setActive(null); })
-      .finally(() => setLoadingClause(false));
-  }
-
-  function onSaved() {
-    // mark the clause as edited in the list
-    setClauses((cs) => cs.map((c) => (c.id === active.id ? { ...c, edited: true } : c)));
-  }
-
-  function reloadClauses() {
-    if (!doc) return Promise.resolve();
-    return api.get(`/clause/list?source=${encodeURIComponent(doc.source)}`)
-      .then((r) => setClauses(r.clauses || [])).catch(() => {});
-  }
-
-  async function clauseOp(e, path, body, okMsg) {
-    e?.stopPropagation();
-    try { const r = await api.post(path, body); toast.success(okMsg); return r; }
-    catch (err) { toast.error(err.message || 'Action failed'); return null; }
-    finally { reloadClauses(); }
-  }
-
-  async function addBelow(e, c) {
-    const r = await clauseOp(e, '/clause/add', { source: doc.source, after_id: c.id }, 'Clause added');
-    if (r?.id) openClause({ id: r.id });
-  }
-  async function removeClause(e, c) {
-    e.stopPropagation();
-    if (!window.confirm(`Delete clause ${c.id}?`)) return;
-    if (active?.id === c.id) setActive(null);
-    clauseOp(null, '/clause/remove', { source: doc.source, id: c.id }, 'Clause deleted');
+    try { await api.post('/clause/doc-delete', { source: d.source }); toast.success('Document deleted'); if (doc?.source === d.source) closeDoc(); reloadDocs(); }
+    catch (e) { toast.error(e.message || 'Could not delete'); }
   }
 
   function startResize(e) {
     e.preventDefault();
-    const rect = splitRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const onMove = (ev) => setPaneW(Math.min(70, Math.max(24, ((rect.right - ev.clientX) / rect.width) * 100)));
+    const rect = splitRef.current?.getBoundingClientRect(); if (!rect) return;
+    const onMove = (ev) => setPaneW(Math.min(68, Math.max(22, ((rect.right - ev.clientX) / rect.width) * 100)));
     const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); document.body.style.userSelect = ''; };
     document.body.style.userSelect = 'none';
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
   }
 
-  return (
-    <div className="studio-shell">
-      <PageHeader fullForm="Regulatory Library" title="Document Studio" scope="Edit clauses with the original document alongside">
-        {!doc && <button className="btn btn-primary btn-sm" onClick={() => setImportOpen(true)}><i className="fas fa-file-import" /> Import PDF</button>}
-        {doc && <AttachPdf doc={doc} onAttached={(url) => { setDoc((d) => ({ ...d, pdf_url: url, has_uploaded_pdf: true })); setShowPdf(true); }} />}
-        {doc?.pdf_url && (
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}>
-            <i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}
-          </button>
-        )}
-      </PageHeader>
-
-      <div className="studio-body">
-        {/* Left rail: documents + clauses */}
-        <aside className="studio-rail">
-          <div className="studio-rail-head">{doc ? <button className="studio-back" onClick={() => { setDoc(null); setActive(null); }}><i className="fas fa-arrow-left" /> Documents</button> : 'Documents'}</div>
-          <div className="studio-rail-body">
-            {!doc ? (
-              docs === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
-                : docs.length === 0 ? <EmptyState icon="fa-folder-open">No documents.</EmptyState>
-                  : docs.map((d) => (
-                    <div key={d.source} className="studio-doc" onClick={() => openDoc(d)} role="button" tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter') openDoc(d); }}>
+  // ---------- Document list ----------
+  if (!doc) {
+    return (
+      <div className="studio-shell">
+        <PageHeader fullForm="Regulatory Library" title="Document Studio" scope="Edit clauses with the original document alongside">
+          <button className="btn btn-primary btn-sm" onClick={() => setImportOpen(true)}><i className="fas fa-file-import" /> Import PDF</button>
+        </PageHeader>
+        <div className="page-body">
+          {docs === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
+            : docs.length === 0 ? <EmptyState icon="fa-folder-open">No documents.</EmptyState>
+              : (
+                <div className="studio-doc-grid">
+                  {docs.map((d) => (
+                    <div key={d.source} className="studio-doc" onClick={() => openDoc(d)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') openDoc(d); }}>
                       <button className="studio-doc-del" title="Delete document" onClick={(e) => { e.stopPropagation(); delDoc(d); }}><i className="fas fa-trash" /></button>
                       <span className="studio-doc-name">{d.source}</span>
                       <span className="studio-doc-meta">{d.clauses} clauses · {d.edited} edited</span>
                     </div>
-                  ))
-            ) : (
-              clauses === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
-                : clauses.map((c) => (
-                  <div key={c.id} className={`studio-clause ${active?.id === c.id ? 'is-active' : ''}`}>
-                    <div className="studio-clause-main" onClick={() => openClause(c)} role="button" tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter') openClause(c); }}>
-                      <span className="studio-clause-id">{c.id}{c.edited && <i className="fas fa-pen studio-edited" title="Edited" />}</span>
-                      <span className="studio-clause-prev">{c.preview}</span>
-                    </div>
-                    <div className="studio-clause-acts">
-                      <button title="Move up" onClick={(e) => clauseOp(e, '/clause/move', { source: doc.source, id: c.id, direction: 'up' }, 'Moved up')}><i className="fas fa-arrow-up" /></button>
-                      <button title="Move down" onClick={(e) => clauseOp(e, '/clause/move', { source: doc.source, id: c.id, direction: 'down' }, 'Moved down')}><i className="fas fa-arrow-down" /></button>
-                      <button title="Add clause below" onClick={(e) => addBelow(e, c)}><i className="fas fa-plus" /></button>
-                      <button title="Merge into clause above" onClick={(e) => clauseOp(e, '/clause/merge', { source: doc.source, id: c.id }, 'Merged up')}><i className="fas fa-up-long" /></button>
-                      <button title="Delete clause" className="danger" onClick={(e) => removeClause(e, c)}><i className="fas fa-trash" /></button>
-                    </div>
-                  </div>
-                ))
-            )}
+                  ))}
+                </div>
+              )}
+        </div>
+        {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); reloadDocs(); }} />}
+      </div>
+    );
+  }
+
+  // ---------- Document editor ----------
+  return (
+    <div className="studio-shell">
+      <PageHeader fullForm="Regulatory Library" title="Document Studio" scope={doc.source}>
+        <button className="btn btn-ghost btn-sm" onClick={closeDoc}><i className="fas fa-arrow-left" /> Documents</button>
+        {doc.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}</button>}
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>{saving ? <Spinner size={13} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save{dirty ? ' *' : ''}</button>
+      </PageHeader>
+
+      {/* Action bar */}
+      <div className="studio-actionbar">
+        <button title="Undo" onClick={undo} disabled={!hist.length}><i className="fas fa-rotate-left" /></button>
+        <button title="Redo" onClick={redo} disabled={!future.length}><i className="fas fa-rotate-right" /></button>
+        <span className="ab-div" />
+        <button title="Add clause below" onClick={addClause}><i className="fas fa-plus" /> Add</button>
+        <button title="Split at cursor" onClick={splitClause}><i className="fas fa-scissors" /> Split</button>
+        <button title="Merge into clause above" onClick={mergeUp}><i className="fas fa-up-long" /> Merge ↑</button>
+        <button title="Merge into clause below" onClick={mergeDown}><i className="fas fa-down-long" /> Merge ↓</button>
+        <button className="danger" title="Delete clause" onClick={delClause}><i className="fas fa-trash" /> Delete</button>
+        <span className="ab-spacer" />
+        <span className="ab-hint">Drag clauses to reorder</span>
+      </div>
+
+      <div className="studio-body">
+        <aside className="studio-rail">
+          <div className="studio-rail-body">
+            {clauses === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
+              : clauses.map((c) => (
+                <div key={c.key}
+                  className={`studio-clause ${activeKey === c.key ? 'is-active' : ''} ${dragKey === c.key ? 'dragging' : ''}`}
+                  draggable onDragStart={() => setDragKey(c.key)} onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(c.key)}
+                  onClick={() => setActiveKey(c.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setActiveKey(c.key); }}>
+                  <i className="fas fa-grip-vertical studio-grip" />
+                  <span className="studio-clause-id">{c.id}</span>
+                </div>
+              ))}
           </div>
         </aside>
 
-        {/* Editor + PDF split */}
         <div className="studio-main" ref={splitRef}>
           <div className="studio-editor">
-            {!active ? (
-              <div className="studio-placeholder"><i className="fas fa-pen-to-square" /><p>{doc ? 'Pick a clause on the left to edit it.' : 'Pick a document to begin.'}</p></div>
-            ) : loadingClause || initialHtml === null ? (
-              <div className="studio-loading"><Spinner size={16} /> Loading clause…</div>
-            ) : (
-              <>
-                <div className="studio-editing-id">Editing <strong>{active.id}</strong> · {active.source}</div>
-                <ClauseEditorPanel key={active.id} clause={active} initialHtml={initialHtml} onSaved={onSaved} />
-              </>
-            )}
+            {loading || clauses === null ? <div className="studio-loading"><Spinner size={16} /> Loading clauses…</div>
+              : !active ? <div className="studio-placeholder"><i className="fas fa-pen-to-square" /><p>This document has no clauses.</p></div>
+                : (
+                  <>
+                    <div className="studio-meta">
+                      <label>Clause ID
+                        <input className="input" value={active.id} onChange={(e) => setField('id', e.target.value)} />
+                      </label>
+                      <label>Tags <span className="studio-meta-hint">(comma-separated)</span>
+                        <input className="input" value={active.tags.join(', ')}
+                          onChange={(e) => setField('tags', e.target.value.split(',').map((t) => t.trim()).filter(Boolean))} />
+                      </label>
+                    </div>
+                    <StudioEditor key={`${active.key}:${rev}`} value={active.html} onChange={onEdit} apiRef={editorApi} />
+                  </>
+                )}
           </div>
 
-          {showPdf && doc?.pdf_url && (
+          {showPdf && doc.pdf_url && (
             <>
-              <div className="studio-resizer" onMouseDown={startResize} title="Drag to resize" />
+              <div className="studio-resizer" onMouseDown={startResize} />
               <aside className="studio-pdf" style={{ flexBasis: `${paneW}%` }}>
-                <div className="studio-pdf-head">
-                  <i className="fas fa-file-pdf" /> {doc.source}
-                  <span className="studio-pdf-tag">{doc.has_uploaded_pdf ? 'uploaded' : 'bundled'}</span>
-                </div>
+                <div className="studio-pdf-head"><i className="fas fa-file-pdf" /> {doc.source}<span className="studio-pdf-tag">{doc.has_uploaded_pdf ? 'uploaded' : 'bundled'}</span></div>
                 <PdfViewer key={doc.pdf_url} url={doc.pdf_url} />
               </aside>
             </>
           )}
         </div>
       </div>
-      {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); reloadDocs(); }} />}
     </div>
   );
 }
@@ -232,8 +291,7 @@ function ImportModal({ onClose, onDone }) {
       const d = await api.post('/clause/detect-spec', fd);
       const best = (d.ranked || [])[0];
       if (best) { setSpecId(best.spec_id); setDetected(best); }
-    } catch { /* fall back to manual pick */ }
-    finally { setDetecting(false); }
+    } catch { /* manual */ } finally { setDetecting(false); }
   }
 
   async function go() {
@@ -276,7 +334,6 @@ function ImportModal({ onClose, onDone }) {
           <div className="studio-detect">
             <i className="fas fa-wand-magic-sparkles" /> Auto-detected: <strong>{detected.doc_id}</strong>
             {' '}({detected.clauses} clauses{detected.orphans ? `, ${detected.orphans} unmatched lines` : ''}).
-            {detected.orphans > 0 && ' Check it’s the right type, or pick another.'}
           </div>
         )}
       </div>
@@ -288,20 +345,15 @@ function ImportModal({ onClose, onDone }) {
         <div className="field" style={{ flex: 1 }}>
           <label>Type band</label>
           <select className="input" value={docType} onChange={(e) => setDocType(e.target.value)}>
-            <option value="ACT">Act</option>
-            <option value="REGULATION">Regulation</option>
-            <option value="MASTER">Master Circular</option>
-            <option value="CIRCULAR">Circular</option>
-            <option value="GUIDELINE">Guideline</option>
+            <option value="ACT">Act</option><option value="REGULATION">Regulation</option>
+            <option value="MASTER">Master Circular</option><option value="CIRCULAR">Circular</option><option value="GUIDELINE">Guideline</option>
           </select>
         </div>
         <div className="field" style={{ flex: 1 }}>
           <label>Department</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="GENERAL">General</option>
-            <option value="HEALTH">Health</option>
-            <option value="LIFE">Life</option>
-            <option value="NONLIFE">Non-Life</option>
+            <option value="GENERAL">General</option><option value="HEALTH">Health</option>
+            <option value="LIFE">Life</option><option value="NONLIFE">Non-Life</option>
           </select>
         </div>
       </div>

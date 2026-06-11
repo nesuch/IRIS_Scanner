@@ -247,6 +247,53 @@ def update_clause_content(clause_id, source, html, text, editor=None):
     return True
 
 
+def _html_to_text(html):
+    """Plain text from clause HTML (for search/indexing) — block tags -> newlines."""
+    import html as _h
+    t = re.sub(r"(?i)<(?:br|/p|/div|/li|/tr|/h[1-6])\s*/?>", "\n", html or "")
+    t = re.sub(r"<[^>]+>", "", t)
+    t = _h.unescape(t)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
+def replace_document_clauses(source, clauses, editor=None):
+    """Bulk-replace all clauses of a document with the given ordered list
+    (each {id, html, tags}). Snapshots the prior clauses to clause_versions, then
+    rewrites them in order. Derives plain text from HTML for search."""
+    global KB_CACHE_DF
+    now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
+    conn = sqlite3.connect(DB_NAME)
+    meta = conn.execute("SELECT doc_category, doc_type FROM regulatory_clauses WHERE source_doc=? LIMIT 1",
+                        (str(source),)).fetchone()
+    cat, dtype = (meta[0], meta[1]) if meta else ("GENERAL", "REGULATION")
+    for r in conn.execute("SELECT clause_id, clause_html, clause_text, regulatory_tags FROM regulatory_clauses WHERE source_doc=?",
+                          (str(source),)).fetchall():
+        _snapshot(conn, r[0], source, r[1], r[2], r[3], editor, " (doc save)")
+    conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=?", (str(source),))
+    seen = set()
+    for i, c in enumerate(clauses, 1):
+        cid = (str(c.get("id", "")).strip() or f"C-{i}")
+        while cid in seen:                      # guard against duplicate ids
+            cid = f"{cid}-{i}"
+        seen.add(cid)
+        html = c.get("html") or ""
+        text = _html_to_text(html)
+        tags = c.get("tags", "")
+        tags = ", ".join(tags) if isinstance(tags, list) else str(tags or "")
+        header = (text.split("\n", 1)[0])[:120]
+        is_header = 1 if (text.strip().endswith(":") and "\n" not in text.strip()) else 0
+        conn.execute(
+            "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, clause_text, "
+            "context_header, regulatory_tags, priority, is_header, sort_order, clause_html, updated_by, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (str(source), cat, dtype, cid, text, header, tags, 99, is_header, i * 10,
+             html or None, editor or "", now))
+    conn.commit()
+    conn.close()
+    refresh_kb()
+    return len(clauses)
+
+
 def delete_document(source, editor=None):
     """Delete an entire document and all its clauses. Snapshots each clause to
     clause_versions first (recoverable), then refreshes the in-memory KB.

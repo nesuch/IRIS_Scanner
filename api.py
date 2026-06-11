@@ -565,6 +565,42 @@ def api_clause_import_pdf():
                     "orphans": report.get("orphan_lines", 0), "spec_errors": spec_errors})
 
 
+@api_bp.get("/clause/doc-full")
+def api_clause_doc_full():
+    """Admin: every clause of a document with full HTML + tags, in order — for the
+    Studio client-side editor."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    source = (request.args.get("source") or "").strip()
+    df = brain.load_knowledge_base()
+    if df is None or df.empty:
+        return jsonify({"source": source, "clauses": []})
+    sub = df[df["Source_Doc"].astype(str) == source]
+    if "sort_order" in sub.columns:
+        sub = sub.sort_values("sort_order", kind="stable", na_position="last")
+    out = []
+    for _, r in sub.iterrows():
+        cid = str(r.get("Clause_ID", "")).strip()
+        html = brain.clause_html(cid, source) or _clause_text_to_html(str(r.get("Clause_Text", "")))
+        out.append({"id": cid, "html": html,
+                    "tags": [t.strip() for t in str(r.get("Regulatory_Tags", "")).split(",") if t.strip()]})
+    return jsonify({"source": source, "clauses": out})
+
+
+@api_bp.post("/clause/doc-save")
+def api_clause_doc_save():
+    """Admin: bulk-save the edited document (full ordered clause list)."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    source = (data.get("source") or "").strip()
+    clauses = data.get("clauses") or []
+    if not source or not isinstance(clauses, list) or not clauses:
+        return jsonify({"ok": False, "message": "Nothing to save."}), 400
+    n = brain.replace_document_clauses(source, clauses, getattr(_app.current_user, "email", "") or "")
+    return jsonify({"ok": True, "clauses": n})
+
+
 @api_bp.post("/clause/doc-delete")
 def api_doc_delete():
     """Admin: delete an entire document (all clauses + attached PDF)."""

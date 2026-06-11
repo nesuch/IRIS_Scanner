@@ -24,7 +24,7 @@ const vAlignAttr = {
 const CellWithVAlign = TableCell.extend({ addAttributes() { return { ...this.parent?.(), ...vAlignAttr }; } });
 const HeaderWithVAlign = TableHeader.extend({ addAttributes() { return { ...this.parent?.(), ...vAlignAttr }; } });
 
-const EXTENSIONS = [
+export const EXTENSIONS = [
   StarterKit,
   Underline,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
@@ -37,7 +37,7 @@ const EXTENSIONS = [
 // Remove only Word/Office structural cruft (conditional comments, <o:p>, w: tags)
 // so a pasted table parses — but KEEP inline styles so bold/italic/alignment from
 // the original document survive (ProseMirror drops styles it doesn't understand).
-function cleanPastedHTML(html) {
+export function cleanPastedHTML(html) {
   if (!/mso-|MsoNormal|schemas-microsoft|<o:p/i.test(html)) return html;
   return html
     .replace(/<!--[\s\S]*?-->/g, '')
