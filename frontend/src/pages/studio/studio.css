@@ -23,6 +23,10 @@
 /* Documents grid (landing) */
 .studio-doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 
+/* Co-edit warning banner */
+.studio-coedit { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #fff7ed; border-bottom: 1px solid #fed7aa; color: #9a3412; font-size: 12.5px; }
+.studio-coedit i { color: #ea580c; }
+
 /* Action bar */
 .studio-actionbar { display: flex; align-items: center; gap: 4px; padding: 7px 14px; border-bottom: 1px solid var(--line); background: var(--paper); flex-wrap: wrap; }
 .studio-actionbar button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); border-radius: var(--r-sm); padding: 5px 10px; font-size: 12px; cursor: pointer; transition: 0.12s; }

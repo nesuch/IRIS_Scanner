@@ -236,6 +236,17 @@ class PqDocument(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
+class EditingSession(db.Model):
+    """Advisory presence: who currently has a document open in Studio (heartbeat)."""
+    __tablename__ = "editing_sessions"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_doc = db.Column(db.String(255), nullable=False, index=True)
+    email = db.Column(db.String(255), nullable=True)
+    last_seen = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
 class DocumentAsset(db.Model):
     """An original source PDF an admin attached to a document — shown in the
     Studio pane and offered to users as a download for that document's clauses."""

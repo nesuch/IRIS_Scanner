@@ -16,7 +16,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 from flask import Blueprint, request, jsonify, session, send_file, Response
@@ -602,6 +602,33 @@ def api_clause_history():
     return jsonify({"source": source, "id": cid, "versions": out})
 
 
+@api_bp.post("/clause/editing")
+def api_clause_editing():
+    """Advisory presence heartbeat: mark me as editing `source`, return who else is."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    source = (data.get("source") or "").strip()
+    email = getattr(_app.current_user, "email", "") or ""
+    now = datetime.utcnow()
+    m = _app
+    if data.get("leave"):
+        m.EditingSession.query.filter_by(source_doc=source, email=email).delete()
+        m.db.session.commit()
+        return jsonify({"others": []})
+    sess = m.EditingSession.query.filter_by(source_doc=source, email=email).first()
+    if sess:
+        sess.last_seen = now
+    else:
+        m.db.session.add(m.EditingSession(source_doc=source, email=email, last_seen=now))
+    m.db.session.commit()
+    cutoff = now - timedelta(seconds=60)
+    others = [s.email for s in m.EditingSession.query.filter(
+        m.EditingSession.source_doc == source, m.EditingSession.email != email,
+        m.EditingSession.last_seen >= cutoff).all()]
+    return jsonify({"others": sorted(set(others))})
+
+
 @api_bp.get("/clause/doc-full")
 def api_clause_doc_full():
     """Admin: every clause of a document with full HTML + tags, in order — for the
@@ -623,7 +650,7 @@ def api_clause_doc_full():
         edited = bool(has_upd and pd.notna(r.get("updated_by")) and str(r.get("updated_by")).strip())
         out.append({"id": cid, "html": html, "edited": edited,
                     "tags": [t.strip() for t in str(r.get("Regulatory_Tags", "")).split(",") if t.strip()]})
-    return jsonify({"source": source, "clauses": out})
+    return jsonify({"source": source, "clauses": out, "rev": brain.doc_revision(source)})
 
 
 @api_bp.post("/clause/doc-save")
@@ -636,10 +663,15 @@ def api_clause_doc_save():
     clauses = data.get("clauses") or []
     if not source or not isinstance(clauses, list) or not clauses:
         return jsonify({"ok": False, "message": "Nothing to save."}), 400
+    base_rev = (data.get("base_rev") or "").strip()
+    if base_rev and brain.doc_revision(source) != base_rev:
+        return jsonify({"ok": False, "conflict": True,
+                        "message": "This document was changed by someone else since you opened it. "
+                                   "Reload to get the latest version before saving."}), 409
     n = brain.replace_document_clauses(source, clauses, getattr(_app.current_user, "email", "") or "")
     changed = sum(1 for c in clauses if c.get("changed"))
     _audit(f"Saved '{source}' — {changed} of {n} clause(s) changed", "Document edit")
-    return jsonify({"ok": True, "clauses": n})
+    return jsonify({"ok": True, "clauses": n, "rev": brain.doc_revision(source)})
 
 
 @api_bp.post("/clause/doc-delete")

@@ -29,6 +29,8 @@ export default function Studio() {
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [dragKey, setDragKey] = useState(null);
+  const [docRev, setDocRev] = useState(null);
+  const [others, setOthers] = useState([]);
   const editorApi = useRef(null);
   const splitRef = useRef(null);
   // Refs mirror state so the editor's (stale-closure) onChange always sees current values.
@@ -39,12 +41,23 @@ export default function Studio() {
   useEffect(() => { reloadDocs(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   function reloadDocs() { return api.get('/clause/docs').then((d) => setDocs(d.docs || [])).catch(() => setDocs([])); }
 
+  // Advisory presence: heartbeat while a document is open; flag co-editors.
+  useEffect(() => {
+    if (!doc) return undefined;
+    let alive = true;
+    const src = doc.source;
+    const beat = () => api.post('/clause/editing', { source: src }).then((d) => { if (alive) setOthers(d.others || []); }).catch(() => {});
+    beat();
+    const t = setInterval(beat, 20000);
+    return () => { alive = false; clearInterval(t); api.post('/clause/editing', { source: src, leave: true }).catch(() => {}); };
+  }, [doc]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   function openDoc(d) {
-    setDoc(d); setClauses(null); setActiveKey(null); setHist([]); setFuture([]); setDirty(false); setLoading(true);
+    setDoc(d); setClauses(null); setActiveKey(null); setHist([]); setFuture([]); setDirty(false); setLoading(true); setOthers([]);
     api.get(`/clause/doc-full?source=${encodeURIComponent(d.source)}`)
       .then((r) => {
         const cs = (r.clauses || []).map((c) => ({ key: nk(), id: c.id, html: c.html || '<p></p>', tags: c.tags || [], edited: !!c.edited, changed: false }));
-        setClauses(cs); setActiveKey(cs[0]?.key || null); setRev((x) => x + 1);
+        setClauses(cs); setActiveKey(cs[0]?.key || null); setRev((x) => x + 1); setDocRev(r.rev || null);
       })
       .catch((e) => { toast.error(e.message || 'Could not open document'); setClauses([]); })
       .finally(() => setLoading(false));
@@ -173,12 +186,16 @@ export default function Studio() {
     setSaving(true);
     try {
       const payload = clauses.map((c) => ({ id: c.id, html: c.html, tags: c.tags, changed: !!c.changed }));
-      const r = await api.post('/clause/doc-save', { source: doc.source, clauses: payload });
+      const r = await api.post('/clause/doc-save', { source: doc.source, clauses: payload, base_rev: docRev });
       toast.success(`Saved ${r.clauses} clauses`);
       setClauses((cs) => cs.map((c) => ({ ...c, changed: false })));
+      setDocRev(r.rev || docRev);
       setDirty(false); setHist([]); setFuture([]); reloadDocs();
-    } catch (e) { toast.error(e.message || 'Save failed'); }
-    finally { setSaving(false); }
+    } catch (e) {
+      if (e.status === 409) {
+        if (window.confirm(`${e.message}\n\nReload the latest version now? Your unsaved changes will be lost.`)) openDoc(doc);
+      } else { toast.error(e.message || 'Save failed'); }
+    } finally { setSaving(false); }
   }
 
   async function delDoc(d) {
@@ -232,6 +249,12 @@ export default function Studio() {
         {doc.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}</button>}
         <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>{saving ? <Spinner size={13} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save{dirty ? ' *' : ''}</button>
       </PageHeader>
+
+      {others.length > 0 && (
+        <div className="studio-coedit">
+          <i className="fas fa-triangle-exclamation" /> Also editing now: <strong>{others.join(', ')}</strong>. Whoever saves last wins — coordinate, or a conflict will be flagged on save.
+        </div>
+      )}
 
       {/* Action bar */}
       <div className="studio-actionbar">

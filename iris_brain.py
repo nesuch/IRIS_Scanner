@@ -256,6 +256,21 @@ def _html_to_text(html):
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
+def doc_revision(source):
+    """A content hash of a document's current clauses (from the DB — the source of
+    truth across instances). Used for optimistic-concurrency on save."""
+    import hashlib
+    conn = sqlite3.connect(DB_NAME)
+    rows = conn.execute(
+        "SELECT clause_id, clause_text, regulatory_tags, clause_html, sort_order "
+        "FROM regulatory_clauses WHERE source_doc=? ORDER BY clause_id", (str(source),)).fetchall()
+    conn.close()
+    h = hashlib.sha1()
+    for r in rows:
+        h.update(repr(r).encode("utf-8", "ignore"))
+    return h.hexdigest()[:16]
+
+
 def replace_document_clauses(source, clauses, editor=None):
     """Bulk-replace all clauses of a document with the given ordered list
     (each {id, html, tags}). Snapshots the prior clauses to clause_versions, then
