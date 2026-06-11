@@ -59,6 +59,15 @@ def _require_admin():
     return _app.current_user.is_authenticated and getattr(_app.current_user, "is_admin", False)
 
 
+def _audit(action, status):
+    """Record a content-change action in the admin audit log (who did what)."""
+    try:
+        email = getattr(_app.current_user, "email", "") or ""
+        _app._record_admin_audit(email, str(action)[:255], str(status)[:64])
+    except Exception as e:
+        print(f"audit error: {e}")
+
+
 # ----------------------------------------------------------------------------
 # AUTH
 # ----------------------------------------------------------------------------
@@ -397,6 +406,7 @@ def api_pq_upload():
         created_at=datetime.utcnow())
     m.db.session.add(row)
     m.db.session.commit()
+    _audit(f"Uploaded PQ: {row.title}", "PQ upload")
     return jsonify({"ok": True, "id": row.id, "title": row.title}), 201
 
 
@@ -406,8 +416,10 @@ def api_pq_delete(pid):
         return jsonify({"message": "Admin access required"}), 403
     m = _app
     r = m.PqDocument.query.get_or_404(pid)
+    pqno = r.pq_no or pid
     m.db.session.delete(r)
     m.db.session.commit()
+    _audit(f"Deleted PQ {pqno}", "PQ delete")
     return jsonify({"ok": True})
 
 
@@ -442,6 +454,7 @@ def api_pq_retag(pid):
     data = request.get_json(silent=True) or {}
     r.tags = (data.get("tags") or "").strip()
     _app.db.session.commit()
+    _audit(f"Re-tagged PQ {r.pq_no or r.id}", "PQ tags")
     return jsonify({"ok": True, "tags": [t.strip() for t in r.tags.split(",") if t.strip()]})
 
 
@@ -561,6 +574,7 @@ def api_clause_import_pdf():
     m.db.session.add(asset)
     m.db.session.commit()
     brain.refresh_kb()
+    _audit(f"Imported document '{source}' ({len(rows)} clauses)", "Document import")
     return jsonify({"ok": True, "source": source, "clauses": len(rows),
                     "orphans": report.get("orphan_lines", 0), "spec_errors": spec_errors})
 
@@ -623,6 +637,8 @@ def api_clause_doc_save():
     if not source or not isinstance(clauses, list) or not clauses:
         return jsonify({"ok": False, "message": "Nothing to save."}), 400
     n = brain.replace_document_clauses(source, clauses, getattr(_app.current_user, "email", "") or "")
+    changed = sum(1 for c in clauses if c.get("changed"))
+    _audit(f"Saved '{source}' — {changed} of {n} clause(s) changed", "Document edit")
     return jsonify({"ok": True, "clauses": n})
 
 
@@ -644,6 +660,7 @@ def api_doc_delete():
             print(f"doc pdf delete: {e}")
         _app.db.session.delete(asset)
         _app.db.session.commit()
+    _audit(f"Deleted document '{source}' ({n} clauses)", "Document delete")
     return jsonify({"ok": True, "deleted": n})
 
 
@@ -667,6 +684,7 @@ def api_doc_pdf_upload():
     asset.uploaded_by = getattr(m.current_user, "email", "") or ""
     asset.uploaded_at = datetime.utcnow()
     m.db.session.commit()
+    _audit(f"Attached source PDF to '{source}'", "Document PDF")
     return jsonify({"ok": True, "pdf_url": f"/api/doc-pdf/{asset.id}/download?v={int(asset.uploaded_at.timestamp())}"})
 
 
@@ -780,6 +798,7 @@ def api_clause_edit_save():
     ok = brain.update_clause_content(cid, source, data.get("html") or "", data.get("text") or "", editor)
     if not ok:
         return jsonify({"ok": False, "message": "Clause not found"}), 404
+    _audit(f"Edited clause {cid} in '{source}'", "Clause edit")
     return jsonify({"ok": True, "html": data.get("html") or ""})
 
 
@@ -844,6 +863,7 @@ def api_clause_retag():
     new_tags = brain.update_clause_tags(cid, source, data.get("tags") or "")
     if new_tags is None:
         return jsonify({"ok": False, "message": "Clause not found"}), 404
+    _audit(f"Re-tagged clause {cid} in '{source}'", "Clause tags")
     return jsonify({"ok": True, "tags": new_tags})
 
 
