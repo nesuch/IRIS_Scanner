@@ -215,6 +215,12 @@ export default function Search({ module }) {
   const docFilterRef = useRef(null);
   const searchMainRef = useRef(null);
 
+  // Lock the document to the viewport (fixed bottom bar; only results scroll).
+  useEffect(() => {
+    document.documentElement.classList.add('app-fixed');
+    return () => document.documentElement.classList.remove('app-fixed');
+  }, []);
+
   // Reset chat when switching modules (matches per-page server history reset).
   useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
 

@@ -22,6 +22,10 @@ export default function Pqs() {
   const [allTags, setAllTags] = useState([]);
 
   useEffect(() => { api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([])); }, []);
+  useEffect(() => {
+    document.documentElement.classList.add('app-fixed');
+    return () => document.documentElement.classList.remove('app-fixed');
+  }, []);
 
   async function runSearch(q) {
     if (!q.trim() || busy) return;

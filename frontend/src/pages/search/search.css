@@ -1,5 +1,12 @@
 /* ---- Search (chat) layout ---- */
-.search-shell { display: flex; flex-direction: column; height: 100vh; min-height: 0; }
+/* On search/PQ pages we lock the document and use a percentage-height chain
+   (set on <html> via JS) so the layout fills the *visible* viewport reliably on
+   iOS — no vh/svh/dvh quirks, and only the results area scrolls. */
+html.app-fixed, html.app-fixed body, html.app-fixed #root { height: 100%; overflow: hidden; }
+html.app-fixed .app-shell { height: 100%; min-height: 0; }
+html.app-fixed .main { min-height: 0; height: 100%; }
+
+.search-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .search-shell .page-header { position: static; }
 
 .search-main { flex: 1; display: flex; min-height: 0; }
@@ -175,7 +182,7 @@
 .search-tip b { color: var(--accent); font-family: var(--mono); font-weight: 700; }
 
 @media (max-width: 900px) {
-  .search-shell { height: 100svh; }   /* stable vs 100dvh, which shifts the bottom bar as iOS chrome toggles */
+  /* search-shell height handled by the .app-fixed percentage chain (see top) */
   .chat-window { padding: 14px 16px; }
   .input-area { padding: 10px 12px 16px; }
   .chat-block { max-width: 100%; }
