@@ -3,7 +3,7 @@
    ============================================================ */
 
 /* ---------- App shell / layout ---------- */
-.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; min-height: 100dvh; transition: grid-template-columns 0.24s cubic-bezier(0.4,0,0.2,1); }
+.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; min-height: 100svh; transition: grid-template-columns 0.24s cubic-bezier(0.4,0,0.2,1); }
 .app-shell.collapsed { grid-template-columns: var(--sidebar-w-collapsed) 1fr; }
 
 /* ---------- Sidebar ---------- */
