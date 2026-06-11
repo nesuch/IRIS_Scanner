@@ -633,7 +633,7 @@ def api_clause_list_for_doc():
         return jsonify({"clauses": []})
     sub = df[df["Source_Doc"].astype(str) == source]
     if "sort_order" in sub.columns:
-        sub = sub.assign(_o=sub["sort_order"].fillna(sub.reset_index().index.to_numpy())).sort_values("_o", kind="stable")
+        sub = sub.sort_values("sort_order", kind="stable", na_position="last")
     has_html = "clause_html" in sub.columns
     out = []
     for _, r in sub.iterrows():
