@@ -140,6 +140,7 @@
 .pq-empty-browse i {
   font-size: inherit; line-height: inherit; color: inherit; margin: 0;
   display: inline-block; vertical-align: middle;
+  position: relative; top: 2px;   /* nudge the glyph down to sit on the text line */
 }
 
 /* Three card actions now: hide (×) · flag · delete */
