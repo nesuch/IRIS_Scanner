@@ -288,7 +288,7 @@ export default function Pqs() {
           <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
           <div className="pq-read-actions">
             {isEditor && <EditMeta pq={active}
-              onSaved={(title, tags, departments) => { setActive({ ...active, title, tags, departments }); loadTags(); }} />}
+              onSaved={(title, tags, departments, date) => { setActive({ ...active, title, tags, departments, date }); loadTags(); }} />}
             {isAdmin && <button className="btn btn-ghost btn-sm danger" onClick={() => del(active.id)}><i className="fas fa-trash" /> Delete</button>}
             {active.download_url && (
               <a className="btn btn-primary btn-sm" href={active.download_url} target="_blank" rel="noreferrer"><i className="fas fa-file-word" /> Download original (.docx)</a>
@@ -418,6 +418,7 @@ function EditMeta({ pq, onSaved }) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('');
+  const [date, setDate] = useState('');
   const [tags, setTags] = useState('');
   const [depts, setDepts] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -425,15 +426,15 @@ function EditMeta({ pq, onSaved }) {
   async function save() {
     setBusy(true);
     try {
-      const r = await api.post(`/pq/${pq.id}/update`, { title, tags, departments: depts });
-      toast.success('Saved'); setEditing(false); onSaved(r.title, r.tags || [], r.departments || []);
+      const r = await api.post(`/pq/${pq.id}/update`, { title, date, tags, departments: depts });
+      toast.success('Saved'); setEditing(false); onSaved(r.title, r.tags || [], r.departments || [], r.date || '');
     } catch (e) { toast.error(e.message || 'Could not save'); }
     finally { setBusy(false); }
   }
 
   return (
     <>
-      <button className="btn btn-ghost btn-sm" onClick={() => { setTitle(pq.title || ''); setTags((pq.tags || []).join(', ')); setDepts(pq.departments || []); setEditing(true); }}><i className="fas fa-pen" /> Edit</button>
+      <button className="btn btn-ghost btn-sm" onClick={() => { setTitle(pq.title || ''); setDate(pq.date || ''); setTags((pq.tags || []).join(', ')); setDepts(pq.departments || []); setEditing(true); }}><i className="fas fa-pen" /> Edit</button>
       {editing && (
         <Modal title="Edit PQ" width="540px" onClose={() => setEditing(false)}
           footer={<>
@@ -443,6 +444,10 @@ function EditMeta({ pq, onSaved }) {
           <div className="field" style={{ marginBottom: 12 }}>
             <label>Title</label>
             <textarea className="input" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label>Date <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(as it should display)</span></label>
+            <input className="input" value={date} onChange={(e) => setDate(e.target.value)} placeholder="e.g. 12 March 2024" />
           </div>
           <div className="field" style={{ marginBottom: 12 }}>
             <label>Department(s) <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(pick any that apply)</span></label>
@@ -461,6 +466,7 @@ function EditMeta({ pq, onSaved }) {
 function UploadModal({ onClose, onDone }) {
   const toast = useToast();
   const [file, setFile] = useState(null);
+  const [date, setDate] = useState('');
   const [tags, setTags] = useState('');
   const [depts, setDepts] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -471,7 +477,7 @@ function UploadModal({ onClose, onDone }) {
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append('file', file); fd.append('tags', tags); fd.append('departments', depts.join(','));
+      fd.append('file', file); fd.append('tags', tags); fd.append('departments', depts.join(',')); fd.append('date', date);
       if (force) fd.append('force', '1');
       const r = await api.post('/pq/upload', fd);
       toast.success(`Added: ${r.title?.slice(0, 50) || 'PQ'}`);
@@ -511,6 +517,10 @@ function UploadModal({ onClose, onDone }) {
         <input className="input" type="file" accept=".docx" onChange={(e) => { setFile(e.target.files?.[0] || null); setDup(null); }} />
       </div>
       <div className="field" style={{ marginBottom: 14 }}>
+        <label>Date <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(optional — auto-detected from the file if left blank)</span></label>
+        <input className="input" value={date} onChange={(e) => setDate(e.target.value)} placeholder="e.g. 12 March 2024" />
+      </div>
+      <div className="field" style={{ marginBottom: 14 }}>
         <label>Department(s) <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(pick any that apply)</span></label>
         <DeptPicker value={depts} onChange={setDepts} />
       </div>
@@ -531,6 +541,7 @@ function BulkUploadModal({ onClose, onDone }) {
   const [created, setCreated] = useState([]);
   const [idx, setIdx] = useState(0);
   const [title, setTitle] = useState('');
+  const [date, setDate] = useState('');
   const [tags, setTags] = useState('');
   const [depts, setDepts] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -548,7 +559,7 @@ function BulkUploadModal({ onClose, onDone }) {
         toast.error(dupes.length ? `All ${dupes.length} already exist in IRIS — nothing uploaded.` : 'No valid .docx files');
         setPhase('select'); return;
       }
-      setCreated(c); setIdx(0); setTitle(c[0].title || ''); setTags(''); setDepts([]);
+      setCreated(c); setIdx(0); setTitle(c[0].title || ''); setDate(c[0].date || ''); setTags(''); setDepts([]);
       setPhase('review');
       toast.success(`Uploaded ${c.length}${dupes.length ? `, skipped ${dupes.length} duplicate${dupes.length > 1 ? 's' : ''}` : ''} — now add tags`);
     } catch (e) { toast.error(e.message || 'Upload failed'); setPhase('select'); }
@@ -556,12 +567,12 @@ function BulkUploadModal({ onClose, onDone }) {
 
   function goNext(n) {
     if (n >= created.length) { toast.success('Done'); onDone(); return; }
-    setIdx(n); setTitle(created[n].title || ''); setTags(''); setDepts([]);
+    setIdx(n); setTitle(created[n].title || ''); setDate(created[n].date || ''); setTags(''); setDepts([]);
   }
   async function saveCurrent() {
     const pq = created[idx];
     setBusy(true);
-    try { await api.post(`/pq/${pq.id}/update`, { title, tags, departments: depts }); }
+    try { await api.post(`/pq/${pq.id}/update`, { title, date, tags, departments: depts }); }
     catch (e) { toast.error(e.message || 'Save failed'); setBusy(false); return; }
     setBusy(false); goNext(idx + 1);
   }
@@ -580,6 +591,10 @@ function BulkUploadModal({ onClose, onDone }) {
         <div className="field" style={{ marginBottom: 12 }}>
           <label>Title</label>
           <textarea className="input" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label>Date</label>
+          <input className="input" value={date} onChange={(e) => setDate(e.target.value)} placeholder="e.g. 12 March 2024" />
         </div>
         <div className="field" style={{ marginBottom: 12 }}>
           <label>Department(s) <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(pick any that apply)</span></label>

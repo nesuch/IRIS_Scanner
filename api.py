@@ -495,6 +495,7 @@ def api_pq_upload():
         return jsonify({"ok": False, "message": "Please upload a .docx file."}), 400
     tags = (request.form.get("tags") or "").strip()
     departments = ",".join(_norm_departments(request.form.get("departments")))
+    date_override = (request.form.get("date") or "").strip()[:40]
     force = str(request.form.get("force") or "").lower() in {"1", "true", "yes"}
     raw = f.read()
     try:
@@ -512,7 +513,7 @@ def api_pq_upload():
     storage.save_pq(safe, raw)   # GCS in prod, local disk in dev
     row = m.PqDocument(
         pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
-        subject=parsed["subject"], doc_date=parsed["doc_date"], tags=tags,
+        subject=parsed["subject"], doc_date=(date_override or parsed["doc_date"]), tags=tags,
         departments=departments,
         html=parsed["html"], body_text=parsed["text"], docx_filename=safe,
         created_at=datetime.utcnow())
@@ -557,7 +558,7 @@ def api_pq_bulk_upload():
         m.db.session.add(row)
         m.db.session.commit()
         created.append({"id": row.id, "title": row.title, "pq_no": row.pq_no,
-                        "house": row.house, "filename": f.filename})
+                        "house": row.house, "date": row.doc_date, "filename": f.filename})
     _audit(f"Bulk uploaded {len(created)} PQs", "PQ upload")
     return jsonify({"ok": True, "created": created, "skipped": skipped})
 
@@ -1141,20 +1142,22 @@ def api_clause_retag():
 
 @api_bp.post("/pq/<int:pid>/update")
 def api_pq_update(pid):
-    """Admin: edit a PQ's title, tags and/or departments."""
+    """Admin: edit a PQ's title, date, tags and/or departments."""
     if not _require_role("editor"):
         return jsonify({"message": "Editor access required"}), 403
     r = _app.PqDocument.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     if "title" in data and (data.get("title") or "").strip():
         r.title = data["title"].strip()[:400]
+    if "date" in data:
+        r.doc_date = (data.get("date") or "").strip()[:40] or None
     if "tags" in data:
         r.tags = (data.get("tags") or "").strip()
     if "departments" in data:
         r.departments = ",".join(_norm_departments(data.get("departments")))
     _app.db.session.commit()
     _audit(f"Edited PQ {r.pq_no or pid}", "PQ edit")
-    return jsonify({"ok": True, "title": r.title,
+    return jsonify({"ok": True, "title": r.title, "date": r.doc_date,
                     "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
                     "departments": _dept_list(r)})
 
