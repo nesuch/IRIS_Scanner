@@ -7,6 +7,35 @@ import { api } from '../api.js';
 import './search/search.css';   // reuse the universal-search shell (bottom bar, suggestions)
 import './pqs/pqs.css';
 
+// Controlled department vocabulary — mirrors PQ_DEPARTMENTS in api.py.
+const DEPTS = [
+  { code: 'HEALTH', label: 'Health' },
+  { code: 'LIFE', label: 'Life' },
+  { code: 'NONLIFE', label: 'Non-Life' },
+];
+const DEPT_LABEL = Object.fromEntries(DEPTS.map((d) => [d.code, d.label]));
+
+// Reusable Health/Life/Non-Life multi-select for upload/edit/bulk.
+function DeptPicker({ value, onChange }) {
+  const set = new Set(value);
+  const toggle = (code) => {
+    const next = new Set(set);
+    next.has(code) ? next.delete(code) : next.add(code);
+    onChange(DEPTS.filter((d) => next.has(d.code)).map((d) => d.code));
+  };
+  return (
+    <div className="pq-dept-pick">
+      {DEPTS.map((d) => (
+        <button type="button" key={d.code}
+          className={`pq-dept-chip ${set.has(d.code) ? 'on' : ''}`}
+          onClick={() => toggle(d.code)}>
+          <i className={`fas ${set.has(d.code) ? 'fa-check' : 'fa-plus'}`} /> {d.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Pqs() {
   const toast = useToast();
   const { user } = useAuth();
@@ -17,6 +46,7 @@ export default function Pqs() {
   const [lastQuery, setLastQuery] = useState('');
   const [dismissed, setDismissed] = useState(() => new Set());  // hidden from this result set
   const [browse, setBrowse] = useState(false);   // true = "all PQs" listing, not a search
+  const [deptFilter, setDeptFilter] = useState([]);  // live department refinement (codes)
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [active, setActive] = useState(null);
@@ -35,7 +65,7 @@ export default function Pqs() {
   // mode: 'q' free text | 'tag' exact tag | 'num' PQ number
   async function runSearch(value, mode = 'q') {
     if (!value.trim() || busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(false);  // fresh search resets hidden
+    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(false); setDeptFilter([]);  // fresh search resets hidden + dept filter
     try {
       const key = mode === 'tag' ? 'tag' : mode === 'num' ? 'num' : 'q';
       const d = await api.get(`/pq?${key}=${encodeURIComponent(value.trim())}`);
@@ -46,15 +76,20 @@ export default function Pqs() {
   }
 
   // Browse the whole library — every PQ in the database, newest first.
-  async function browseAll() {
+  // Optional `depts` pre-selects the live department refinement.
+  async function browseAll(depts = []) {
     if (busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(true); setQuery('');
+    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(true); setQuery(''); setDeptFilter(depts);
     try {
       const d = await api.get('/pq');
       setResults(d.items || []);
       setLastQuery('');
     } catch (e) { toast.error(e.message || 'Could not load'); setResults([]); }
     finally { setBusy(false); }
+  }
+
+  function toggleDept(code) {
+    setDeptFilter((cur) => cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]);
   }
 
   function onSubmit(e) {
@@ -113,7 +148,7 @@ export default function Pqs() {
           <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
           <div className="pq-read-actions">
             {isEditor && <EditMeta pq={active}
-              onSaved={(title, tags) => { setActive({ ...active, title, tags }); loadTags(); if (lastQuery) { /* keep results */ } }} />}
+              onSaved={(title, tags, departments) => { setActive({ ...active, title, tags, departments }); loadTags(); }} />}
             {isAdmin && <button className="btn btn-ghost btn-sm danger" onClick={() => del(active.id)}><i className="fas fa-trash" /> Delete</button>}
             {active.download_url && (
               <a className="btn btn-primary btn-sm" href={active.download_url} target="_blank" rel="noreferrer"><i className="fas fa-file-word" /> Download original (.docx)</a>
@@ -128,6 +163,9 @@ export default function Pqs() {
               {active.date && <span className="pq-date">{active.date}</span>}
             </div>
             <h2 className="pq-doc-title">{active.title}</h2>
+            {active.departments?.length > 0 && (
+              <div className="pq-doc-depts">{active.departments.map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}</div>
+            )}
             {active.tags?.length > 0 && (
               <div className="pq-tags">{active.tags.map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
             )}
@@ -138,13 +176,16 @@ export default function Pqs() {
     );
   }
 
-  const visible = results ? results.filter((p) => !dismissed.has(p.id)) : null;
+  const visible = results
+    ? results.filter((p) => !dismissed.has(p.id)
+        && (deptFilter.length === 0 || (p.departments || []).some((c) => deptFilter.includes(c))))
+    : null;
 
   // ---- Search view ----
   return (
     <div className="search-shell">
       <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions">
-        <button className="btn btn-ghost btn-sm" onClick={browseAll}><i className="fas fa-list" /> All PQs</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => browseAll()}><i className="fas fa-list" /> All PQs</button>
         {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
         {isEditor && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
       </PageHeader>
@@ -155,33 +196,61 @@ export default function Pqs() {
             <div className="chat-empty anim-fade">
               <i className="fas fa-landmark" />
               <p><strong>Search Parliamentary Questions.</strong><br />Try a topic, a tag, or <b>/</b> + a PQ number (e.g. <b>/9000</b>).</p>
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={browseAll}><i className="fas fa-list" /> Browse all PQs in the database</button>
-            </div>
-          ) : visible.length === 0 ? (
-            <p className="iris-msg">{browse ? 'No Parliamentary Questions in the database yet.' : `No Parliamentary Questions to show for “${lastQuery}”.`}</p>
-          ) : (
-            <div className="pq-feed">
-              <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{browse ? ' in the database' : ` for “${lastQuery}”`}</div>
-              {opening && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
-              <div className="pq-list">
-                {visible.map((p) => (
-                  <div key={p.id} className="pq-card" onClick={() => open(p.id)} role="button" tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter') open(p.id); }}>
-                    <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); hide(p.id); }}>&times;</button>
-                    {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); del(p.id); }}><i className="fas fa-trash" /></button>}
-                    <div className="pq-card-top">
-                      {p.house && <span className="pq-house">{p.house}</span>}
-                      {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
-                      {p.date && <span className="pq-date">{p.date}</span>}
-                    </div>
-                    <div className="pq-card-title">{p.subject || p.title}</div>
-                    {p.tags?.length > 0 && (
-                      <div className="pq-tags">{p.tags.slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
-                    )}
-                    <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
-                  </div>
+              <button className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={() => browseAll()}><i className="fas fa-list" /> Browse all PQs in the database</button>
+              <div className="pq-empty-depts">
+                <span>or by department:</span>
+                {DEPTS.map((d) => (
+                  <button key={d.code} className="pq-dept-chip" onClick={() => browseAll([d.code])}>{d.label}</button>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="pq-feed">
+              {results.length > 0 && (
+                <div className="pq-dept-bar">
+                  <span className="pq-dept-bar-label">Department:</span>
+                  {DEPTS.map((d) => {
+                    const n = results.filter((p) => (p.departments || []).includes(d.code)).length;
+                    return (
+                      <button key={d.code} className={`pq-dept-chip ${deptFilter.includes(d.code) ? 'on' : ''}`}
+                        onClick={() => toggleDept(d.code)}>
+                        {d.label}<span className="pq-dept-count">{n}</span>
+                      </button>
+                    );
+                  })}
+                  {deptFilter.length > 0 && (
+                    <button className="pq-dept-clear" onClick={() => setDeptFilter([])}>Clear</button>
+                  )}
+                </div>
+              )}
+              {visible.length === 0 ? (
+                <p className="iris-msg">{deptFilter.length > 0
+                  ? `No ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.`
+                  : browse ? 'No Parliamentary Questions in the database yet.' : `No Parliamentary Questions to show for “${lastQuery}”.`}</p>
+              ) : (<>
+                <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{browse ? ' in the database' : ` for “${lastQuery}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
+                {opening && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
+                <div className="pq-list">
+                  {visible.map((p) => (
+                    <div key={p.id} className="pq-card" onClick={() => open(p.id)} role="button" tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter') open(p.id); }}>
+                      <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); hide(p.id); }}>&times;</button>
+                      {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); del(p.id); }}><i className="fas fa-trash" /></button>}
+                      <div className="pq-card-top">
+                        {p.house && <span className="pq-house">{p.house}</span>}
+                        {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
+                        {p.date && <span className="pq-date">{p.date}</span>}
+                        {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
+                      </div>
+                      <div className="pq-card-title">{p.subject || p.title}</div>
+                      {p.tags?.length > 0 && (
+                        <div className="pq-tags">{p.tags.slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
+                      )}
+                      <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
+                    </div>
+                  ))}
+                </div>
+              </>)}
             </div>
           )}
         </div>
@@ -225,20 +294,21 @@ function EditMeta({ pq, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState('');
+  const [depts, setDepts] = useState([]);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     setBusy(true);
     try {
-      const r = await api.post(`/pq/${pq.id}/update`, { title, tags });
-      toast.success('Saved'); setEditing(false); onSaved(r.title, r.tags || []);
+      const r = await api.post(`/pq/${pq.id}/update`, { title, tags, departments: depts });
+      toast.success('Saved'); setEditing(false); onSaved(r.title, r.tags || [], r.departments || []);
     } catch (e) { toast.error(e.message || 'Could not save'); }
     finally { setBusy(false); }
   }
 
   return (
     <>
-      <button className="btn btn-ghost btn-sm" onClick={() => { setTitle(pq.title || ''); setTags((pq.tags || []).join(', ')); setEditing(true); }}><i className="fas fa-pen" /> Edit</button>
+      <button className="btn btn-ghost btn-sm" onClick={() => { setTitle(pq.title || ''); setTags((pq.tags || []).join(', ')); setDepts(pq.departments || []); setEditing(true); }}><i className="fas fa-pen" /> Edit</button>
       {editing && (
         <Modal title="Edit PQ" width="540px" onClose={() => setEditing(false)}
           footer={<>
@@ -248,6 +318,10 @@ function EditMeta({ pq, onSaved }) {
           <div className="field" style={{ marginBottom: 12 }}>
             <label>Title</label>
             <textarea className="input" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label>Department(s) <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(pick any that apply)</span></label>
+            <DeptPicker value={depts} onChange={setDepts} />
           </div>
           <div className="field">
             <label>Tags <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(comma-separated)</span></label>
@@ -263,6 +337,7 @@ function UploadModal({ onClose, onDone }) {
   const toast = useToast();
   const [file, setFile] = useState(null);
   const [tags, setTags] = useState('');
+  const [depts, setDepts] = useState([]);
   const [busy, setBusy] = useState(false);
   const [dup, setDup] = useState(null);   // existing PQ flagged as a likely duplicate
 
@@ -271,7 +346,7 @@ function UploadModal({ onClose, onDone }) {
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append('file', file); fd.append('tags', tags);
+      fd.append('file', file); fd.append('tags', tags); fd.append('departments', depts.join(','));
       if (force) fd.append('force', '1');
       const r = await api.post('/pq/upload', fd);
       toast.success(`Added: ${r.title?.slice(0, 50) || 'PQ'}`);
@@ -310,6 +385,10 @@ function UploadModal({ onClose, onDone }) {
         <label>Word document (.docx)</label>
         <input className="input" type="file" accept=".docx" onChange={(e) => { setFile(e.target.files?.[0] || null); setDup(null); }} />
       </div>
+      <div className="field" style={{ marginBottom: 14 }}>
+        <label>Department(s) <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(pick any that apply)</span></label>
+        <DeptPicker value={depts} onChange={setDepts} />
+      </div>
       <div className="field">
         <label>Tags <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(comma-separated — drives search)</span></label>
         <input className="input" value={tags} onChange={(e) => setTags(e.target.value)}
@@ -328,6 +407,7 @@ function BulkUploadModal({ onClose, onDone }) {
   const [idx, setIdx] = useState(0);
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState('');
+  const [depts, setDepts] = useState([]);
   const [busy, setBusy] = useState(false);
 
   async function startUpload() {
@@ -343,7 +423,7 @@ function BulkUploadModal({ onClose, onDone }) {
         toast.error(dupes.length ? `All ${dupes.length} already exist in IRIS — nothing uploaded.` : 'No valid .docx files');
         setPhase('select'); return;
       }
-      setCreated(c); setIdx(0); setTitle(c[0].title || ''); setTags('');
+      setCreated(c); setIdx(0); setTitle(c[0].title || ''); setTags(''); setDepts([]);
       setPhase('review');
       toast.success(`Uploaded ${c.length}${dupes.length ? `, skipped ${dupes.length} duplicate${dupes.length > 1 ? 's' : ''}` : ''} — now add tags`);
     } catch (e) { toast.error(e.message || 'Upload failed'); setPhase('select'); }
@@ -351,12 +431,12 @@ function BulkUploadModal({ onClose, onDone }) {
 
   function goNext(n) {
     if (n >= created.length) { toast.success('Done'); onDone(); return; }
-    setIdx(n); setTitle(created[n].title || ''); setTags('');
+    setIdx(n); setTitle(created[n].title || ''); setTags(''); setDepts([]);
   }
   async function saveCurrent() {
     const pq = created[idx];
     setBusy(true);
-    try { await api.post(`/pq/${pq.id}/update`, { title, tags }); }
+    try { await api.post(`/pq/${pq.id}/update`, { title, tags, departments: depts }); }
     catch (e) { toast.error(e.message || 'Save failed'); setBusy(false); return; }
     setBusy(false); goNext(idx + 1);
   }
@@ -375,6 +455,10 @@ function BulkUploadModal({ onClose, onDone }) {
         <div className="field" style={{ marginBottom: 12 }}>
           <label>Title</label>
           <textarea className="input" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label>Department(s) <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(pick any that apply)</span></label>
+          <DeptPicker value={depts} onChange={setDepts} />
         </div>
         <div className="field">
           <label>Tags <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(comma-separated)</span></label>

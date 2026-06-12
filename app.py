@@ -231,6 +231,7 @@ class PqDocument(db.Model):
     subject = db.Column(db.Text, nullable=True)
     doc_date = db.Column(db.String(40), nullable=True)
     tags = db.Column(db.Text, nullable=True)                # comma-separated
+    departments = db.Column(db.Text, nullable=True)         # comma-separated codes: HEALTH,LIFE,NONLIFE
     html = db.Column(db.Text, nullable=False)               # mammoth-rendered body
     body_text = db.Column(db.Text, nullable=True)           # plain text (search/preview)
     docx_filename = db.Column(db.String(300), nullable=True)
@@ -568,6 +569,9 @@ def _ensure_database_schema():
         },
         "flags": {
             "screenshot": "TEXT",
+        },
+        "pq_documents": {
+            "departments": "TEXT",          # comma-separated codes: HEALTH,LIFE,NONLIFE
         },
         "regulatory_clauses": {
             "clause_html": "TEXT",          # rich edited body (HTML); null => render clause_text

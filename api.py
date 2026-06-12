@@ -329,11 +329,47 @@ def _pq_snippet(body, limit=220):
     return rest[:limit] + ("…" if len(rest) > limit else "")
 
 
+# Controlled department vocabulary for PQs — same lines as the KB modules.
+# A PQ may belong to several (e.g. HEALTH + NONLIFE). Stored comma-separated.
+PQ_DEPARTMENTS = [
+    {"code": "HEALTH", "label": "Health"},
+    {"code": "LIFE", "label": "Life"},
+    {"code": "NONLIFE", "label": "Non-Life"},
+]
+_PQ_DEPT_CODES = {d["code"] for d in PQ_DEPARTMENTS}
+# Accept loose inputs ("non-life", "Health", "nonlife") -> canonical code.
+_PQ_DEPT_ALIASES = {"HEALTH": "HEALTH", "LIFE": "LIFE", "NONLIFE": "NONLIFE",
+                    "NON-LIFE": "NONLIFE", "NON_LIFE": "NONLIFE", "GENERAL": "NONLIFE"}
+
+
+def _norm_departments(value):
+    """Normalise a list or comma-string of department inputs to canonical codes,
+    de-duplicated and in the canonical Health/Life/Non-Life order."""
+    if value is None:
+        parts = []
+    elif isinstance(value, (list, tuple)):
+        parts = list(value)
+    else:
+        parts = str(value).split(",")
+    seen = set()
+    for p in parts:
+        key = re.sub(r"\s+", "", str(p).strip().upper())
+        code = _PQ_DEPT_ALIASES.get(key)
+        if code:
+            seen.add(code)
+    return [d["code"] for d in PQ_DEPARTMENTS if d["code"] in seen]
+
+
+def _dept_list(r):
+    return _norm_departments(getattr(r, "departments", None))
+
+
 def _pq_card(r):
     return {
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
         "subject": r.subject, "date": r.doc_date,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+        "departments": _dept_list(r),
         "snippet": _pq_snippet(r.body_text or ""),
     }
 
@@ -364,23 +400,29 @@ def api_pq_list():
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
     num = re.sub(r"\D", "", request.args.get("num") or "")
+    tag = (request.args.get("tag") or "").strip()
+    q = (request.args.get("q") or "").strip()
     if num:
         rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
         items = [_pq_card(r) for r in rows if num in re.sub(r"\D", "", r.pq_no or "")]
-        return jsonify({"items": items})
-    tag = (request.args.get("tag") or "").strip()
-    if tag:
+    elif tag:
         # Exact-tag filter (case/space-insensitive) — not a body word search.
         key = re.sub(r"\s+", "", tag.lower())
         rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
         items = [_pq_card(r) for r in rows
                  if key in {re.sub(r"\s+", "", t.strip().lower()) for t in (r.tags or "").split(",") if t.strip()}]
-        return jsonify({"items": items})
-    q = (request.args.get("q") or "").strip()
-    if q:
-        return jsonify({"items": _search_pqs(q, limit=100)})
-    rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
-    return jsonify({"items": [_pq_card(r) for r in rows]})
+    elif q:
+        items = _search_pqs(q, limit=100)
+    else:
+        rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+        items = [_pq_card(r) for r in rows]
+    # Department facet — narrows whatever the base set is (a PQ matches if it
+    # carries the requested department; multi-dept PQs match any of theirs).
+    depts = _norm_departments(request.args.get("dept"))
+    if depts:
+        want = set(depts)
+        items = [it for it in items if want & set(it.get("departments") or [])]
+    return jsonify({"items": items})
 
 
 @api_bp.get("/pq/<int:pid>")
@@ -393,6 +435,7 @@ def api_pq_get(pid):
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
         "subject": r.subject, "date": r.doc_date,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+        "departments": _dept_list(r),
         "html": r.html,
         "download_url": (f"/api/pq/{r.id}/download" if r.docx_filename else None),
     })
@@ -429,6 +472,7 @@ def api_pq_upload():
     if not f or not f.filename.lower().endswith(".docx"):
         return jsonify({"ok": False, "message": "Please upload a .docx file."}), 400
     tags = (request.form.get("tags") or "").strip()
+    departments = ",".join(_norm_departments(request.form.get("departments")))
     force = str(request.form.get("force") or "").lower() in {"1", "true", "yes"}
     raw = f.read()
     try:
@@ -447,6 +491,7 @@ def api_pq_upload():
     row = m.PqDocument(
         pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
         subject=parsed["subject"], doc_date=parsed["doc_date"], tags=tags,
+        departments=departments,
         html=parsed["html"], body_text=parsed["text"], docx_filename=safe,
         created_at=datetime.utcnow())
     m.db.session.add(row)
@@ -524,6 +569,7 @@ def _search_pqs(query, limit=8):
             "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
             "subject": r.subject, "date": r.doc_date,
             "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+            "departments": _dept_list(r),
             "snippet": _pq_snippet(r.body_text or ""),
         }))
     out.sort(key=lambda x: -x[0])
@@ -986,7 +1032,7 @@ def api_clause_retag():
 
 @api_bp.post("/pq/<int:pid>/update")
 def api_pq_update(pid):
-    """Admin: edit a PQ's title and/or tags."""
+    """Admin: edit a PQ's title, tags and/or departments."""
     if not _require_role("editor"):
         return jsonify({"message": "Editor access required"}), 403
     r = _app.PqDocument.query.get_or_404(pid)
@@ -995,10 +1041,13 @@ def api_pq_update(pid):
         r.title = data["title"].strip()[:400]
     if "tags" in data:
         r.tags = (data.get("tags") or "").strip()
+    if "departments" in data:
+        r.departments = ",".join(_norm_departments(data.get("departments")))
     _app.db.session.commit()
     _audit(f"Edited PQ {r.pq_no or pid}", "PQ edit")
     return jsonify({"ok": True, "title": r.title,
-                    "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()]})
+                    "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+                    "departments": _dept_list(r)})
 
 
 @api_bp.get("/clause-suggest")
