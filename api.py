@@ -905,7 +905,7 @@ def api_clause_suggest():
     q = request.args.get("q", "")
     sources = request.args.getlist("source") or None
     KB_DF = brain.load_knowledge_base()
-    rows = brain.search_by_clause_number(q, KB_DF, sources=sources, limit=8)
+    rows = brain.search_by_clause_number(q, KB_DF, sources=sources, limit=30)
     out = [{"id": r["id"], "source": r["source"], "type": r["type"],
             "snippet": (str(r["raw_text"])[:90] + ("…" if len(str(r["raw_text"])) > 90 else ""))}
            for r in rows]

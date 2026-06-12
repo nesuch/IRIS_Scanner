@@ -166,7 +166,7 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .doc-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-empty { padding: 20px 14px; text-align: center; color: var(--faint); font-size: 13px; }
 .search-input { flex: 1; border: none; outline: none; resize: none; background: transparent; font-family: var(--sans); font-size: 15px; line-height: 1.4; color: var(--ink); padding: 8px 6px; max-height: 140px; }
-.suggestions-box { position: absolute; bottom: calc(100% + 12px); left: 0; right: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-3); z-index: 100; max-height: 260px; overflow-y: auto; overflow: hidden; animation: slideUp 0.18s ease both; }
+.suggestions-box { position: absolute; bottom: calc(100% + 12px); left: 0; right: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-3); z-index: 100; max-height: 320px; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; animation: slideUp 0.18s ease both; }
 .suggestion-item { padding: 11px 16px; cursor: pointer; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .suggestion-item:last-child { border-bottom: none; }
 .suggestion-item:hover { background: var(--paper); }
