@@ -133,13 +133,8 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
               {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}><i className="fas fa-trash" /></button>}
               <div className="pq-card-top">
                 {p.house && <span className="pq-house">{p.house}</span>}
-                {(p.pq_no || p.date) && (
-                  <span className="pq-meta-text">
-                    {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
-                    {p.pq_no && p.date && <span className="pq-sep" />}
-                    {p.date && <span className="pq-date"><i className="far fa-calendar" /> {p.date}</span>}
-                  </span>
-                )}
+                {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
+                {p.date && <span className="pq-date"><i className="far fa-calendar" /> {p.date}</span>}
               </div>
               <div className="pq-card-title">{p.subject || p.title}</div>
               {((p.departments || []).length > 0 || p.tags?.length > 0) && (
@@ -304,13 +299,8 @@ export default function Pqs() {
           <div className="pq-doc card">
             <div className="pq-doc-head">
               {active.house && <span className="pq-house">{active.house}</span>}
-              {(active.pq_no || active.date) && (
-                <span className="pq-meta-text">
-                  {active.pq_no && <span className="pq-no">Q No. {active.pq_no}</span>}
-                  {active.pq_no && active.date && <span className="pq-sep" />}
-                  {active.date && <span className="pq-date"><i className="far fa-calendar" /> {active.date}</span>}
-                </span>
-              )}
+              {active.pq_no && <span className="pq-no">Q No. {active.pq_no}</span>}
+              {active.date && <span className="pq-date"><i className="far fa-calendar" /> {active.date}</span>}
             </div>
             <h2 className="pq-doc-title">{active.title}</h2>
             {active.departments?.length > 0 && (

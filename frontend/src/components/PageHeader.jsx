@@ -16,7 +16,7 @@ export default function PageHeader({ fullForm, title, scope, children }) {
       <div className="page-header-titles">
         {fullForm && <span className="full-form">{fullForm}</span>}
         <h1>{title}</h1>
-        {scope && <span className="scope"><span className="scope-dot" /><span className="scope-text">{scope}</span></span>}
+        {scope && <span className="scope"><span className="scope-text">{scope}</span></span>}
       </div>
       <div className="header-actions">
         {children && <div className="header-actions-scroll">{children}</div>}
