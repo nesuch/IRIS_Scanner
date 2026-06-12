@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 
 const STORE_KEY = 'iris.sidebar.collapsed';
@@ -37,8 +37,16 @@ const SECTIONS = [
 
 export default function Sidebar({ open, onNavigate }) {
   const { user } = useAuth();
+  const location = useLocation();
   const isAdmin = user?.role === 'admin' || user?.is_admin;
   const isEditor = isAdmin || user?.role === 'editor';
+  // Clicking the module you're already in resets that page (clears the chat).
+  const handleNav = (to) => {
+    if (location.pathname === to) {
+      window.dispatchEvent(new CustomEvent('iris:reclick', { detail: to }));
+    }
+    onNavigate?.();
+  };
   const [collapsed, setCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
   });
@@ -70,7 +78,7 @@ export default function Sidebar({ open, onNavigate }) {
                   key={it.to}
                   to={it.to}
                   end={it.end}
-                  onClick={onNavigate}
+                  onClick={() => handleNav(it.to)}
                   className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                 >
                   <i className={`fas ${it.icon}`} />

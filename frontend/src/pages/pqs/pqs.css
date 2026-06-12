@@ -125,3 +125,9 @@
 .pq-noresult { padding: 4px 2px; }
 .pq-deep-cta { margin: 10px 0 4px; }
 .pq-noresult .deep-chips { margin-top: 18px; }
+
+/* Keep the empty-state browse button's icon + label on one line */
+.pq-empty-browse { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; margin-top: 14px; }
+/* Result feed sits inside an IRIS chat bubble now — drop the standalone card chrome */
+.iris-bubble .pq-feed,
+.iris-bubble .pq-noresult { padding: 0; }

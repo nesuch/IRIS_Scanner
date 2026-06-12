@@ -225,6 +225,13 @@ export default function Search({ module }) {
   // Reset chat when switching modules (matches per-page server history reset).
   useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
 
+  // Re-clicking the active module in the sidebar clears the conversation.
+  useEffect(() => {
+    const onReclick = () => { setHistory([]); setQuery(''); setSuggestions([]); setPdfPane(null); };
+    window.addEventListener('iris:reclick', onReclick);
+    return () => window.removeEventListener('iris:reclick', onReclick);
+  }, []);
+
   // Load the documents available to this module (with their tags) and select all by default.
   useEffect(() => {
     api.get(`/docs?module=${module}`).then((d) => {

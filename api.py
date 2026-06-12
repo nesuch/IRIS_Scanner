@@ -589,18 +589,21 @@ def _pq_terms(text):
 
 
 def _search_pqs(query, limit=100):
-    """Headline (precise) tier — match a PQ by its title, subject or tags only.
-    Full reply bodies are reserved for Deep Scan, so this stays high-precision."""
+    """Headline (precise) tier — match a PQ by its TAGS only (the curated
+    keywords an editor deliberately assigned). Titles, subjects and full reply
+    bodies are reserved for Deep Scan, so a typed word never matches just
+    because it happens to appear in a subject line. Every query term must be
+    present in the tags (AND)."""
     m = _app
     terms = _pq_terms(query)
     if not terms:
         return []
     out = []
     for r in m.PqDocument.query.order_by(m.PqDocument.id.desc()).all():
-        hay = " ".join([r.title or "", r.subject or "", r.tags or ""]).lower()
-        score = sum(hay.count(t) for t in terms)
-        if not score:
+        hay = (r.tags or "").lower()
+        if not hay or not all(t in hay for t in terms):
             continue
+        score = sum(hay.count(t) for t in terms)
         out.append((score, _pq_card(r)))
     out.sort(key=lambda x: -x[0])
     return [p for _, p in out[:limit]]

@@ -54,20 +54,88 @@ function DeptPicker({ value, onChange }) {
   );
 }
 
+// One IRIS answer: the result set for a single query, with its own department
+// refinement. Renders cards, the no-match deep-scan prompt, or a dept-empty note.
+function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep }) {
+  const [deptFilter, setDeptFilter] = useState(resp.initialDept || []);
+  const results = resp.items || [];
+  const toggleDept = (code) => setDeptFilter((cur) => cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]);
+  const visible = results.filter((p) => !dismissed.has(p.id)
+    && (deptFilter.length === 0 || (p.departments || []).some((c) => deptFilter.includes(c))));
+
+  // No matches at all — explain and offer Deep Scan (full reply bodies).
+  if (results.length === 0) {
+    return (
+      <div className="pq-noresult">
+        <p className="iris-msg">{resp.deep
+          ? `I read every reply in full — none mention ${resp.label}.`
+          : resp.browse ? 'There are no Parliamentary Questions in the database yet.'
+          : `Nothing is tagged for “${resp.label}”.`}</p>
+        {resp.qText && !resp.deep && (
+          <button className="btn btn-primary btn-sm pq-deep-cta" onClick={() => onDeep(resp.qText, 'all')}>
+            <i className="fas fa-binoculars" /> Deep scan every reply for “{resp.qText}”
+          </button>
+        )}
+        <DeepChips chips={resp.chips} onPick={onDeep} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="pq-feed">
+      {results.length > 0 && (
+        <div className="pq-dept-bar">
+          <span className="pq-dept-bar-label">Department:</span>
+          {DEPTS.map((d) => {
+            const n = results.filter((p) => (p.departments || []).includes(d.code)).length;
+            return (
+              <button key={d.code} className={`pq-dept-chip ${deptFilter.includes(d.code) ? 'on' : ''}`}
+                onClick={() => toggleDept(d.code)}>
+                {d.label}<span className="pq-dept-count">{n}</span>
+              </button>
+            );
+          })}
+          {deptFilter.length > 0 && <button className="pq-dept-clear" onClick={() => setDeptFilter([])}>Clear</button>}
+        </div>
+      )}
+      <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{resp.deep ? ` mentioning ${resp.label} · deep scan` : resp.browse ? ' in the database' : ` tagged “${resp.label}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
+      {visible.length === 0 ? (
+        <p className="iris-msg">No {deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.</p>
+      ) : (
+        <div className="pq-list">
+          {visible.map((p) => (
+            <div key={p.id} className="pq-card" onClick={() => onOpen(p.id)} role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
+              <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); onHide(p.id); }}>&times;</button>
+              {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}><i className="fas fa-trash" /></button>}
+              <div className="pq-card-top">
+                {p.house && <span className="pq-house">{p.house}</span>}
+                {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
+                {p.date && <span className="pq-date">{p.date}</span>}
+                {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
+              </div>
+              <div className="pq-card-title">{p.subject || p.title}</div>
+              {p.tags?.length > 0 && (
+                <div className="pq-tags">{p.tags.slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
+              )}
+              <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!resp.deep && <DeepChips chips={resp.chips} onPick={onDeep} />}
+    </div>
+  );
+}
+
 export default function Pqs() {
   const toast = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || !!user?.is_admin;
   const isEditor = isAdmin || user?.role === 'editor';
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState(null);   // null = nothing searched yet
-  const [lastQuery, setLastQuery] = useState('');
-  const [dismissed, setDismissed] = useState(() => new Set());  // hidden from this result set
-  const [browse, setBrowse] = useState(false);   // true = "all PQs" listing, not a search
-  const [deptFilter, setDeptFilter] = useState([]);  // live department refinement (codes)
-  const [chips, setChips] = useState([]);        // Deep-Scan suggestion chips for the last query
-  const [qText, setQText] = useState('');        // last free-text query (drives deep scan)
-  const [deepLabel, setDeepLabel] = useState(''); // set => current results are a deep scan
+  const [history, setHistory] = useState([]);   // [{ id, query (label), response, error }]
+  const [dismissed, setDismissed] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [active, setActive] = useState(null);
@@ -75,6 +143,8 @@ export default function Pqs() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [allTags, setAllTags] = useState([]);
+  const chatRef = useRef(null);
+  const lastUserRef = useRef(null);
 
   const loadTags = () => api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([]));
   useEffect(() => { loadTags(); }, []);
@@ -83,63 +153,63 @@ export default function Pqs() {
     return () => document.documentElement.classList.remove('app-fixed');
   }, []);
 
-  // mode: 'q' free text | 'tag' exact tag | 'num' PQ number
-  function resetView() {
-    setSuggestions([]); setDismissed(new Set()); setBrowse(false);
-    setDeptFilter([]); setChips([]); setDeepLabel('');
-  }
+  function clearChat() { setHistory([]); setQuery(''); setSuggestions([]); setActive(null); setDismissed(new Set()); }
 
-  async function runSearch(value, mode = 'q') {
-    if (!value.trim() || busy) return;
-    setBusy(true); resetView();
-    try {
-      const key = mode === 'tag' ? 'tag' : mode === 'num' ? 'num' : 'q';
-      const d = await api.get(`/pq?${key}=${encodeURIComponent(value.trim())}`);
-      setResults(d.items || []);
-      setChips(d.chips || []);
-      setQText(mode === 'q' ? value.trim() : '');
-      setLastQuery(mode === 'num' ? `/${value.trim()}` : value.trim());
-    } catch (e) { toast.error(e.message || 'Search failed'); setResults([]); }
-    finally { setBusy(false); }
-  }
+  // Re-clicking "Parliamentary Q&A" in the sidebar clears the conversation.
+  useEffect(() => {
+    const onReclick = () => clearChat();
+    window.addEventListener('iris:reclick', onReclick);
+    return () => window.removeEventListener('iris:reclick', onReclick);
+  }, []);
 
-  // Deep Scan — read every reply's full body and return all that contain the query.
-  // mode: 'all' (every word) | 'phrase' (exact) | 'word' (single term).
-  async function runDeepScan(text, mode = 'all', label = '') {
-    if (!text.trim() || busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(false); setDeptFilter([]); setChips([]);
-    const shown = label || `“${text.trim()}”`;
-    try {
-      const d = await api.get(`/pq?deep=${encodeURIComponent(text.trim())}&mode=${mode}`);
-      setResults(d.items || []);
-      setDeepLabel(shown);
-      setLastQuery(shown);
-    } catch (e) { toast.error(e.message || 'Deep scan failed'); setResults([]); }
-    finally { setBusy(false); }
-  }
+  // Keep the latest question anchored near the top as the chat grows.
+  useEffect(() => {
+    if (lastUserRef.current && chatRef.current) {
+      chatRef.current.scrollTop = Math.max(lastUserRef.current.offsetTop - 16, 0);
+    }
+  }, [history]);
 
-  // Browse the whole library — every PQ in the database, newest first.
-  // Optional `depts` pre-selects the live department refinement.
-  async function browseAll(depts = []) {
+  // Append a chat turn (You → IRIS) and resolve its response.
+  async function ask(url, label, meta = {}) {
     if (busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(true); setQuery('');
-    setChips([]); setDeepLabel(''); setQText(''); setDeptFilter(depts);
+    const id = Math.random().toString(36).slice(2);
+    setHistory((h) => [...h, { id, query: label, response: null }]);
+    setBusy(true);
     try {
-      const d = await api.get('/pq');
-      setResults(d.items || []);
-      setLastQuery('');
-    } catch (e) { toast.error(e.message || 'Could not load'); setResults([]); }
-    finally { setBusy(false); }
+      const d = await api.get(url);
+      const response = { items: d.items || [], chips: d.chips || [], deep: !!d.deep, label, ...meta };
+      setHistory((h) => h.map((x) => (x.id === id ? { ...x, response } : x)));
+    } catch (e) {
+      setHistory((h) => h.map((x) => (x.id === id ? { ...x, error: e.message || 'Search failed' } : x)));
+      toast.error(e.message || 'Search failed');
+    } finally { setBusy(false); }
   }
 
-  function toggleDept(code) {
-    setDeptFilter((cur) => cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]);
+  // mode: 'q' free text | 'tag' exact tag | 'num' PQ number
+  function runSearch(value, mode = 'q') {
+    const v = value.trim(); if (!v) return;
+    const key = mode === 'tag' ? 'tag' : mode === 'num' ? 'num' : 'q';
+    const label = mode === 'num' ? `/${v}` : v;
+    ask(`/pq?${key}=${encodeURIComponent(v)}`, label, { qText: mode === 'q' ? v : '' });
+  }
+
+  // Deep Scan — read every reply's full body. mode: all | phrase | word.
+  function runDeepScan(text, mode = 'all', label = '') {
+    const v = text.trim(); if (!v) return;
+    const shown = label || `“${v}”`;
+    ask(`/pq?deep=${encodeURIComponent(v)}&mode=${mode}`, `Deep Scan: ${shown}`, { deep: true, label: shown });
+  }
+
+  // Browse the whole library; `depts` pre-selects the department refinement.
+  function browseAll(depts = []) {
+    const label = depts.length ? `All ${depts.map((c) => DEPT_LABEL[c]).join(' / ')} PQs` : 'All PQs';
+    ask('/pq', label, { browse: true, initialDept: depts });
   }
 
   function onSubmit(e) {
     e.preventDefault();
     const q = query.trim(); if (!q) return;
-    setQuery('');
+    setQuery(''); setSuggestions([]);
     if (q.startsWith('/')) { const d = q.replace(/\D/g, ''); if (d) runSearch(d, 'num'); }
     else runSearch(q, 'q');
   }
@@ -220,27 +290,25 @@ export default function Pqs() {
     );
   }
 
-  const visible = results
-    ? results.filter((p) => !dismissed.has(p.id)
-        && (deptFilter.length === 0 || (p.departments || []).some((c) => deptFilter.includes(c))))
-    : null;
+  const empty = history.length === 0;
 
-  // ---- Search view ----
+  // ---- Chat view ----
   return (
     <div className="search-shell">
       <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions">
+        {!empty && <button className="btn btn-ghost btn-sm" onClick={clearChat}><i className="fas fa-arrow-rotate-left" /> Clear</button>}
         <button className="btn btn-ghost btn-sm" onClick={() => browseAll()}><i className="fas fa-list" /> All PQs</button>
         {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
         {isEditor && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
       </PageHeader>
 
       <div className="search-main">
-        <div className={`chat-window ${visible === null ? 'is-empty' : ''}`}>
-          {visible === null ? (
+        <div className={`chat-window ${empty ? 'is-empty' : ''}`} ref={chatRef}>
+          {empty && (
             <div className="chat-empty anim-fade">
               <i className="fas fa-landmark" />
               <p><strong>Search Parliamentary Questions.</strong><br />Try a topic, a tag, or <b>/</b> + a PQ number (e.g. <b>/9000</b>).</p>
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={() => browseAll()}><i className="fas fa-list" /> Browse all PQs in the database</button>
+              <button className="btn btn-ghost btn-sm pq-empty-browse" onClick={() => browseAll()}><i className="fas fa-list" /> Browse all PQs in the database</button>
               <div className="pq-empty-depts">
                 <span>or by department:</span>
                 {DEPTS.map((d) => (
@@ -248,66 +316,31 @@ export default function Pqs() {
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="pq-feed">
-              {results.length > 0 && (
-                <div className="pq-dept-bar">
-                  <span className="pq-dept-bar-label">Department:</span>
-                  {DEPTS.map((d) => {
-                    const n = results.filter((p) => (p.departments || []).includes(d.code)).length;
-                    return (
-                      <button key={d.code} className={`pq-dept-chip ${deptFilter.includes(d.code) ? 'on' : ''}`}
-                        onClick={() => toggleDept(d.code)}>
-                        {d.label}<span className="pq-dept-count">{n}</span>
-                      </button>
-                    );
-                  })}
-                  {deptFilter.length > 0 && (
-                    <button className="pq-dept-clear" onClick={() => setDeptFilter([])}>Clear</button>
-                  )}
-                </div>
-              )}
-              {visible.length === 0 ? (
-                <div className="pq-noresult">
-                  <p className="iris-msg">{deepLabel
-                    ? `No reply mentions ${deepLabel} anywhere in its text.`
-                    : deptFilter.length > 0 ? `No ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.`
-                    : browse ? 'No Parliamentary Questions in the database yet.'
-                    : `No reply matched “${lastQuery}” by title or tags.`}</p>
-                  {qText && !deepLabel && (
-                    <button className="btn btn-primary btn-sm pq-deep-cta" onClick={() => runDeepScan(qText, 'all')}>
-                      <i className="fas fa-binoculars" /> Deep scan every reply for “{qText}”
-                    </button>
-                  )}
-                  <DeepChips chips={chips} onPick={runDeepScan} />
-                </div>
-              ) : (<>
-                <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{deepLabel ? ` mentioning ${deepLabel}` : browse ? ' in the database' : ` for “${lastQuery}”`}{deepLabel ? ' · deep scan' : ''}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
-                {opening && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
-                <div className="pq-list">
-                  {visible.map((p) => (
-                    <div key={p.id} className="pq-card" onClick={() => open(p.id)} role="button" tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter') open(p.id); }}>
-                      <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); hide(p.id); }}>&times;</button>
-                      {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); del(p.id); }}><i className="fas fa-trash" /></button>}
-                      <div className="pq-card-top">
-                        {p.house && <span className="pq-house">{p.house}</span>}
-                        {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
-                        {p.date && <span className="pq-date">{p.date}</span>}
-                        {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
-                      </div>
-                      <div className="pq-card-title">{p.subject || p.title}</div>
-                      {p.tags?.length > 0 && (
-                        <div className="pq-tags">{p.tags.slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
-                      )}
-                      <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
-                    </div>
-                  ))}
-                </div>
-                <DeepChips chips={chips} onPick={runDeepScan} />
-              </>)}
-            </div>
           )}
+
+          {history.map((item, idx) => (
+            <div key={item.id}>
+              <div className="chat-block user" ref={idx === history.length - 1 ? lastUserRef : null}>
+                <div className="chat-label">You</div>
+                <div className="bubble user-bubble">{item.query}</div>
+              </div>
+              <div className="chat-block iris">
+                <div className="chat-label">IRIS</div>
+                <div className="bubble iris-bubble">
+                  {item.response ? (
+                    <PqResponse resp={item.response} dismissed={dismissed} isAdmin={isAdmin}
+                      onOpen={open} onHide={hide} onDelete={del} onDeep={runDeepScan} />
+                  ) : item.error ? (
+                    <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
+                  ) : (
+                    <span className="typing"><span /><span /><span /></span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {opening && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
+          <div style={{ height: 10 }} />
         </div>
       </div>
 
@@ -338,7 +371,7 @@ export default function Pqs() {
         </form>
       </div>
 
-      {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); loadTags(); if (lastQuery) runSearch(lastQuery.replace(/^\//, ''), lastQuery.startsWith('/') ? 'num' : 'q'); }} />}
+      {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); loadTags(); }} />}
       {bulkOpen && <BulkUploadModal onClose={() => setBulkOpen(false)} onDone={() => { setBulkOpen(false); loadTags(); }} />}
     </div>
   );
