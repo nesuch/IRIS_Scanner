@@ -30,10 +30,9 @@
 .pq-bulk-file i { color: var(--accent); margin-right: 6px; }
 .pq-house { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--navy-700, #1a237e); padding: 3px 10px; border-radius: var(--r-pill); }
 .pq-no { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); }
-/* house pill + Q No sit together on the left; date floats to the right edge
-   (wraps to its own line only if the card is genuinely too narrow). */
-.pq-card-top { flex-wrap: wrap; row-gap: 6px; }
-.pq-date { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; margin-left: auto; }
+/* house pill, Q No and date all sit together on the left, one tidy line */
+.pq-card-top { flex-wrap: wrap; }
+.pq-date { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 .pq-date i { font-size: 10px; opacity: 0.8; }
 .pq-card-title { font-size: 14.5px; font-weight: 600; color: var(--ink); line-height: 1.4; }
 /* department badges + tags share one tidy row beneath the title */
