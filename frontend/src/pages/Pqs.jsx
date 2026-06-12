@@ -134,12 +134,14 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
               <div className="pq-card-top">
                 {p.house && <span className="pq-house">{p.house}</span>}
                 {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
-                {p.date && <span className="pq-date">{p.date}</span>}
-                {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
+                {p.date && <span className="pq-date"><i className="far fa-calendar" /> {p.date}</span>}
               </div>
               <div className="pq-card-title">{p.subject || p.title}</div>
-              {p.tags?.length > 0 && (
-                <div className="pq-tags">{p.tags.slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
+              {((p.departments || []).length > 0 || p.tags?.length > 0) && (
+                <div className="pq-card-meta-row">
+                  {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
+                  {(p.tags || []).slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}
+                </div>
               )}
               <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
             </div>
@@ -298,7 +300,7 @@ export default function Pqs() {
             <div className="pq-doc-head">
               {active.house && <span className="pq-house">{active.house}</span>}
               {active.pq_no && <span className="pq-no">Q No. {active.pq_no}</span>}
-              {active.date && <span className="pq-date">{active.date}</span>}
+              {active.date && <span className="pq-date"><i className="far fa-calendar" /> {active.date}</span>}
             </div>
             <h2 className="pq-doc-title">{active.title}</h2>
             {active.departments?.length > 0 && (
