@@ -19,7 +19,7 @@ export default function PageHeader({ fullForm, title, scope, children }) {
         {scope && <span className="scope"><span className="scope-dot" /><span className="scope-text">{scope}</span></span>}
       </div>
       <div className="header-actions">
-        {children}
+        {children && <div className="header-actions-scroll">{children}</div>}
         <Link to="/downloads" className="header-icon-btn" title="Downloads — Acts, Regulations & Circulars" aria-label="Downloads">
           <i className="fas fa-folder-tree" />
         </Link>
