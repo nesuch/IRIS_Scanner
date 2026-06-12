@@ -16,6 +16,7 @@ export default function Pqs() {
   const [results, setResults] = useState(null);   // null = nothing searched yet
   const [lastQuery, setLastQuery] = useState('');
   const [dismissed, setDismissed] = useState(() => new Set());  // hidden from this result set
+  const [browse, setBrowse] = useState(false);   // true = "all PQs" listing, not a search
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [active, setActive] = useState(null);
@@ -34,13 +35,25 @@ export default function Pqs() {
   // mode: 'q' free text | 'tag' exact tag | 'num' PQ number
   async function runSearch(value, mode = 'q') {
     if (!value.trim() || busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set());  // fresh search resets hidden
+    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(false);  // fresh search resets hidden
     try {
       const key = mode === 'tag' ? 'tag' : mode === 'num' ? 'num' : 'q';
       const d = await api.get(`/pq?${key}=${encodeURIComponent(value.trim())}`);
       setResults(d.items || []);
       setLastQuery(mode === 'num' ? `/${value.trim()}` : value.trim());
     } catch (e) { toast.error(e.message || 'Search failed'); setResults([]); }
+    finally { setBusy(false); }
+  }
+
+  // Browse the whole library — every PQ in the database, newest first.
+  async function browseAll() {
+    if (busy) return;
+    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(true); setQuery('');
+    try {
+      const d = await api.get('/pq');
+      setResults(d.items || []);
+      setLastQuery('');
+    } catch (e) { toast.error(e.message || 'Could not load'); setResults([]); }
     finally { setBusy(false); }
   }
 
@@ -131,6 +144,7 @@ export default function Pqs() {
   return (
     <div className="search-shell">
       <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions">
+        <button className="btn btn-ghost btn-sm" onClick={browseAll}><i className="fas fa-list" /> All PQs</button>
         {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
         {isEditor && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
       </PageHeader>
@@ -141,12 +155,13 @@ export default function Pqs() {
             <div className="chat-empty anim-fade">
               <i className="fas fa-landmark" />
               <p><strong>Search Parliamentary Questions.</strong><br />Try a topic, a tag, or <b>/</b> + a PQ number (e.g. <b>/9000</b>).</p>
+              <button className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={browseAll}><i className="fas fa-list" /> Browse all PQs in the database</button>
             </div>
           ) : visible.length === 0 ? (
-            <p className="iris-msg">No Parliamentary Questions to show for “{lastQuery}”.</p>
+            <p className="iris-msg">{browse ? 'No Parliamentary Questions in the database yet.' : `No Parliamentary Questions to show for “${lastQuery}”.`}</p>
           ) : (
             <div className="pq-feed">
-              <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'} for “{lastQuery}”</div>
+              <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{browse ? ' in the database' : ` for “${lastQuery}”`}</div>
               {opening && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
               <div className="pq-list">
                 {visible.map((p) => (
@@ -249,32 +264,51 @@ function UploadModal({ onClose, onDone }) {
   const [file, setFile] = useState(null);
   const [tags, setTags] = useState('');
   const [busy, setBusy] = useState(false);
+  const [dup, setDup] = useState(null);   // existing PQ flagged as a likely duplicate
 
-  async function submit() {
+  async function submit(force = false) {
     if (!file) { toast.error('Choose a .docx file'); return; }
     setBusy(true);
     try {
       const fd = new FormData();
       fd.append('file', file); fd.append('tags', tags);
+      if (force) fd.append('force', '1');
       const r = await api.post('/pq/upload', fd);
       toast.success(`Added: ${r.title?.slice(0, 50) || 'PQ'}`);
       onDone();
-    } catch (e) { toast.error(e.message || 'Upload failed'); }
+    } catch (e) {
+      if (e.status === 409 && e.data?.duplicate) setDup(e.data.existing);
+      else toast.error(e.message || 'Upload failed');
+    }
     finally { setBusy(false); }
   }
 
   return (
     <Modal title="Upload Parliamentary Question" width="520px" onClose={onClose}
-      footer={<>
+      footer={dup ? <>
+        <button className="btn btn-ghost btn-sm" onClick={() => setDup(null)} disabled={busy}>Cancel</button>
+        <button className="btn btn-primary btn-sm danger" onClick={() => submit(true)} disabled={busy}>
+          {busy ? <Spinner size={14} color="#fff" /> : <i className="fas fa-triangle-exclamation" />} Upload anyway
+        </button>
+      </> : <>
         <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
-        <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || !file}>
+        <button className="btn btn-primary btn-sm" onClick={() => submit(false)} disabled={busy || !file}>
           {busy ? <Spinner size={14} color="#fff" /> : <i className="fas fa-upload" />} Upload &amp; publish
         </button>
       </>}>
+      {dup && (
+        <div className="pq-dup-warn">
+          <i className="fas fa-triangle-exclamation" />
+          <div>
+            <strong>Looks like this is already in IRIS.</strong>
+            <p>A reply <b>{dup.house} No. {dup.pq_no}</b> already exists: “{dup.title?.slice(0, 90)}”. Upload again only if this is a different or corrected version.</p>
+          </div>
+        </div>
+      )}
       <p className="guide-intro">Upload the approved reply as a Word file. IRIS renders it on screen (formatting + tables preserved), keeps the original for download, and makes it searchable here.</p>
       <div className="field" style={{ marginBottom: 14 }}>
         <label>Word document (.docx)</label>
-        <input className="input" type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <input className="input" type="file" accept=".docx" onChange={(e) => { setFile(e.target.files?.[0] || null); setDup(null); }} />
       </div>
       <div className="field">
         <label>Tags <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(comma-separated — drives search)</span></label>
@@ -304,10 +338,14 @@ function BulkUploadModal({ onClose, onDone }) {
       [...files].forEach((f) => fd.append('files', f));
       const r = await api.post('/pq/bulk-upload', fd);
       const c = r.created || [];
-      if (!c.length) { toast.error('No valid .docx files'); setPhase('select'); return; }
+      const dupes = r.duplicates || [];
+      if (!c.length) {
+        toast.error(dupes.length ? `All ${dupes.length} already exist in IRIS — nothing uploaded.` : 'No valid .docx files');
+        setPhase('select'); return;
+      }
       setCreated(c); setIdx(0); setTitle(c[0].title || ''); setTags('');
       setPhase('review');
-      toast.success(`Uploaded ${c.length} — now add tags`);
+      toast.success(`Uploaded ${c.length}${dupes.length ? `, skipped ${dupes.length} duplicate${dupes.length > 1 ? 's' : ''}` : ''} — now add tags`);
     } catch (e) { toast.error(e.message || 'Upload failed'); setPhase('select'); }
   }
 

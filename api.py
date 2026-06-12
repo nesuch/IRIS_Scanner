@@ -413,6 +413,14 @@ def api_pq_download(pid):
 
 
 @api_bp.post("/pq/upload")
+def _pq_duplicate(pq_no, house):
+    """An existing PQ with the same number + house = a likely duplicate."""
+    pq_no = (pq_no or "").strip()
+    if not pq_no:
+        return None
+    return _app.PqDocument.query.filter_by(pq_no=pq_no, house=house or "").first()
+
+
 def api_pq_upload():
     """Admin-only: upload a PQ .docx → render + store + make it searchable."""
     if not _require_role("editor"):
@@ -421,12 +429,18 @@ def api_pq_upload():
     if not f or not f.filename.lower().endswith(".docx"):
         return jsonify({"ok": False, "message": "Please upload a .docx file."}), 400
     tags = (request.form.get("tags") or "").strip()
+    force = str(request.form.get("force") or "").lower() in {"1", "true", "yes"}
     raw = f.read()
     try:
         parsed = parse_docx(raw, filename=f.filename)
     except Exception as e:
         print(f"PQ parse error: {e}")
         return jsonify({"ok": False, "message": "Could not read that document."}), 400
+    dup = _pq_duplicate(parsed["pq_no"], parsed["house"])
+    if dup and not force:
+        return jsonify({"ok": False, "duplicate": True,
+                        "existing": {"id": dup.id, "title": dup.title, "pq_no": dup.pq_no, "house": dup.house},
+                        "message": f"A PQ {dup.house} No. {dup.pq_no} already exists: \"{dup.title[:80]}\"."}), 409
     m = _app
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
     storage.save_pq(safe, raw)   # GCS in prod, local disk in dev
@@ -451,7 +465,7 @@ def api_pq_bulk_upload():
     if not files:
         return jsonify({"ok": False, "message": "No files provided."}), 400
     m = _app
-    created, skipped = [], []
+    created, skipped, duplicates = [], [], []
     for f in files:
         if not f.filename.lower().endswith(".docx"):
             skipped.append(f.filename); continue
@@ -461,6 +475,11 @@ def api_pq_bulk_upload():
         except Exception as e:
             print(f"bulk PQ parse error ({f.filename}): {e}")
             skipped.append(f.filename); continue
+        dup = _pq_duplicate(parsed["pq_no"], parsed["house"])
+        if dup:
+            duplicates.append({"filename": f.filename, "pq_no": dup.pq_no,
+                               "house": dup.house, "existing_title": dup.title})
+            continue
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
         storage.save_pq(safe, raw)
         row = m.PqDocument(
