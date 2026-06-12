@@ -141,7 +141,7 @@
 .chat-empty .pq-empty-browse i {
   font-size: inherit !important; line-height: inherit; color: var(--accent) !important; margin: 0 !important;
   display: inline-block !important; vertical-align: middle;
-  position: relative; top: 1px;   /* nudge the glyph down to sit on the text line */
+  position: relative; top: 0.5px;   /* nudge the glyph down to sit on the text line */
 }
 
 /* Three card actions now: hide (×) · flag · delete */
