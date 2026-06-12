@@ -345,6 +345,14 @@ def api_pq_list():
     """List/search Parliamentary Question replies for the dedicated PQ view."""
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
+    tag = (request.args.get("tag") or "").strip()
+    if tag:
+        # Exact-tag filter (case/space-insensitive) — not a body word search.
+        key = re.sub(r"\s+", "", tag.lower())
+        rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+        items = [_pq_card(r) for r in rows
+                 if key in {re.sub(r"\s+", "", t.strip().lower()) for t in (r.tags or "").split(",") if t.strip()}]
+        return jsonify({"items": items})
     q = (request.args.get("q") or "").strip()
     if q:
         return jsonify({"items": _search_pqs(q, limit=100)})

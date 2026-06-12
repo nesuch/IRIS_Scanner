@@ -27,11 +27,12 @@ export default function Pqs() {
     return () => document.documentElement.classList.remove('app-fixed');
   }, []);
 
-  async function runSearch(q) {
+  async function runSearch(q, byTag) {
     if (!q.trim() || busy) return;
     setBusy(true); setSuggestions([]);
     try {
-      const d = await api.get(`/pq?q=${encodeURIComponent(q.trim())}`);
+      const param = byTag ? `tag=${encodeURIComponent(q.trim())}` : `q=${encodeURIComponent(q.trim())}`;
+      const d = await api.get(`/pq?${param}`);
       setResults(d.items || []);
       setLastQuery(q.trim());
     } catch (e) { toast.error(e.message || 'Search failed'); setResults([]); }
@@ -50,7 +51,7 @@ export default function Pqs() {
     setSuggestions(allTags.filter((tag) => tag.toLowerCase().includes(t)).slice(0, 8));
   }
 
-  function pickTag(tag) { setQuery(''); setSuggestions([]); runSearch(tag); }
+  function pickTag(tag) { setQuery(''); setSuggestions([]); runSearch(tag, true); }
 
   function open(id) {
     setOpening(true);
