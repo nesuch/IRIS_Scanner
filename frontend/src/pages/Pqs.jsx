@@ -283,7 +283,7 @@ export default function Pqs() {
   if (active) {
     return (
       <div className="search-shell">
-        <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions" />
+        <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions" scopeDot={false} />
         <div className="pq-read-bar">
           <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
           <div className="pq-read-actions">
@@ -321,7 +321,7 @@ export default function Pqs() {
   // ---- Chat view ----
   return (
     <div className="search-shell">
-      <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions">
+      <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions" scopeDot={false}>
         {!empty && <button className="btn btn-ghost btn-sm" onClick={clearChat}><i className="fas fa-arrow-rotate-left" /> Clear</button>}
         <button className="btn btn-ghost btn-sm" onClick={() => browseAll()}><i className="fas fa-list" /> All PQs</button>
         {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
