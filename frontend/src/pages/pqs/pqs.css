@@ -137,9 +137,10 @@
    "All PQs" button; just neutralise the big .chat-empty i icon styling so the
    icon inherits the button's size/colour and sits inline with the label. */
 .pq-empty-browse { margin-top: 14px; }
-.pq-empty-browse i {
-  font-size: inherit; line-height: inherit; color: inherit; margin: 0;
-  display: inline-block; vertical-align: middle;
+/* Higher specificity than `.chat-empty i` so these actually win the cascade. */
+.chat-empty .pq-empty-browse i {
+  font-size: inherit !important; line-height: inherit; color: inherit; margin: 0 !important;
+  display: inline-block !important; vertical-align: middle;
   position: relative; top: 2px;   /* nudge the glyph down to sit on the text line */
 }
 
