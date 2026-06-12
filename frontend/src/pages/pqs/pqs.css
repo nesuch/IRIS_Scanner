@@ -135,7 +135,8 @@
 /* ---- v2 polish: alignment, flag button, colour ---- */
 /* Empty-state browse button — icon vertically centred with the label */
 .pq-empty-browse { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; line-height: 1; }
-.pq-empty-browse i { font-size: 13px; line-height: 1; display: inline-flex; align-items: center; }
+/* override .chat-empty i (30px block icon + margin-bottom) for the inline button */
+.pq-empty-browse i { font-size: 13px; line-height: 1; margin: 0; display: inline-flex; align-items: center; }
 
 /* Three card actions now: hide (×) · flag · delete */
 .pq-card .pq-card-top { padding-right: 84px; }
