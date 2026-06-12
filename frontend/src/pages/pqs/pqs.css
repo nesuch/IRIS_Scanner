@@ -120,3 +120,8 @@
 .pq-empty-depts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin-top: 16px; justify-content: center; }
 .pq-empty-depts > span { font-size: 12.5px; color: var(--muted, #64748b); }
+
+/* Deep-scan no-result CTA */
+.pq-noresult { padding: 4px 2px; }
+.pq-deep-cta { margin: 10px 0 4px; }
+.pq-noresult .deep-chips { margin-top: 18px; }

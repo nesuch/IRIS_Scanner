@@ -15,6 +15,24 @@ const DEPTS = [
 ];
 const DEPT_LABEL = Object.fromEntries(DEPTS.map((d) => [d.code, d.label]));
 
+// Deep-Scan suggestion chips — reads full reply bodies, not just headlines.
+function DeepChips({ chips, onPick }) {
+  if (!chips || chips.length === 0) return null;
+  return (
+    <div className="deep-chips">
+      <div className="deep-chips-hint">Not finding it in titles &amp; tags? <strong>Deep Scan full reply text:</strong></div>
+      <div className="deep-chips-row">
+        {chips.map((c, i) => (
+          <button key={i} className={`chip chip-${c.kind}`}
+            onClick={() => onPick(c.text, c.mode, c.mode === 'all' ? `“${c.text}” (all words)` : `“${c.text}”`)}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Reusable Health/Life/Non-Life multi-select for upload/edit/bulk.
 function DeptPicker({ value, onChange }) {
   const set = new Set(value);
@@ -47,6 +65,9 @@ export default function Pqs() {
   const [dismissed, setDismissed] = useState(() => new Set());  // hidden from this result set
   const [browse, setBrowse] = useState(false);   // true = "all PQs" listing, not a search
   const [deptFilter, setDeptFilter] = useState([]);  // live department refinement (codes)
+  const [chips, setChips] = useState([]);        // Deep-Scan suggestion chips for the last query
+  const [qText, setQText] = useState('');        // last free-text query (drives deep scan)
+  const [deepLabel, setDeepLabel] = useState(''); // set => current results are a deep scan
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [active, setActive] = useState(null);
@@ -63,15 +84,37 @@ export default function Pqs() {
   }, []);
 
   // mode: 'q' free text | 'tag' exact tag | 'num' PQ number
+  function resetView() {
+    setSuggestions([]); setDismissed(new Set()); setBrowse(false);
+    setDeptFilter([]); setChips([]); setDeepLabel('');
+  }
+
   async function runSearch(value, mode = 'q') {
     if (!value.trim() || busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(false); setDeptFilter([]);  // fresh search resets hidden + dept filter
+    setBusy(true); resetView();
     try {
       const key = mode === 'tag' ? 'tag' : mode === 'num' ? 'num' : 'q';
       const d = await api.get(`/pq?${key}=${encodeURIComponent(value.trim())}`);
       setResults(d.items || []);
+      setChips(d.chips || []);
+      setQText(mode === 'q' ? value.trim() : '');
       setLastQuery(mode === 'num' ? `/${value.trim()}` : value.trim());
     } catch (e) { toast.error(e.message || 'Search failed'); setResults([]); }
+    finally { setBusy(false); }
+  }
+
+  // Deep Scan — read every reply's full body and return all that contain the query.
+  // mode: 'all' (every word) | 'phrase' (exact) | 'word' (single term).
+  async function runDeepScan(text, mode = 'all', label = '') {
+    if (!text.trim() || busy) return;
+    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(false); setDeptFilter([]); setChips([]);
+    const shown = label || `“${text.trim()}”`;
+    try {
+      const d = await api.get(`/pq?deep=${encodeURIComponent(text.trim())}&mode=${mode}`);
+      setResults(d.items || []);
+      setDeepLabel(shown);
+      setLastQuery(shown);
+    } catch (e) { toast.error(e.message || 'Deep scan failed'); setResults([]); }
     finally { setBusy(false); }
   }
 
@@ -79,7 +122,8 @@ export default function Pqs() {
   // Optional `depts` pre-selects the live department refinement.
   async function browseAll(depts = []) {
     if (busy) return;
-    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(true); setQuery(''); setDeptFilter(depts);
+    setBusy(true); setSuggestions([]); setDismissed(new Set()); setBrowse(true); setQuery('');
+    setChips([]); setDeepLabel(''); setQText(''); setDeptFilter(depts);
     try {
       const d = await api.get('/pq');
       setResults(d.items || []);
@@ -224,11 +268,21 @@ export default function Pqs() {
                 </div>
               )}
               {visible.length === 0 ? (
-                <p className="iris-msg">{deptFilter.length > 0
-                  ? `No ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.`
-                  : browse ? 'No Parliamentary Questions in the database yet.' : `No Parliamentary Questions to show for “${lastQuery}”.`}</p>
+                <div className="pq-noresult">
+                  <p className="iris-msg">{deepLabel
+                    ? `No reply mentions ${deepLabel} anywhere in its text.`
+                    : deptFilter.length > 0 ? `No ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.`
+                    : browse ? 'No Parliamentary Questions in the database yet.'
+                    : `No reply matched “${lastQuery}” by title or tags.`}</p>
+                  {qText && !deepLabel && (
+                    <button className="btn btn-primary btn-sm pq-deep-cta" onClick={() => runDeepScan(qText, 'all')}>
+                      <i className="fas fa-binoculars" /> Deep scan every reply for “{qText}”
+                    </button>
+                  )}
+                  <DeepChips chips={chips} onPick={runDeepScan} />
+                </div>
               ) : (<>
-                <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{browse ? ' in the database' : ` for “${lastQuery}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
+                <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{deepLabel ? ` mentioning ${deepLabel}` : browse ? ' in the database' : ` for “${lastQuery}”`}{deepLabel ? ' · deep scan' : ''}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
                 {opening && <div className="pq-loading"><Spinner size={16} /> Opening…</div>}
                 <div className="pq-list">
                   {visible.map((p) => (
@@ -250,6 +304,7 @@ export default function Pqs() {
                     </div>
                   ))}
                 </div>
+                <DeepChips chips={chips} onPick={runDeepScan} />
               </>)}
             </div>
           )}

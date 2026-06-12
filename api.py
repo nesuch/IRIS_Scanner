@@ -402,7 +402,22 @@ def api_pq_list():
     num = re.sub(r"\D", "", request.args.get("num") or "")
     tag = (request.args.get("tag") or "").strip()
     q = (request.args.get("q") or "").strip()
-    if num:
+    deep = (request.args.get("deep") or "").strip()
+    chips = []
+    deep_flag = False
+    if deep:
+        # Deep Scan — read every reply body and return all that contain the query.
+        mode = (request.args.get("mode") or "all").strip().lower()
+        if mode not in {"word", "all", "phrase"}:
+            mode = "all"
+        items = _deep_scan_pqs(deep, mode=mode)
+        deep_flag = True
+        try:
+            email = _app.current_user.email if _app.current_user.is_authenticated else None
+            _app._record_search(email, "pq", "[Deep Scan] " + deep, len(items))
+        except Exception:
+            pass
+    elif num:
         rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
         items = [_pq_card(r) for r in rows if num in re.sub(r"\D", "", r.pq_no or "")]
     elif tag:
@@ -413,6 +428,12 @@ def api_pq_list():
                  if key in {re.sub(r"\s+", "", t.strip().lower()) for t in (r.tags or "").split(",") if t.strip()}]
     elif q:
         items = _search_pqs(q, limit=100)
+        chips = _pq_chips(q)   # offer Deep-Scan suggestions alongside headline hits
+        try:
+            email = _app.current_user.email if _app.current_user.is_authenticated else None
+            _app._record_search(email, "pq", q, len(items))
+        except Exception:
+            pass
     else:
         rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
         items = [_pq_card(r) for r in rows]
@@ -422,7 +443,7 @@ def api_pq_list():
     if depts:
         want = set(depts)
         items = [it for it in items if want & set(it.get("departments") or [])]
-    return jsonify({"items": items})
+    return jsonify({"items": items, "chips": chips, "deep": deep_flag})
 
 
 @api_bp.get("/pq/<int:pid>")
@@ -553,27 +574,81 @@ def api_pq_delete(pid):
     return jsonify({"ok": True})
 
 
-def _search_pqs(query, limit=8):
-    """Match Parliamentary Questions by tag/title/subject/body for the search view."""
+# Short words that shouldn't drive PQ matching on their own.
+_PQ_STOP = {"the", "and", "for", "with", "that", "this", "from", "are", "was",
+            "were", "has", "have", "had", "not", "you", "your", "our", "its",
+            "into", "per", "all", "any", "can", "under", "over", "about", "shall",
+            "such", "been", "than", "then", "they", "them", "their", "would",
+            "regarding", "respect", "whether", "question", "answer", "reply"}
+
+
+def _pq_terms(text):
+    """Significant lowercase words in a query (drops stopwords + tiny tokens)."""
+    return [t for t in re.split(r"[^a-z0-9]+", (text or "").lower())
+            if len(t) > 2 and t not in _PQ_STOP]
+
+
+def _search_pqs(query, limit=100):
+    """Headline (precise) tier — match a PQ by its title, subject or tags only.
+    Full reply bodies are reserved for Deep Scan, so this stays high-precision."""
     m = _app
-    terms = [t for t in re.split(r"[^a-z0-9]+", query.lower()) if len(t) > 2]
+    terms = _pq_terms(query)
     if not terms:
         return []
     out = []
     for r in m.PqDocument.query.order_by(m.PqDocument.id.desc()).all():
-        hay = " ".join([r.title or "", r.subject or "", r.tags or "", r.body_text or ""]).lower()
-        score = sum(1 for t in terms if t in hay)
+        hay = " ".join([r.title or "", r.subject or "", r.tags or ""]).lower()
+        score = sum(hay.count(t) for t in terms)
         if not score:
             continue
-        out.append((score, {
-            "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
-            "subject": r.subject, "date": r.doc_date,
-            "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
-            "departments": _dept_list(r),
-            "snippet": _pq_snippet(r.body_text or ""),
-        }))
+        out.append((score, _pq_card(r)))
     out.sort(key=lambda x: -x[0])
     return [p for _, p in out[:limit]]
+
+
+def _deep_scan_pqs(text, mode="all", limit=300):
+    """Deep Scan (recall) tier — scan the FULL rendered reply text of every PQ
+    and return each one that contains the query. mode:
+      word   -> a single term anywhere in the reply
+      all    -> every significant word present (AND)
+      phrase -> the exact phrase appears verbatim"""
+    m = _app
+    phrase = " ".join((text or "").lower().split())
+    terms = _pq_terms(text)
+    out = []
+    for r in m.PqDocument.query.order_by(m.PqDocument.id.desc()).all():
+        hay = " ".join([r.title or "", r.subject or "", r.tags or "", r.body_text or ""]).lower()
+        if mode == "phrase":
+            if not phrase or phrase not in hay:
+                continue
+            score = hay.count(phrase)
+        else:  # word / all  (a single-word chip is just AND over one term)
+            if not terms or not all(t in hay for t in terms):
+                continue
+            score = sum(hay.count(t) for t in terms)
+        out.append((score, _pq_card(r)))
+    out.sort(key=lambda x: -x[0])
+    return [p for _, p in out[:limit]]
+
+
+def _pq_chips(query):
+    """Smart Deep-Scan suggestion chips for a query, mirroring the KB modules:
+    one per significant word, an exact-phrase chip, and a 'Search All' chip."""
+    seen, words = set(), []
+    for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-/]*", query or ""):
+        wl = w.lower()
+        if len(wl) > 2 and wl not in _PQ_STOP and wl not in seen:
+            seen.add(wl)
+            words.append(w)
+    chips = [{"label": f'Search "{w}"', "mode": "word", "text": w, "kind": "keyword"}
+             for w in words]
+    clean = " ".join((query or "").split())
+    if (len(clean.split()) > 1 or re.search(r"[-/]", clean)):
+        chips.append({"label": f'Search Phrase "{clean}"', "mode": "phrase",
+                      "text": clean, "kind": "phrase"})
+    if len(words) > 1:
+        chips.append({"label": "Search All", "mode": "all", "text": clean, "kind": "all"})
+    return chips
 
 
 @api_bp.post("/pq/<int:pid>/retag")
