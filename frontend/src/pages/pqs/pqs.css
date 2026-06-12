@@ -133,10 +133,14 @@
 .iris-bubble .pq-noresult { padding: 0; }
 
 /* ---- v2 polish: alignment, flag button, colour ---- */
-/* Empty-state browse button — icon vertically centred with the label */
-.pq-empty-browse { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; line-height: 1; }
-/* override .chat-empty i (30px block icon + margin-bottom) for the inline button */
-.pq-empty-browse i { font-size: 13px; line-height: 1; margin: 0; display: inline-flex; align-items: center; }
+/* Empty-state browse button — let .btn handle layout exactly like the header
+   "All PQs" button; just neutralise the big .chat-empty i icon styling so the
+   icon inherits the button's size/colour and sits inline with the label. */
+.pq-empty-browse { margin-top: 14px; }
+.pq-empty-browse i {
+  font-size: inherit; line-height: inherit; color: inherit; margin: 0;
+  display: inline-block; vertical-align: middle;
+}
 
 /* Three card actions now: hide (×) · flag · delete */
 .pq-card .pq-card-top { padding-right: 84px; }
