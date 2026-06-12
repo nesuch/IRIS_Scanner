@@ -36,3 +36,5 @@
 .rf-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
 .fb-target { font-size: 12px; color: var(--muted); margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
 .fb-target i { color: var(--accent); font-size: 11px; }
+
+.role-select { width: auto; min-width: 96px; padding: 5px 8px; font-size: 12px; }

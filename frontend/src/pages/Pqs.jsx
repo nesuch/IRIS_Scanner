@@ -10,7 +10,8 @@ import './pqs/pqs.css';
 export default function Pqs() {
   const toast = useToast();
   const { user } = useAuth();
-  const isAdmin = !!user?.is_admin;
+  const isAdmin = user?.role === 'admin' || !!user?.is_admin;
+  const isEditor = isAdmin || user?.role === 'editor';
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);   // null = nothing searched yet
   const [lastQuery, setLastQuery] = useState('');
@@ -98,7 +99,7 @@ export default function Pqs() {
         <div className="pq-read-bar">
           <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
           <div className="pq-read-actions">
-            {isAdmin && <EditMeta pq={active}
+            {isEditor && <EditMeta pq={active}
               onSaved={(title, tags) => { setActive({ ...active, title, tags }); loadTags(); if (lastQuery) { /* keep results */ } }} />}
             {isAdmin && <button className="btn btn-ghost btn-sm danger" onClick={() => del(active.id)}><i className="fas fa-trash" /> Delete</button>}
             {active.download_url && (
@@ -130,8 +131,8 @@ export default function Pqs() {
   return (
     <div className="search-shell">
       <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions">
-        {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
-        {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
+        {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
+        {isEditor && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
       </PageHeader>
 
       <div className="search-main">

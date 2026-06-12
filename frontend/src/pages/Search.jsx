@@ -38,7 +38,8 @@ function fmtClauseDate(d) {
 // so an edit shows immediately without re-running the search.
 function ClauseContent({ m, keywords }) {
   const { user } = useAuth();
-  const isAdmin = !!user?.is_admin;
+  const isAdmin = user?.role === 'admin' || !!user?.is_admin;
+  const isEditor = isAdmin || user?.role === 'editor';
   const [html, setHtml] = useState(m.html || '');
   const [editing, setEditing] = useState(false);
   return (
@@ -46,7 +47,7 @@ function ClauseContent({ m, keywords }) {
       {html
         ? <div className="clause-html" dangerouslySetInnerHTML={{ __html: html }} />
         : <ClauseBody text={m.raw_text} keywords={keywords} />}
-      {isAdmin && (
+      {isEditor && (
         <div className="clause-admin-row">
           <button className="clause-edit-btn" onClick={() => setEditing(true)}><i className="fas fa-pen-to-square" />Edit clause</button>
         </div>
@@ -68,7 +69,7 @@ function ClauseTags({ m }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
   const [busy, setBusy] = useState(false);
-  if (!user?.is_admin) return null;
+  if (!(user?.role === 'admin' || user?.is_admin || user?.role === 'editor')) return null;
 
   async function save() {
     setBusy(true);

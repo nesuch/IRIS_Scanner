@@ -76,6 +76,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    role = db.Column(db.String(16), nullable=False, default="viewer")  # viewer | editor | admin
     reset_token = db.Column(db.String(64), nullable=True)
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
     session_version = db.Column(db.Integer, nullable=False, default=0)
@@ -552,6 +553,7 @@ def _ensure_database_schema():
             "display_name": "VARCHAR(120)",
             "avatar": "TEXT",
             "created_at": "DATETIME",
+            "role": "VARCHAR(16) NOT NULL DEFAULT 'viewer'",
         },
         "system_logs": {
             "user_email": "VARCHAR(255)",
@@ -584,6 +586,13 @@ def _ensure_database_schema():
                 continue
             db.session.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
             app.logger.warning("Backfilled missing column %s.%s", table_name, col_name)
+
+    # Existing admins map to the 'admin' role; everyone else stays 'viewer'.
+    if inspector.has_table("auth_users"):
+        try:
+            db.session.execute(text("UPDATE auth_users SET role='admin' WHERE is_admin=1 AND (role IS NULL OR role='viewer')"))
+        except Exception:
+            pass
 
     # Seed clause ordering from row insertion order where not yet set.
     if inspector.has_table("regulatory_clauses"):

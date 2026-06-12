@@ -49,14 +49,32 @@ def _user_payload():
     return {
         "email": cu.email,
         "is_admin": bool(getattr(cu, "is_admin", False)),
+        "role": _current_role(),
         "device_count": _app._get_active_device_count(cu.id),
         "display_name": getattr(cu, "display_name", None),
         "avatar": getattr(cu, "avatar", None),
     }
 
 
+_ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
+
+
+def _current_role():
+    cu = _app.current_user
+    if not cu.is_authenticated:
+        return None
+    if getattr(cu, "is_admin", False):
+        return "admin"
+    return getattr(cu, "role", "viewer") or "viewer"
+
+
+def _require_role(minrole):
+    r = _current_role()
+    return r is not None and _ROLE_RANK.get(r, 0) >= _ROLE_RANK.get(minrole, 0)
+
+
 def _require_admin():
-    return _app.current_user.is_authenticated and getattr(_app.current_user, "is_admin", False)
+    return _require_role("admin")
 
 
 def _audit(action, status):
@@ -397,8 +415,8 @@ def api_pq_download(pid):
 @api_bp.post("/pq/upload")
 def api_pq_upload():
     """Admin-only: upload a PQ .docx → render + store + make it searchable."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     f = request.files.get("file")
     if not f or not f.filename.lower().endswith(".docx"):
         return jsonify({"ok": False, "message": "Please upload a .docx file."}), 400
@@ -427,8 +445,8 @@ def api_pq_upload():
 def api_pq_bulk_upload():
     """Admin-only: upload several PQ .docx at once (no tags yet). Returns the
     created PQs so the UI can walk through titles/tags."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     files = request.files.getlist("files")
     if not files:
         return jsonify({"ok": False, "message": "No files provided."}), 400
@@ -496,8 +514,8 @@ def _search_pqs(query, limit=8):
 @api_bp.post("/pq/<int:pid>/retag")
 def api_pq_retag(pid):
     """Admin-only: update a PQ's tags (drives search)."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     r = _app.PqDocument.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     r.tags = (data.get("tags") or "").strip()
@@ -509,8 +527,8 @@ def api_pq_retag(pid):
 @api_bp.get("/clause/docs")
 def api_clause_docs():
     """Admin: documents in the knowledge base, with clause + edited counts."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     df = brain.load_knowledge_base()
     if df is None or df.empty:
         return jsonify({"docs": []})
@@ -534,8 +552,8 @@ def api_clause_docs():
 @api_bp.get("/clause/specs")
 def api_clause_specs():
     """Admin: available document-type specs for PDF import."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     import ingest
     return jsonify({"specs": ingest.list_specs()})
 
@@ -543,8 +561,8 @@ def api_clause_specs():
 @api_bp.post("/clause/detect-spec")
 def api_clause_detect_spec():
     """Admin: rank existing specs by how well they segment the uploaded PDF."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     import ingest, tempfile
     f = request.files.get("file")
     if not f or not f.filename.lower().endswith(".pdf"):
@@ -565,8 +583,8 @@ def api_clause_detect_spec():
 @api_bp.post("/clause/import-pdf")
 def api_clause_import_pdf():
     """Admin: PDF -> deterministic segmentation -> new document of editable clauses."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     import ingest, tempfile, sqlite3 as _sql
     f = request.files.get("file")
     spec_id = (request.form.get("spec_id") or "").strip()
@@ -630,8 +648,8 @@ def api_clause_import_pdf():
 @api_bp.get("/clause/history")
 def api_clause_history():
     """Admin: prior versions of a clause (newest first) for review/restore."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     import sqlite3 as _sql
     source = (request.args.get("source") or "").strip()
     cid = (request.args.get("id") or "").strip()
@@ -653,8 +671,8 @@ def api_clause_history():
 @api_bp.post("/clause/editing")
 def api_clause_editing():
     """Advisory presence heartbeat: mark me as editing `source`, return who else is."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     data = request.get_json(silent=True) or {}
     source = (data.get("source") or "").strip()
     email = getattr(_app.current_user, "email", "") or ""
@@ -681,8 +699,8 @@ def api_clause_editing():
 def api_clause_doc_full():
     """Admin: every clause of a document with full HTML + tags, in order — for the
     Studio client-side editor."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     source = (request.args.get("source") or "").strip()
     df = brain.load_knowledge_base()
     if df is None or df.empty:
@@ -704,8 +722,8 @@ def api_clause_doc_full():
 @api_bp.post("/clause/doc-save")
 def api_clause_doc_save():
     """Admin: bulk-save the edited document (full ordered clause list)."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     data = request.get_json(silent=True) or {}
     source = (data.get("source") or "").strip()
     clauses = data.get("clauses") or []
@@ -747,8 +765,8 @@ def api_doc_delete():
 @api_bp.post("/clause/doc-pdf")
 def api_doc_pdf_upload():
     """Admin: attach/replace the original source PDF for a document."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     source = (request.form.get("source") or "").strip()
     f = request.files.get("file")
     if not source or not f or not f.filename.lower().endswith(".pdf"):
@@ -784,8 +802,8 @@ def api_doc_pdf_serve(aid):
 @api_bp.get("/clause/list")
 def api_clause_list_for_doc():
     """Admin: ordered clauses of one document for the editor workspace."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     source = (request.args.get("source") or "").strip()
     df = brain.load_knowledge_base()
     if df is None or df.empty:
@@ -846,8 +864,8 @@ def _clause_text_to_html(text):
 @api_bp.get("/clause/edit")
 def api_clause_edit_get():
     """Admin-only: initial rich-text content for editing a clause."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     cid = (request.args.get("id") or "").strip()
     source = (request.args.get("source") or "").strip()
     existing = brain.clause_html(cid, source)
@@ -867,8 +885,8 @@ def api_clause_edit_get():
 @api_bp.post("/clause/edit")
 def api_clause_edit_save():
     """Admin-only: save edited clause HTML (+ derived plain text)."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     data = request.get_json(silent=True) or {}
     cid = (data.get("id") or "").strip()
     source = (data.get("source") or "").strip()
@@ -884,8 +902,8 @@ def api_clause_edit_save():
 
 @api_bp.post("/clause/add")
 def api_clause_add():
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     d = request.get_json(silent=True) or {}
     src, after = (d.get("source") or "").strip(), (d.get("after_id") or "").strip()
     if not src or not after:
@@ -898,8 +916,8 @@ def api_clause_add():
 
 @api_bp.post("/clause/remove")
 def api_clause_remove():
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     d = request.get_json(silent=True) or {}
     src, cid = (d.get("source") or "").strip(), (d.get("id") or "").strip()
     if not brain.delete_clause(src, cid, getattr(_app.current_user, "email", "") or ""):
@@ -909,8 +927,8 @@ def api_clause_remove():
 
 @api_bp.post("/clause/merge")
 def api_clause_merge():
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     d = request.get_json(silent=True) or {}
     src, cid = (d.get("source") or "").strip(), (d.get("id") or "").strip()
     if not brain.merge_clause(src, cid, getattr(_app.current_user, "email", "") or ""):
@@ -920,8 +938,8 @@ def api_clause_merge():
 
 @api_bp.post("/clause/move")
 def api_clause_move():
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     d = request.get_json(silent=True) or {}
     src, cid = (d.get("source") or "").strip(), (d.get("id") or "").strip()
     direction = "up" if (d.get("direction") or "up") == "up" else "down"
@@ -933,8 +951,8 @@ def api_clause_move():
 @api_bp.post("/clause/retag")
 def api_clause_retag():
     """Admin-only: edit a clause's tags in-app (persists + refreshes search)."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     data = request.get_json(silent=True) or {}
     cid = (data.get("id") or "").strip()
     source = (data.get("source") or "").strip()
@@ -950,8 +968,8 @@ def api_clause_retag():
 @api_bp.post("/pq/<int:pid>/update")
 def api_pq_update(pid):
     """Admin: edit a PQ's title and/or tags."""
-    if not _require_admin():
-        return jsonify({"message": "Admin access required"}), 403
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     r = _app.PqDocument.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     if "title" in data and (data.get("title") or "").strip():
@@ -1357,7 +1375,9 @@ def api_admin_overview():
 
     users = m.User.query.order_by(m.User.created_at.desc()).all()
     user_rows = [{"id": u.id, "email": u.email, "is_active": u.is_active,
-                  "is_admin": u.is_admin, "created_at": m._format_dt_local(u.created_at),
+                  "is_admin": u.is_admin,
+                  "role": ("admin" if u.is_admin else (getattr(u, "role", "viewer") or "viewer")),
+                  "created_at": m._format_dt_local(u.created_at),
                   "display_name": getattr(u, "display_name", None),
                   "device_count": m._get_active_device_count(u.id)} for u in users]
 
@@ -1426,7 +1446,10 @@ def api_admin_create_user():
     data = request.get_json(silent=True) or request.form
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
-    is_admin = str(data.get("is_admin") or "").lower() in {"1", "true", "yes", "on"}
+    role = (data.get("role") or "").strip().lower()
+    if role not in _ROLE_RANK:
+        # back-compat: is_admin flag -> admin, else viewer
+        role = "admin" if str(data.get("is_admin") or "").lower() in {"1", "true", "yes", "on"} else "viewer"
     if not m._is_allowed_email(email):
         return jsonify({"message": "Email must use @irdai.gov.in domain."}), 400
     if len(password) < 8:
@@ -1434,10 +1457,26 @@ def api_admin_create_user():
     if m.User.query.filter(m.db.func.lower(m.User.email) == email).first():
         return jsonify({"message": "User already exists."}), 409
     m.db.session.add(m.User(email=email, password_hash=m.generate_password_hash(password),
-                            is_active=True, is_admin=is_admin))
+                            is_active=True, is_admin=(role == "admin"), role=role))
     m.db.session.commit()
-    m._record_admin_audit(email, "user_create", "success")
+    m._record_admin_audit(email, f"user_create ({role})", "success")
     return jsonify({"ok": True, "message": "User created successfully."}), 201
+
+
+@api_bp.post("/admin/user/<int:user_id>/role")
+def api_admin_set_role(user_id):
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    m = _app
+    role = ((request.get_json(silent=True) or {}).get("role") or "").strip().lower()
+    if role not in _ROLE_RANK:
+        return jsonify({"message": "Invalid role"}), 400
+    user = m.User.query.get_or_404(user_id)
+    user.role = role
+    user.is_admin = (role == "admin")
+    m.db.session.commit()
+    m._record_admin_audit(user.email, f"role_set:{role}", "success")
+    return jsonify({"ok": True, "role": role})
 
 
 @api_bp.post("/admin/user/<int:user_id>/toggle-active")

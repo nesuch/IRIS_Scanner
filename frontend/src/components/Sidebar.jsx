@@ -21,7 +21,7 @@ const SECTIONS = [
       { to: '/data', icon: 'fa-chart-line', text: 'Data Explorer' },
       { to: '/compliance', icon: 'fa-gavel', text: 'Compliance Cockpit' },
       { to: '/downloads', icon: 'fa-folder-tree', text: 'Downloads' },
-      { to: '/studio', icon: 'fa-pen-ruler', text: 'Document Studio', adminOnly: true },
+      { to: '/studio', icon: 'fa-pen-ruler', text: 'Document Studio', editorOnly: true },
     ],
   },
   {
@@ -37,6 +37,8 @@ const SECTIONS = [
 
 export default function Sidebar({ open, onNavigate }) {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  const isEditor = isAdmin || user?.role === 'editor';
   const [collapsed, setCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
   });
@@ -62,7 +64,7 @@ export default function Sidebar({ open, onNavigate }) {
               <i className="fas fa-chevron-down nav-chevron" />
             </button>
             {!isCol && sec.items
-              .filter((it) => !it.adminOnly || (user && user.is_admin))
+              .filter((it) => (!it.adminOnly || isAdmin) && (!it.editorOnly || isEditor))
               .map((it) => (
                 <NavLink
                   key={it.to}

@@ -99,15 +99,16 @@ function CreateUserForm({ onCreated }) {
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('viewer');
   const [busy, setBusy] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post('/admin/create-user', { email, password });
+      await api.post('/admin/create-user', { email, password, role });
       toast.success('User created successfully');
-      setEmail(''); setPassword(''); onCreated?.();
+      setEmail(''); setPassword(''); setRole('viewer'); onCreated?.();
     } catch (err) { toast.error(err.message || 'Unable to create user.'); }
     finally { setBusy(false); }
   }
@@ -117,6 +118,13 @@ function CreateUserForm({ onCreated }) {
       <div className="admin-form-grid">
         <div className="field"><label>Email</label><input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <div className="field"><label>Password</label><input className="input" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+        <div className="field"><label>Role</label>
+          <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="viewer">Viewer — read only</option>
+            <option value="editor">Editor — edit content</option>
+            <option value="admin">Admin — full access</option>
+          </select>
+        </div>
       </div>
       <button className="btn btn-primary" type="submit" disabled={busy} style={{ marginTop: 14 }}><i className="fas fa-user-plus" /> Create User</button>
     </form>
@@ -183,6 +191,14 @@ export default function Admin() {
     } catch (e) { toast.error(e.message || 'Action failed'); }
   }
 
+  async function changeRole(id, role) {
+    try {
+      await api.post(`/admin/user/${id}/role`, { role });
+      toast.success(`Role set to ${role}`);
+      load();
+    } catch (e) { toast.error(e.message || 'Could not change role'); }
+  }
+
   async function clearAudit(path, label) {
     if (!window.confirm(`Clear ${label}?`)) return;
     try { await api.post(path); toast.success(`${label} cleared`); load(); }
@@ -233,14 +249,22 @@ export default function Admin() {
           <div className="table-wrap" style={{ marginTop: 20 }}>
             <div className="table-scroll users-scroll">
               <table className="data">
-                <thead><tr><th>Name</th><th>Email</th><th>Active</th><th>Admin</th><th>Devices</th><th>Created</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Active</th><th>Role</th><th>Devices</th><th>Created</th><th>Actions</th></tr></thead>
                 <tbody>
                   {data.users.length ? data.users.map((u) => (
                     <tr key={u.id}>
                       <td>{u.display_name || <span style={{ color: 'var(--faint)' }}>—</span>}</td>
                       <td>{u.email}</td>
                       <td>{u.is_active ? 'Yes' : 'No'}</td>
-                      <td>{u.is_admin ? 'Yes' : 'No'}</td>
+                      <td>
+                        <select className="input role-select" value={u.role || (u.is_admin ? 'admin' : 'viewer')}
+                          disabled={u.email === user?.email}
+                          onChange={(e) => changeRole(u.id, e.target.value)}>
+                          <option value="viewer">Viewer</option>
+                          <option value="editor">Editor</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
                       <td>{u.device_count}</td>
                       <td>{u.created_at || '-'}</td>
                       <td>

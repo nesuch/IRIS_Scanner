@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, EmptyState, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useAuth } from '../auth/AuthContext.jsx';
 import StudioEditor from '../components/StudioEditor.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
 import { api } from '../api.js';
@@ -13,6 +14,8 @@ const clone = (cs) => cs.map((c) => ({ ...c, tags: [...c.tags] }));
 
 export default function Studio() {
   const toast = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.is_admin;
   const [docs, setDocs] = useState(null);
   const [doc, setDoc] = useState(null);
   const [clauses, setClauses] = useState(null);       // [{key,id,html,tags}]
@@ -227,7 +230,7 @@ export default function Studio() {
                 <div className="studio-doc-grid">
                   {docs.map((d) => (
                     <div key={d.source} className="studio-doc" onClick={() => openDoc(d)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') openDoc(d); }}>
-                      <button className="studio-doc-del" title="Delete document" onClick={(e) => { e.stopPropagation(); delDoc(d); }}><i className="fas fa-trash" /></button>
+                      {isAdmin && <button className="studio-doc-del" title="Delete document (admin)" onClick={(e) => { e.stopPropagation(); delDoc(d); }}><i className="fas fa-trash" /></button>}
                       <span className="studio-doc-name">{d.source}</span>
                       <span className="studio-doc-meta">{d.clauses} clauses · {d.edited} edited</span>
                     </div>
