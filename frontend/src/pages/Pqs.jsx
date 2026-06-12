@@ -3,9 +3,17 @@ import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
+import FlagModal from '../components/FlagModal.jsx';
 import { api } from '../api.js';
 import './search/search.css';   // reuse the universal-search shell (bottom bar, suggestions)
 import './pqs/pqs.css';
+
+const NO_RESULT_REASONS = [
+  'Missing PQ (should be here)',
+  'Wrong / irrelevant results',
+  'Search not working as expected',
+  'Other',
+];
 
 // Controlled department vocabulary — mirrors PQ_DEPARTMENTS in api.py.
 const DEPTS = [
@@ -56,7 +64,7 @@ function DeptPicker({ value, onChange }) {
 
 // One IRIS answer: the result set for a single query, with its own department
 // refinement. Renders cards, the no-match deep-scan prompt, or a dept-empty note.
-function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep }) {
+function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep, onFlag }) {
   const [deptFilter, setDeptFilter] = useState(resp.initialDept || []);
   const results = resp.items || [];
   const toggleDept = (code) => setDeptFilter((cur) => cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]);
@@ -70,7 +78,14 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
         <p className="iris-msg">{resp.deep
           ? `I read every reply in full — none mention ${resp.label}.`
           : resp.browse ? 'There are no Parliamentary Questions in the database yet.'
-          : `Nothing is tagged for “${resp.label}”.`}</p>
+          : `Nothing is tagged for “${resp.label}”.`}
+          {onFlag && (
+            <button className="flag-link" title="Report a missing PQ"
+              onClick={() => onFlag({ _noresult: true, label: resp.label })}>
+              <i className="fas fa-flag" /> Flag this
+            </button>
+          )}
+        </p>
         {resp.qText && !resp.deep && (
           <button className="btn btn-primary btn-sm pq-deep-cta" onClick={() => onDeep(resp.qText, 'all')}>
             <i className="fas fa-binoculars" /> Deep scan every reply for “{resp.qText}”
@@ -83,6 +98,13 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
 
   return (
     <div className="pq-feed">
+      <div className={`pq-foundvia ${resp.deep ? 'is-deep' : ''}`}>
+        {resp.deep
+          ? <><i className="fas fa-binoculars" /> Deep Scan · <strong>{resp.label}</strong></>
+          : resp.browse
+            ? <><i className="fas fa-layer-group" /> {resp.initialDept?.length ? <>Department · <strong>{resp.initialDept.map((c) => DEPT_LABEL[c]).join(' / ')}</strong></> : <>All Parliamentary replies</>}</>
+            : <><i className="fas fa-tag" /> Found via <strong>Tags</strong> · {resp.label}</>}
+      </div>
       {results.length > 0 && (
         <div className="pq-dept-bar">
           <span className="pq-dept-bar-label">Department:</span>
@@ -107,6 +129,7 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
             <div key={p.id} className="pq-card" onClick={() => onOpen(p.id)} role="button" tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
               <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); onHide(p.id); }}>&times;</button>
+              {onFlag && <button className="pq-card-flag" title="Flag this reply" onClick={(e) => { e.stopPropagation(); onFlag(p); }}><i className="fas fa-flag" /></button>}
               {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}><i className="fas fa-trash" /></button>}
               <div className="pq-card-top">
                 {p.house && <span className="pq-house">{p.house}</span>}
@@ -143,6 +166,7 @@ export default function Pqs() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [allTags, setAllTags] = useState([]);
+  const [flagTarget, setFlagTarget] = useState(null);   // PQ (or no-result) being flagged
   const chatRef = useRef(null);
   const lastUserRef = useRef(null);
 
@@ -329,7 +353,7 @@ export default function Pqs() {
                 <div className="bubble iris-bubble">
                   {item.response ? (
                     <PqResponse resp={item.response} dismissed={dismissed} isAdmin={isAdmin}
-                      onOpen={open} onHide={hide} onDelete={del} onDeep={runDeepScan} />
+                      onOpen={open} onHide={hide} onDelete={del} onDeep={runDeepScan} onFlag={setFlagTarget} />
                   ) : item.error ? (
                     <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
                   ) : (
@@ -373,6 +397,17 @@ export default function Pqs() {
 
       {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); loadTags(); }} />}
       {bulkOpen && <BulkUploadModal onClose={() => setBulkOpen(false)} onDone={() => { setBulkOpen(false); loadTags(); }} />}
+
+      {flagTarget && (
+        <FlagModal kind="pq"
+          title={flagTarget._noresult ? 'Report a missing PQ' : 'Flag this reply'}
+          reasons={flagTarget._noresult ? NO_RESULT_REASONS : undefined}
+          target={flagTarget._noresult
+            ? `No result · “${flagTarget.label}” · Parliamentary Q&A`
+            : `${[flagTarget.house, flagTarget.pq_no ? `Q No. ${flagTarget.pq_no}` : ''].filter(Boolean).join(' · ')} · ${flagTarget.subject || flagTarget.title}`}
+          detail={flagTarget._noresult ? `Searched: ${flagTarget.label}` : (flagTarget.subject || flagTarget.title)}
+          onClose={() => setFlagTarget(null)} />
+      )}
     </div>
   );
 }

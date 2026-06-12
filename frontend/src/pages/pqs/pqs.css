@@ -131,3 +131,36 @@
 /* Result feed sits inside an IRIS chat bubble now — drop the standalone card chrome */
 .iris-bubble .pq-feed,
 .iris-bubble .pq-noresult { padding: 0; }
+
+/* ---- v2 polish: alignment, flag button, colour ---- */
+/* Empty-state browse button — icon vertically centred with the label */
+.pq-empty-browse { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; line-height: 1; }
+.pq-empty-browse i { font-size: 13px; line-height: 1; display: inline-flex; align-items: center; }
+
+/* Three card actions now: hide (×) · flag · delete */
+.pq-card .pq-card-top { padding-right: 84px; }
+.pq-card-flag { position: absolute; top: 10px; right: 34px; border: none; background: none; color: var(--faint); cursor: pointer; font-size: 12px; padding: 4px; border-radius: var(--r-sm); transition: 0.15s; }
+.pq-card-flag:hover { color: #d97706; background: #fef3c7; }
+.pq-card-del { right: 60px; }
+
+/* Spell-fix Deep-Scan chip ("Did you mean …?") */
+.chip-fix { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.55); color: #b45309; font-weight: 700; }
+.chip-fix::before { content: "\f0eb"; font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: 6px; font-size: 10px; }
+
+/* "Found via" / "Deep Scan" banner above each answer */
+.pq-foundvia {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px;
+  padding: 6px 13px; border-radius: var(--r-pill); font-size: 12.5px; font-weight: 600;
+  color: #0e7490; background: linear-gradient(135deg, rgba(13,148,136,0.12), rgba(6,182,212,0.12));
+  border: 1px solid rgba(6,182,212,0.30);
+}
+.pq-foundvia strong { color: var(--navy-700); }
+.pq-foundvia.is-deep { color: #6d28d9; background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(168,85,247,0.12)); border-color: rgba(124,58,237,0.30); }
+.pq-foundvia.is-deep strong { color: #6d28d9; }
+
+/* Cards: colour accent + livelier chrome */
+.pq-card { border-left: 3px solid var(--accent, #0d9488); }
+.pq-card .pq-no { background: rgba(13,148,136,0.10); padding: 2px 8px; border-radius: var(--r-pill); }
+.pq-card .pq-tag { background: rgba(37,99,235,0.08); color: var(--navy-700); border: 1px solid rgba(37,99,235,0.16); }
+.pq-card .pq-card-open { color: var(--accent, #0d9488); }
+.pq-card:hover { border-left-color: var(--cyan, #06b6d4); }

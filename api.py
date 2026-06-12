@@ -11,6 +11,7 @@ module object via `init_api(sys.modules[__name__])`. All shared objects (models,
 db, login helpers, private helpers) are then reached through `_app`.
 """
 import base64
+import difflib
 import io
 import os
 import re
@@ -634,17 +635,47 @@ def _deep_scan_pqs(text, mode="all", limit=300):
     return [p for _, p in out[:limit]]
 
 
+_PQ_VOCAB_CACHE = {"key": None, "words": set()}
+
+
+def _pq_vocab():
+    """Cached set of meaningful words across all PQ tags + reply text — used to
+    spell-correct typed queries (e.g. 'insrance' -> 'insurance'). Rebuilt only
+    when the PQ set changes (keyed on row count + newest id)."""
+    rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+    key = (len(rows), rows[0].id if rows else 0)
+    if _PQ_VOCAB_CACHE["key"] == key:
+        return _PQ_VOCAB_CACHE["words"]
+    words = set()
+    for r in rows:
+        blob = " ".join([r.tags or "", r.title or "", r.subject or "", r.body_text or ""]).lower()
+        for w in re.findall(r"[a-z]{4,}", blob):
+            if w not in _PQ_STOP:
+                words.add(w)
+    _PQ_VOCAB_CACHE["key"] = key
+    _PQ_VOCAB_CACHE["words"] = words
+    return words
+
+
 def _pq_chips(query):
-    """Smart Deep-Scan suggestion chips for a query, mirroring the KB modules:
-    one per significant word, an exact-phrase chip, and a 'Search All' chip."""
-    seen, words = set(), []
+    """Smart Deep-Scan suggestion chips, mirroring the KB modules: a spell-fix
+    chip when a word looks misspelled ('Did you mean "insurance"?'), the exact
+    word as typed, an exact-phrase chip, and a 'Search All' chip."""
+    vocab = _pq_vocab()
+    seen, words, chips = set(), [], []
     for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-/]*", query or ""):
         wl = w.lower()
-        if len(wl) > 2 and wl not in _PQ_STOP and wl not in seen:
-            seen.add(wl)
-            words.append(w)
-    chips = [{"label": f'Search "{w}"', "mode": "word", "text": w, "kind": "keyword"}
-             for w in words]
+        if len(wl) <= 2 or wl in _PQ_STOP or wl in seen:
+            continue
+        seen.add(wl)
+        words.append(w)
+        # Spelling correction against the PQ vocabulary (deterministic, no LLM).
+        if wl not in vocab and len(wl) > 3:
+            m = difflib.get_close_matches(wl, vocab, n=1, cutoff=0.8)
+            if m and m[0] != wl:
+                chips.append({"label": f'Did you mean "{m[0]}"?', "mode": "word",
+                              "text": m[0], "kind": "fix"})
+        chips.append({"label": f'Search "{w}"', "mode": "word", "text": w, "kind": "keyword"})
     clean = " ".join((query or "").split())
     if (len(clean.split()) > 1 or re.search(r"[-/]", clean)):
         chips.append({"label": f'Search Phrase "{clean}"', "mode": "phrase",
@@ -2026,7 +2057,7 @@ def api_flag_create():
     m = _app
     data = request.get_json(silent=True) or request.form
     kind = (data.get("kind") or "clause").strip()
-    if kind not in {"clause", "financial"}:
+    if kind not in {"clause", "financial", "pq"}:
         kind = "clause"
     reason = (data.get("reason") or "Other").strip()
     if reason not in _FLAG_REASONS:
