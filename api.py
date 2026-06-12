@@ -412,7 +412,6 @@ def api_pq_download(pid):
                      as_attachment=True, download_name=r.docx_filename)
 
 
-@api_bp.post("/pq/upload")
 def _pq_duplicate(pq_no, house):
     """An existing PQ with the same number + house = a likely duplicate."""
     pq_no = (pq_no or "").strip()
@@ -421,6 +420,7 @@ def _pq_duplicate(pq_no, house):
     return _app.PqDocument.query.filter_by(pq_no=pq_no, house=house or "").first()
 
 
+@api_bp.post("/pq/upload")
 def api_pq_upload():
     """Admin-only: upload a PQ .docx → render + store + make it searchable."""
     if not _require_role("editor"):
