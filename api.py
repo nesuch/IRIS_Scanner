@@ -345,6 +345,11 @@ def api_pq_list():
     """List/search Parliamentary Question replies for the dedicated PQ view."""
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
+    num = re.sub(r"\D", "", request.args.get("num") or "")
+    if num:
+        rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+        items = [_pq_card(r) for r in rows if num in re.sub(r"\D", "", r.pq_no or "")]
+        return jsonify({"items": items})
     tag = (request.args.get("tag") or "").strip()
     if tag:
         # Exact-tag filter (case/space-insensitive) — not a body word search.
@@ -416,6 +421,41 @@ def api_pq_upload():
     m.db.session.commit()
     _audit(f"Uploaded PQ: {row.title}", "PQ upload")
     return jsonify({"ok": True, "id": row.id, "title": row.title}), 201
+
+
+@api_bp.post("/pq/bulk-upload")
+def api_pq_bulk_upload():
+    """Admin-only: upload several PQ .docx at once (no tags yet). Returns the
+    created PQs so the UI can walk through titles/tags."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"ok": False, "message": "No files provided."}), 400
+    m = _app
+    created, skipped = [], []
+    for f in files:
+        if not f.filename.lower().endswith(".docx"):
+            skipped.append(f.filename); continue
+        raw = f.read()
+        try:
+            parsed = parse_docx(raw, filename=f.filename)
+        except Exception as e:
+            print(f"bulk PQ parse error ({f.filename}): {e}")
+            skipped.append(f.filename); continue
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
+        storage.save_pq(safe, raw)
+        row = m.PqDocument(
+            pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
+            subject=parsed["subject"], doc_date=parsed["doc_date"], tags="",
+            html=parsed["html"], body_text=parsed["text"], docx_filename=safe,
+            created_at=datetime.utcnow())
+        m.db.session.add(row)
+        m.db.session.commit()
+        created.append({"id": row.id, "title": row.title, "pq_no": row.pq_no,
+                        "house": row.house, "filename": f.filename})
+    _audit(f"Bulk uploaded {len(created)} PQs", "PQ upload")
+    return jsonify({"ok": True, "created": created, "skipped": skipped})
 
 
 @api_bp.post("/pq/<int:pid>/delete")
@@ -905,6 +945,23 @@ def api_clause_retag():
         return jsonify({"ok": False, "message": "Clause not found"}), 404
     _audit(f"Re-tagged clause {cid} in '{source}'", "Clause tags")
     return jsonify({"ok": True, "tags": new_tags})
+
+
+@api_bp.post("/pq/<int:pid>/update")
+def api_pq_update(pid):
+    """Admin: edit a PQ's title and/or tags."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    r = _app.PqDocument.query.get_or_404(pid)
+    data = request.get_json(silent=True) or {}
+    if "title" in data and (data.get("title") or "").strip():
+        r.title = data["title"].strip()[:400]
+    if "tags" in data:
+        r.tags = (data.get("tags") or "").strip()
+    _app.db.session.commit()
+    _audit(f"Edited PQ {r.pq_no or pid}", "PQ edit")
+    return jsonify({"ok": True, "title": r.title,
+                    "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()]})
 
 
 @api_bp.get("/clause-suggest")
