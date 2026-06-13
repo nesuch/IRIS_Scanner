@@ -171,6 +171,7 @@ export default function Pqs() {
   const [flagTarget, setFlagTarget] = useState(null);   // PQ (or no-result) being flagged
   const chatRef = useRef(null);
   const lastUserRef = useRef(null);
+  const inputAreaRef = useRef(null);
 
   const loadTags = () => api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([]));
   useEffect(() => { loadTags(); }, []);
@@ -194,6 +195,18 @@ export default function Pqs() {
       chatRef.current.scrollTop = Math.max(lastUserRef.current.offsetTop - 16, 0);
     }
   }, [history]);
+
+  // Tapping anywhere outside the search bar (e.g. the sidebar toggle on mobile)
+  // dismisses the suggestions dropdown so it never overlays the sidebar.
+  useEffect(() => {
+    if (!suggestions.length) return undefined;
+    const onDown = (e) => {
+      if (inputAreaRef.current && !inputAreaRef.current.contains(e.target)) setSuggestions([]);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('touchstart', onDown); };
+  }, [suggestions.length]);
 
   // Append a chat turn (You → IRIS) and resolve its response.
   async function ask(url, label, meta = {}) {
@@ -370,7 +383,7 @@ export default function Pqs() {
         </div>
       </div>
 
-      <div className="input-area">
+      <div className="input-area" ref={inputAreaRef}>
         <form className="input-inner" onSubmit={onSubmit} autoComplete="off">
           <div className="search-wrapper">
             {suggestions.length > 0 && (
