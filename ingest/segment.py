@@ -444,17 +444,20 @@ def segment(blocks, spec):
             add_excluded(cur['exreason'],[b['n']])
         k+=1
     if pend: flush(pend)
-    # final safety net: guarantee unique clause ids. Genuine document ambiguity
-    # (e.g. a roman series nested under an item that collides with a same-letter
-    # sibling at the level above) can still produce a repeat; suffix duplicates
-    # with -a, -b, ... in document order so every id is unique for the xlsx/UI.
-    if spec.get('nest_sections'):
-        _seen={}
-        for r in rows:
-            base_id=r['id']
-            if base_id in _seen:
-                _seen[base_id]+=1
-                r['id']=f"{base_id}-{chr(ord('a')+_seen[base_id]-1)}"
-            else:
-                _seen[base_id]=0
-    return rows, inscope, excluded, assigned, spec_errors
+    # Guarantee unique clause ids (the DB + UI key on them) for ALL specs, and
+    # SURFACE every collision as a warning. A duplicate id almost always means the
+    # segmentation misfired (wrong nesting / boundary), so it must not be silently
+    # hidden behind an -a/-b suffix — it goes into the report for review.
+    warnings=[]
+    _seen={}
+    for r in rows:
+        base_id=r['id']
+        if base_id in _seen:
+            _seen[base_id]+=1
+            new_id=f"{base_id}-{chr(ord('a')+_seen[base_id]-1)}"
+            warnings.append({'type':'duplicate_id','id':base_id,'renamed_to':new_id,
+                             'line':r.get('_n')})
+            r['id']=new_id
+        else:
+            _seen[base_id]=0
+    return rows, inscope, excluded, assigned, spec_errors, warnings

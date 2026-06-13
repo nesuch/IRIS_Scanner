@@ -816,8 +816,11 @@ def api_clause_import_pdf():
     m.db.session.commit()
     brain.refresh_kb()
     _audit(f"Imported document '{source}' ({len(rows)} clauses)", "Document import")
+    dup_ids = report.get("duplicate_ids", [])
     return jsonify({"ok": True, "source": source, "clauses": len(rows),
-                    "orphans": report.get("orphan_lines", 0), "spec_errors": spec_errors})
+                    "orphans": report.get("orphan_lines", 0),
+                    "duplicates": len(dup_ids), "duplicate_ids": dup_ids,
+                    "spec_errors": spec_errors})
 
 
 @api_bp.get("/clause/history")

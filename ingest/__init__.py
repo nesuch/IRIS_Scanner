@@ -71,7 +71,7 @@ def detect_spec(pdf_path, limit=5):
             for step in spec.get("preprocess", []):
                 if step == "explode_layout_tables":
                     blocks = explode_layout_tables(blocks)
-            rows, inscope, excluded, assigned, spec_errors = segment(blocks, spec)
+            rows, inscope, excluded, assigned, spec_errors, warnings = segment(blocks, spec)
             report = validate(blocks, dropped, inscope, excluded, assigned, rows)
         except Exception:
             continue
@@ -79,9 +79,11 @@ def detect_spec(pdf_path, limit=5):
         if clauses == 0:
             continue
         orphans = report.get("orphan_lines", 0)
-        score = (0 if spec_errors else 1_000_000) - orphans * 100 + min(clauses, 300)
+        dupes = len(warnings)
+        # a good fit leaves few orphans AND few id collisions
+        score = (0 if spec_errors else 1_000_000) - orphans * 100 - dupes * 60 + min(clauses, 300)
         ranked.append({"spec_id": s["id"], "doc_id": s["doc_id"], "score": score,
-                       "clauses": clauses, "orphans": orphans,
+                       "clauses": clauses, "orphans": orphans, "duplicates": dupes,
                        "accounted": bool(report.get("fully_accounted")), "errors": bool(spec_errors)})
     ranked.sort(key=lambda x: -x["score"])
     return ranked[:limit]
@@ -94,6 +96,7 @@ def segment_pdf(pdf_path, spec):
     for step in spec.get("preprocess", []):
         if step == "explode_layout_tables":
             blocks = explode_layout_tables(blocks)
-    rows, inscope, excluded, assigned, spec_errors = segment(blocks, spec)
+    rows, inscope, excluded, assigned, spec_errors, warnings = segment(blocks, spec)
     report = validate(blocks, dropped, inscope, excluded, assigned, rows)
+    report["duplicate_ids"] = warnings   # surfaced, not hidden — review signal
     return rows, report, spec_errors

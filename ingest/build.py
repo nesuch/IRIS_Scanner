@@ -69,8 +69,9 @@ def run(spec_path, pdf_path, out_path):
     for step in spec.get('preprocess', []):
         if step == 'explode_layout_tables':
             L = explode_layout_tables(L)
-    rows,ins,exc,asg,spec_errors=segment(L,spec)
+    rows,ins,exc,asg,spec_errors,warnings=segment(L,spec)
     rep=validate(L,D,ins,exc,asg,rows)
+    rep["duplicate_ids"]=warnings
     os.makedirs(os.path.dirname(out_path),exist_ok=True)
     to_xlsx(rows,spec['sheet_name'],out_path)
     return rows,rep

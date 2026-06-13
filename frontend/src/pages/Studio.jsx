@@ -398,7 +398,8 @@ function ImportModal({ onClose, onDone }) {
       fd.append('file', file); fd.append('spec_id', specId); fd.append('source', source.trim());
       fd.append('doc_type', docType); fd.append('category', category);
       const r = await api.post('/clause/import-pdf', fd);
-      toast.success(`Imported ${r.clauses} clauses${r.orphans ? ` (${r.orphans} unmatched lines)` : ''}`);
+      const notes = [r.orphans ? `${r.orphans} unmatched lines` : '', r.duplicates ? `${r.duplicates} duplicate ids` : ''].filter(Boolean);
+      toast.success(`Imported ${r.clauses} clauses${notes.length ? ` (${notes.join(', ')})` : ''}`);
       onDone();
     } catch (e) { toast.error(e.message || 'Import failed'); }
     finally { setBusy(false); }
@@ -429,7 +430,7 @@ function ImportModal({ onClose, onDone }) {
         {!detecting && detected && (
           <div className="studio-detect">
             <i className="fas fa-wand-magic-sparkles" /> Auto-detected: <strong>{detected.doc_id}</strong>
-            {' '}({detected.clauses} clauses{detected.orphans ? `, ${detected.orphans} unmatched lines` : ''}).
+            {' '}({detected.clauses} clauses{detected.orphans ? `, ${detected.orphans} unmatched lines` : ''}{detected.duplicates ? `, ${detected.duplicates} duplicate ids` : ''}).
           </div>
         )}
       </div>
