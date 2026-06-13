@@ -68,6 +68,18 @@
 @media (max-width: 760px) {
   .pq-doc { padding: 18px; }
   .pq-list { grid-template-columns: 1fr; }
+  /* Reclaim width so house · Q No · date fit on ONE line on phones:
+     widen the card, compact the meta, and tighten the corner icons. */
+  .iris-bubble .pq-feed, .iris-bubble .pq-noresult { padding: 0; }
+  .pq-card { padding: 14px 13px; }
+  .pq-card .pq-card-top { padding-right: 50px; flex-wrap: nowrap; gap: 6px; }
+  .pq-house { font-size: 8.5px; padding: 2px 7px; letter-spacing: 0.02em; }
+  .pq-card .pq-no { font-size: 9.5px; padding: 2px 6px; }
+  .pq-date { font-size: 10px; gap: 0; }
+  .pq-date i { display: none; }   /* drop the calendar glyph to save width */
+  .pq-card-hide { right: 5px; font-size: 15px; }
+  .pq-card-flag { right: 23px; font-size: 10.5px; }
+  .pq-card-del { right: 42px; font-size: 10.5px; }
 }
 
 /* Duplicate-on-upload warning */
