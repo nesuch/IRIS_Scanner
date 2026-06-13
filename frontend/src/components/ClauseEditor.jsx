@@ -32,6 +32,45 @@ export const EXTENSIONS = [
   TableRow, HeaderWithVAlign, CellWithVAlign,
 ];
 
+// Merge the table the cursor is in with the next table (only an empty
+// paragraph may sit between them). Rows are concatenated; shorter rows are
+// padded with empty cells so the combined grid stays valid. Returns false
+// (no-op) if the cursor isn't in a table or there's no joinable table below.
+export function joinTableBelow(editor) {
+  if (!editor) return false;
+  const { state } = editor;
+  const { doc, selection } = state;
+  const tables = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'table') { tables.push({ node, pos, end: pos + node.nodeSize }); return false; }
+    return true;
+  });
+  if (tables.length < 2) return false;
+  let ai = tables.findIndex((t) => selection.from >= t.pos && selection.from <= t.end);
+  if (ai === -1) ai = tables.filter((t) => t.pos <= selection.from).length - 1; // nearest table above the caret
+  if (ai < 0 || ai + 1 >= tables.length) return false;
+  const A = tables[ai], B = tables[ai + 1];
+  if (doc.textBetween(A.end, B.pos, '', '').trim() !== '') return false; // only blank space allowed between
+
+  const rows = [];
+  A.node.forEach((r) => rows.push(r));
+  B.node.forEach((r) => rows.push(r));
+  const colsOf = (row) => { let c = 0; row.forEach((cell) => { c += cell.attrs.colspan || 1; }); return c; };
+  const maxCols = Math.max(...rows.map(colsOf));
+  const cellType = state.schema.nodes.tableCell;
+  const fixed = rows.map((row) => {
+    const deficit = maxCols - colsOf(row);
+    if (deficit <= 0 || !cellType) return row;
+    const cells = [];
+    row.forEach((c) => cells.push(c));
+    for (let i = 0; i < deficit; i += 1) cells.push(cellType.createAndFill());
+    return row.type.create(row.attrs, cells);
+  });
+  const merged = A.node.type.create(A.node.attrs, fixed);
+  editor.view.dispatch(state.tr.replaceWith(A.pos, B.end, merged).scrollIntoView());
+  return true;
+}
+
 // Reusable editor core: toolbar + editable area + save. Used inline by the
 // Document Studio module and inside the modal below.
 // Remove only Word/Office structural cruft (conditional comments, <o:p>, w: tags)
@@ -90,11 +129,14 @@ export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {
             <B run={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} icon="fa-list-ol" label="Numbered list" />
             <span className="ce-divide" />
             <B run={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} icon="fa-table" label="Insert table" />
-            <B run={() => editor.chain().focus().addRowAfter().run()} icon="fa-grip-lines" label="Add row" />
-            <B run={() => editor.chain().focus().addColumnAfter().run()} icon="fa-grip-lines-vertical" label="Add column" />
+            <B run={() => editor.chain().focus().addRowAfter().run()} icon="fa-grip-lines" label="Add row below" />
+            <B run={() => editor.chain().focus().addColumnAfter().run()} icon="fa-grip-lines-vertical" label="Add column right" />
+            <B run={() => editor.chain().focus().deleteRow().run()} icon="fa-delete-left" label="Delete row" />
+            <B run={() => editor.chain().focus().deleteColumn().run()} icon="fa-delete-left fa-rotate-90" label="Delete column" />
             <B run={() => editor.chain().focus().mergeCells().run()} icon="fa-object-group" label="Merge selected cells" />
             <B run={() => editor.chain().focus().splitCell().run()} icon="fa-object-ungroup" label="Split cell" />
-            <B run={() => editor.chain().focus().deleteTable().run()} icon="fa-eraser" label="Delete table" />
+            <B run={() => joinTableBelow(editor) || toast.error('Put the cursor in the upper table — the one directly below it will be joined on.')} icon="fa-down-left-and-up-right-to-center" label="Join with table below" />
+            <B run={() => editor.chain().focus().deleteTable().run()} icon="fa-trash-can" label="Delete whole table" />
             <span className="ce-divide" />
             <B run={() => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()} icon="fa-angle-up" label="Cell align top" />
             <B run={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} icon="fa-equals" label="Cell align middle" />
