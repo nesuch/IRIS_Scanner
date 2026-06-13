@@ -43,6 +43,12 @@ def _gfm(table):
     rows=[r for r in rows if any(cell for cell in r)]
     if not rows: return None
     w=max(len(r) for r in rows); rows=[r+['']*(w-len(r)) for r in rows]
+    # Drop columns blank in EVERY row. pdfplumber sometimes over-segments a ruled
+    # table (especially across page breaks) into many phantom columns that are
+    # empty throughout; removing them restores the real structure, content-safe.
+    keep=[ci for ci in range(w) if any((row[ci] or '').strip() for row in rows)]
+    if 0 < len(keep) < w:
+        rows=[[row[ci] for ci in keep] for row in rows]; w=len(keep)
     esc=lambda s: s.replace('|','\\|')
     head='| '+' | '.join(esc(c) for c in rows[0])+' |'
     sep='|'+'|'.join(['---']*w)+'|'
