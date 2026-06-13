@@ -1,0 +1,48 @@
+{
+  "doc_id": "STAFF_REGS",
+  "sheet_name": "IRDAI Staff (Officers and Other Employees) Regulations 2016",
+  "ignore_patterns": [
+    "THE GAZETTE OF INDIA",
+    "\\[PART III",
+    "Hkkjr dk jkti",
+    "Hkkx\\s*III",
+    "^\\d+\\s+GI/\\d+",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY OF INDIA"
+  ],
+  "scope_start": "^Chapter\\s+I\\b",
+  "nest_sections": true,
+  "title_case_titles": true,
+  "default_section_prefix": "STAFF_REGS",
+  "form_starts": [
+    "^FORM\\b",
+    "(?i)^form\\s*[-–]"
+  ],
+  "section_resume": [
+    "^Schedule\\b",
+    "^Chapter\\b"
+  ],
+  "containers": [
+    {
+      "head_match": "^(Chapter\\s*[-–]?\\s*[IVX]+)\\b\\s*(.*)$",
+      "title_next_line": true,
+      "id_prefix": "STAFF_REGS-CH{n}",
+      "clause_template": "Chapter {n}: {title}:",
+      "include": true
+    },
+    {
+      "head_match": "^Schedule\\s+([IVX]+(?:\\s*[-–]\\s*[A-C])?)\\s*$",
+      "title_next_line": true,
+      "id_prefix": "STAFF_REGS-Sch{head}",
+      "clause_template": "Schedule {head}: {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":"
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}
