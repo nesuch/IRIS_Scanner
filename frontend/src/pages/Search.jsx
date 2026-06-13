@@ -215,6 +215,7 @@ export default function Search({ module }) {
   const lastUserRef = useRef(null);
   const docFilterRef = useRef(null);
   const searchMainRef = useRef(null);
+  const inputAreaRef = useRef(null);
 
   // Lock the document to the viewport (fixed bottom bar; only results scroll).
   useEffect(() => {
@@ -258,6 +259,18 @@ export default function Search({ module }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [docFilterOpen]);
+
+  // Tapping anywhere outside the search bar (e.g. the sidebar toggle on mobile)
+  // dismisses the suggestions dropdown so it never overlays the sidebar.
+  useEffect(() => {
+    if (!suggestions.length) return undefined;
+    const onDown = (e) => {
+      if (inputAreaRef.current && !inputAreaRef.current.contains(e.target)) setSuggestions([]);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('touchstart', onDown); };
+  }, [suggestions.length]);
 
   const allDocs = docGroups.flatMap((g) => g.docs);
   const allSelected = allDocs.length > 0 && selected.size === allDocs.length;
@@ -422,7 +435,7 @@ export default function Search({ module }) {
         )}
       </div>
 
-      <div className="input-area">
+      <div className="input-area" ref={inputAreaRef}>
         {empty && !query && <div className="search-tip">Type a question — or <b>/</b> then a clause number (e.g. <b>/64</b>)</div>}
         <form className="input-inner" onSubmit={onSubmit} autoComplete="off">
           <div className="search-wrapper">
