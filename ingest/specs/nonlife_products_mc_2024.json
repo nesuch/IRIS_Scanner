@@ -9,6 +9,7 @@
   "scope_start": "^Ref:\\s*IRDAI/NL/MSTCIR/MISC/90/06",
   "default_section_prefix": "NONLIFE_PRODUCTS_MC",
   "title_case_titles": true,
+  "heading_on_own_line": true,
   "containers": [
     {"head_match": "^(Ref:\\s*IRDAI/NL/MSTCIR.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-PREAMBLE",
      "clause_template": "Preamble:", "include": true, "collect_body": true},
@@ -18,14 +19,31 @@
      "clause_template": "Background:", "include": true, "collect_body": true},
     {"head_match": "^(Scope and applicability)\\s*:?\\s*$", "id_prefix": "NONLIFE_PRODUCTS_MC-SCOPE",
      "clause_template": "Scope and Applicability:", "include": true, "collect_body": true},
-    {"head_match": "^Chapter\\s+([IVX]+)\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{head}",
+
+    {"head_match": "^Chapter\\s+(I)\\b\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{n}",
      "clause_template": "Chapter {head}: {title}:", "include": true, "collect_body": true},
-    {"head_match": "^([ABC])\\.\\s+([A-Z][A-Za-z &/-]{4,57})$", "id_prefix": "NONLIFE_PRODUCTS_MC-ChII-{head}",
+    {"head_match": "^Chapter\\s+(II)\\b\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{n}",
+     "clause_template": "Chapter {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Chapter\\s+(III)\\b\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{n}",
+     "clause_template": "Chapter {head}: {title}:", "include": true},
+    {"head_match": "^Chapter\\s+(IV)\\b\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{n}",
+     "clause_template": "Chapter {head}: {title}:", "include": true},
+    {"head_match": "^Chapter\\s+(V)\\b\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{n}",
+     "clause_template": "Chapter {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^Chapter\\s+(VI)\\b\\s*[:\\u2013-]\\s*(.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch{n}",
+     "clause_template": "Chapter {head}: {title}:", "include": true, "collect_body": true},
+
+    {"head_match": "^([ABC])\\.\\s+([A-Z][A-Za-z &/-]{4,57})$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch2-{head}",
      "clause_template": "{head}. {title}:", "include": true, "collect_body": true},
-    {"head_match": "^([IVX]+)\\.\\s+((?:Motor|Surety|Trade Credit).*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-ChV-{n}",
+
+    {"head_match": "^([IVX]+)\\.\\s+(Motor.*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch5-{n}",
+     "clause_template": "{head}. {title}:", "include": true},
+    {"head_match": "^([IVX]+)\\.\\s+((?:Surety|Trade Credit).*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch5-{n}",
      "clause_template": "{head}. {title}:", "include": true, "collect_body": true},
-    {"head_match": "^([IVX]+)\\.\\s+((?:Returns Submission|Repeal of the Guidelines).*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-ChVI-{n}",
+
+    {"head_match": "^([IVX]+)\\.\\s+((?:Returns Submission|Repeal of the Guidelines).*)$", "id_prefix": "NONLIFE_PRODUCTS_MC-Ch6-{n}",
      "clause_template": "{head}. {title}:", "include": true, "collect_body": true},
+
     {"head_match": "^Schedule\\s+([IVX]+)\\b\\s*(.*)$", "title_next_line": true, "id_prefix": "NONLIFE_PRODUCTS_MC-Schedule{head}",
      "clause_template": "Schedule {head}: {title}:", "include": true, "collect_body": true},
     {"head_match": "^Annexure\\s+([ABC])\\b\\s*(.*)$", "title_next_line": true, "id_prefix": "NONLIFE_PRODUCTS_MC-Annexure{head}",
