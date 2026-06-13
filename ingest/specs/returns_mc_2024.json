@@ -1,0 +1,49 @@
+{
+  "doc_id": "RETURNS_MC",
+  "sheet_name": "IRDAI Master Circular on Submission of Returns 2024",
+  "ignore_patterns": [
+    "^Master Circular on Submission of Returns\\s*$",
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "irdai\\.gov\\.in",
+    "^\\s*[•·]\\s*$",
+    "^\\s*inlai\\s*$",
+    "^\\s*ir\\.lai",
+    "Amrit Mahotsav",
+    "Ka Nilrliti",
+    "INSURANCE REGULATORY AND",
+    "DEVELOPMENT AUTHORITY OF INDIA",
+    "\\+91-40-20204000"
+  ],
+  "scope_start": "^Ref:\\s*IRDAI/NL/MSTCIR/RT/93",
+  "default_section_prefix": "RETURNS_MC",
+  "containers": [
+    {
+      "head_match": "^(Ref:\\s*IRDAI/NL/MSTCIR/RT.*)$",
+      "id_prefix": "RETURNS_MC-PREAMBLE",
+      "clause_template": "Preamble:",
+      "include": true,
+      "collect_body": true
+    },
+    {
+      "head_match": "^(Particulars of Returns to be submitted)\\s*$",
+      "id_prefix": "RETURNS_MC-PARTICULARS",
+      "clause_template": "Particulars of Returns to be submitted:",
+      "include": true,
+      "collect_body": true
+    },
+    {
+      "head_match": "^Part\\s*[–-]\\s*([IVX]+)\\s+[–-]\\s+(.*)$",
+      "id_prefix": "RETURNS_MC-Part{n}",
+      "clause_template": "Part {head} - {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":"
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}
