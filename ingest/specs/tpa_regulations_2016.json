@@ -1,0 +1,29 @@
+{
+  "doc_id": "TPA_REGS",
+  "sheet_name": "IRDAI (Third Party Administrators - Health Services) Regulations 2016",
+  "ignore_patterns": [
+    "^Page\\s*\\d+\\s*of\\s*\\d+",
+    "^\\[Amended upto",
+    "^\\(THIRD PARTY ADMINISTRATORS- HEALTH SERVICES\\) REGULATIONS",
+    "^INSURANCE REGULATORY AND DEVELOPMENT"
+  ],
+  "scope_start": "^1\\.\\s+Short title",
+  "default_section_prefix": "TPA_REGS",
+  "containers": [
+    {
+      "head_match": "^Schedule\\s*[–-]\\s*([IVX]+)\\b\\s*(.*)$",
+      "id_prefix": "TPA_REGS-Sch{head}",
+      "clause_template": "Schedule {head}: {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":",
+    "max_x0": 115
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}
