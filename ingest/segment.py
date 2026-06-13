@@ -149,6 +149,20 @@ def segment(blocks, spec):
     # (e.g. "1)" at x0~50) ignore deeper nested "6)" sub-items (x0~108) that share
     # the same marker shape. Unset => no indent gating (unchanged behaviour).
     sec_max_x0=(spec.get('section') or {}).get('max_x0')
+    # Form-aware sectioning: inside a form/schedule/certificate block the numbered
+    # lines are FIELDS ("1. Name:", "2. Address:"), not document sections. A
+    # 'form_starts' match enters form-mode (section splitting suspended -> fields
+    # fold into the open clause as body); a 'section_resume' match (or a container)
+    # exits it. Both unset => no form handling (unchanged behaviour).
+    def _compile_list(pats):
+        out=[]
+        for p in (pats or []):
+            try: out.append(re.compile(p))
+            except re.error: pass
+        return out
+    form_starts=_compile_list(spec.get('form_starts'))
+    form_resumes=_compile_list(spec.get('section_resume'))
+    in_form=False
     lines=[b for b in blocks]  # mixed
     _ss=spec.get('scope_start')
     i0=next((i for i,b in enumerate(blocks) if b['kind']=='line' and _ss and re.match(_ss,b['text'])),0) if _ss else 0
@@ -277,6 +291,7 @@ def segment(blocks, spec):
                 assigned.add(b['n']); k+=1; continue
         cm=next(((c,c['re'].match(t)) for c in conts if c['re'].match(t)),None)
         if cm:
+            in_form=False   # a real container always ends any open form block
             c,m=cm
             if pend: flush(pend); pend=None
             head=m.group(1)
@@ -369,7 +384,15 @@ def segment(blocks, spec):
             pend['items'].append({'x0':b['x0'],'text':t}); pend['ln'].append(b['n']); assigned.add(b['n']); k+=1; continue
         if is_footnote_line(t):
             add_excluded('footnote (amendment annotation)', [b['n']]); assigned.add(b['n']); k+=1; continue
+        # form-mode transitions: enter on a form/schedule header, exit when a real
+        # section resumes. While in_form, numbered lines are form fields (body).
+        if form_starts and any(rx.search(t) for rx in form_starts):
+            in_form=True
+        elif in_form and form_resumes and any(rx.match(t) for rx in form_resumes):
+            in_form=False
         mS=sre.match(t)
+        if mS and in_form:
+            mS=None   # numbered line inside a form is a field -> fold as body
         # indent gate: too far right to be a top-level section -> fold as body
         if mS and sec_max_x0 is not None and b.get('x0', 0) > sec_max_x0:
             mS=None

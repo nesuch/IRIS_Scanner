@@ -1,0 +1,51 @@
+{
+  "doc_id": "REINSURANCE_MC",
+  "sheet_name": "IRDAI Master Circular on Reinsurance 2024",
+  "ignore_patterns": [
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "irdai\\.gov\\.in",
+    "^\\s*[•·]\\s*$",
+    "^\\s*ialai\\s*$",
+    "^और\\s*/\\s*And\\s*$",
+    "Amrit Mahotsav",
+    "INSURANCE REGULATORY AND",
+    "DEVELOPMENT AUTHORITY OF INDIA",
+    "^Border Reinsurers \\(CBRs\\)\\s*$"
+  ],
+  "scope_start": "^1\\.\\s+As per Regulation 5\\(3\\)",
+  "default_section_prefix": "REINSURANCE_MC",
+  "containers": [
+    {
+      "head_match": "^(Collateral requirements for placement of reinsurance.*)$",
+      "id_prefix": "REINSURANCE_MC-CBR",
+      "clause_template": "Collateral Requirements for Cross-Border Reinsurers (CBRs):",
+      "include": true
+    }
+  ],
+  "form_starts": [
+    "(?i)^form\\b",
+    "(?i)^form\\s*[–-]",
+    "^Annex\\b",
+    "^Appendix\\b",
+    "Particulars of Key Management",
+    "^JOINT CERTIFICATE",
+    "CERTIFICATE OF REGISTRATION",
+    "^APPLICATION FOR ISSUE OF DUPLICATE",
+    "Certification for Compliance",
+    "Certificate for "
+  ],
+  "section_resume": [
+    "^CHAPTER\\b",
+    "^Chapter\\b",
+    "^\\d+\\.\\s+As per Regulation",
+    "^\\d+\\.\\s+(Corporate Governance|Appointment|Repatriation of Funds|Surrender|Amalgamation|Outsourcing|Opening of additional|Transition provisions|Filing of applications|Advance Reinsurance)"
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":",
+    "max_x0": 80
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}
