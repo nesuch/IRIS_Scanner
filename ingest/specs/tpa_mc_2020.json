@@ -1,0 +1,27 @@
+{
+  "doc_id": "TPA_MC",
+  "sheet_name": "IRDAI Master Circular for TPAs (Health Services) 2020",
+  "ignore_patterns": [
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "^MASTER CIRCULAR\\s*$",
+    "irdai\\.gov\\.in"
+  ],
+  "scope_start": "^1\\.\\s+OBJECTIVE",
+  "default_section_prefix": "TPA_MC",
+  "containers": [
+    {
+      "head_match": "^Annexure\\s*[–-]\\s*(\\d+)\\b\\s*(.*)$",
+      "id_prefix": "TPA_MC-Annex{n}",
+      "clause_template": "Annexure {n}: {title}:",
+      "include": true,
+      "collect_body": true
+    }
+  ],
+  "section": {
+    "match": "^(\\d+)\\.\\s",
+    "delimiter": ":"
+  },
+  "tag_rule": {
+    "max_len": 300
+  }
+}
