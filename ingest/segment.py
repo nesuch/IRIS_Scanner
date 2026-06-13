@@ -144,6 +144,11 @@ def segment(blocks, spec):
     # de-dup preserving order
     seen=set(); DELIMS=[d for d in DELIMS if not (d in seen or seen.add(d))]
     maxlen=(spec.get('tag_rule') or {}).get('max_len', 300)
+    # Optional indent gate: a numbered line only opens a NEW section if it starts
+    # at/left of this x0. Lets a doc whose top-level items sit near the margin
+    # (e.g. "1)" at x0~50) ignore deeper nested "6)" sub-items (x0~108) that share
+    # the same marker shape. Unset => no indent gating (unchanged behaviour).
+    sec_max_x0=(spec.get('section') or {}).get('max_x0')
     lines=[b for b in blocks]  # mixed
     _ss=spec.get('scope_start')
     i0=next((i for i,b in enumerate(blocks) if b['kind']=='line' and _ss and re.match(_ss,b['text'])),0) if _ss else 0
@@ -365,6 +370,9 @@ def segment(blocks, spec):
         if is_footnote_line(t):
             add_excluded('footnote (amendment annotation)', [b['n']]); assigned.add(b['n']); k+=1; continue
         mS=sre.match(t)
+        # indent gate: too far right to be a top-level section -> fold as body
+        if mS and sec_max_x0 is not None and b.get('x0', 0) > sec_max_x0:
+            mS=None
         if mS:
             num=mS.group(1) if mS.groups() else strip_marker(t).split('.')[0]
             # normalise the label used in the clause id: strip surrounding brackets,
