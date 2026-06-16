@@ -6,6 +6,7 @@ import FlagModal from '../components/FlagModal.jsx';
 import AccessGuideModal from '../components/AccessGuideModal.jsx';
 import ReportCharts from './data/ReportCharts.jsx';
 import { api } from '../api.js';
+import { copyText } from '../copy.js';
 import './data/data.css';
 
 // Quick-pick groups for the Insurer view. PUBLIC_KEYS lists the state-owned
@@ -271,9 +272,8 @@ function ReportTable({ report, onExport, onFlag }) {
     const keep = cols.filter((c) => c !== 'Source_File');
     const head = keep.map((c) => c.replace(/_/g, ' ')).join('\t');
     const body = rows.map((r) => keep.map((c) => r[c]).join('\t')).join('\n');
-    navigator.clipboard.writeText(head + '\n' + body)
-      .then(() => toast.success('Table copied! (Source filenames excluded)'))
-      .catch(() => toast.error('Copy failed'));
+    copyText(head + '\n' + body)
+      .then((ok) => (ok ? toast.success('Table copied! (Source filenames excluded)') : toast.error('Copy failed')));
   }
 
   const cell = (c, row) => (c === 'Source_File' ? row[c] : fmtCell(row[c]));
@@ -352,9 +352,8 @@ function StatementView({ data, onFlag }) {
       if (sec.name && sec.name !== 'General') lines.push(sec.name);
       sec.items.forEach((it) => lines.push([it.label, ...it.values.map((v) => (v == null ? '' : v))].join('\t')));
     });
-    navigator.clipboard.writeText(lines.join('\n'))
-      .then(() => toast.success('Statement copied!'))
-      .catch(() => toast.error('Copy failed'));
+    copyText(lines.join('\n'))
+      .then((ok) => (ok ? toast.success('Statement copied!') : toast.error('Copy failed')));
   }
 
   function exportStatement(ent) {

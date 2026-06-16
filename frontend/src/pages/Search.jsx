@@ -4,6 +4,7 @@ import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import ClauseEditorModal from '../components/ClauseEditor.jsx';
 import { api } from '../api.js';
+import { copyText } from '../copy.js';
 import { TYPE_STYLES, ClauseBody, groupByType } from './search/clauseRender.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
 import FlagModal from '../components/FlagModal.jsx';
@@ -104,8 +105,8 @@ function ClauseTags({ m }) {
 function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
   const copy = async (text) => {
-    try { await navigator.clipboard.writeText(text); toast.success('Clause text copied!'); }
-    catch { toast.error('Could not copy'); }
+    if (await copyText(text)) toast.success('Clause text copied!');
+    else toast.error('Could not copy');
   };
 
   // Lets users report a missing/incorrect "no results" outcome.
