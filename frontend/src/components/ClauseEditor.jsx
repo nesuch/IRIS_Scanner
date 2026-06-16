@@ -7,6 +7,8 @@ import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
 import { Spinner } from './UI.jsx';
 import { useToast } from './Toast.jsx';
 import { api } from '../api.js';
@@ -30,7 +32,70 @@ export const EXTENSIONS = [
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Table.configure({ resizable: true }),
   TableRow, HeaderWithVAlign, CellWithVAlign,
+  TextStyle, Color,
 ];
+
+// Text colours offered in the editor (label + value). "Default" clears the
+// inline colour so the text inherits the clause styling (fixes pasted teal text).
+export const TEXT_COLORS = [
+  { label: 'Default', value: null },
+  { label: 'Navy', value: '#1a237e' },
+  { label: 'Black', value: '#1e293b' },
+  { label: 'Teal', value: '#0d9488' },
+  { label: 'Red', value: '#dc2626' },
+  { label: 'Amber', value: '#b45309' },
+];
+
+// --- Format painter: capture the formatting at the caret/selection, then apply
+// it verbatim to another selection (like Word's format painter). ---
+export function captureFormat(editor) {
+  if (!editor) return null;
+  const align = ['left', 'center', 'right', 'justify'].find((a) => editor.isActive({ textAlign: a }));
+  return {
+    bold: editor.isActive('bold'),
+    italic: editor.isActive('italic'),
+    underline: editor.isActive('underline'),
+    color: editor.getAttributes('textStyle').color || null,
+    align: align || null,
+  };
+}
+export function applyFormat(editor, fmt) {
+  if (!editor || !fmt) return;
+  const c = editor.chain().focus();
+  fmt.bold ? c.setBold() : c.unsetBold();
+  fmt.italic ? c.setItalic() : c.unsetItalic();
+  fmt.underline ? c.setUnderline() : c.unsetUnderline();
+  fmt.color ? c.setColor(fmt.color) : c.unsetColor();
+  if (fmt.align) c.setTextAlign(fmt.align);
+  c.run();
+}
+
+// Compact text-colour picker (palette button + swatch popover) for the toolbars.
+export function ColorPicker({ editor }) {
+  const [open, setOpen] = useState(false);
+  const pick = (v) => {
+    const ch = editor.chain().focus();
+    (v ? ch.setColor(v) : ch.unsetColor()).run();
+    setOpen(false);
+  };
+  return (
+    <span className="ce-color">
+      <button type="button" className="ce-tool" title="Text colour"
+        onMouseDown={(e) => { e.preventDefault(); setOpen((o) => !o); }}><i className="fas fa-palette" /></button>
+      {open && (
+        <span className="ce-color-pop" onMouseLeave={() => setOpen(false)}>
+          {TEXT_COLORS.map((c) => (
+            <button type="button" key={c.label} className="ce-swatch" title={c.label}
+              style={{ background: c.value || '#fff' }}
+              onMouseDown={(e) => { e.preventDefault(); pick(c.value); }}>
+              {!c.value && <i className="fas fa-ban" />}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
 
 // Merge the table the cursor is in with the next table (only an empty
 // paragraph may sit between them). Rows are concatenated; shorter rows are
@@ -123,7 +188,9 @@ export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {
             <span className="ce-divide" />
             <B run={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} icon="fa-align-left" label="Align left" />
             <B run={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} icon="fa-align-center" label="Center" />
+            <B run={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} icon="fa-align-right" label="Align right" />
             <B run={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} icon="fa-align-justify" label="Justify" />
+            <ColorPicker editor={editor} />
             <span className="ce-divide" />
             <B run={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} icon="fa-list-ul" label="Bulleted list" />
             <B run={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} icon="fa-list-ol" label="Numbered list" />

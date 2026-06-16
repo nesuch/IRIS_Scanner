@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { DOMSerializer } from '@tiptap/pm/model';
-import { EXTENSIONS, cleanPastedHTML, joinTableBelow } from './ClauseEditor.jsx';
+import { EXTENSIONS, cleanPastedHTML, joinTableBelow, ColorPicker, captureFormat, applyFormat } from './ClauseEditor.jsx';
 
 // Split the current document at the caret into two HTML fragments.
 function splitAtCursor(editor) {
@@ -22,6 +22,7 @@ export default function StudioEditor({ value, onChange, apiRef }) {
     editorProps: { transformPastedHTML: cleanPastedHTML },
     onUpdate: ({ editor: ed }) => onChange?.(ed.getHTML()),
   });
+  const [painter, setPainter] = useState(null);   // captured format for the format-painter
 
   useEffect(() => {
     if (apiRef) apiRef.current = editor ? { split: () => splitAtCursor(editor) } : null;
@@ -43,7 +44,12 @@ export default function StudioEditor({ value, onChange, apiRef }) {
         <span className="ce-divide" />
         <B run={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} icon="fa-align-left" label="Align left" />
         <B run={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} icon="fa-align-center" label="Center" />
+        <B run={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} icon="fa-align-right" label="Align right" />
         <B run={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} icon="fa-align-justify" label="Justify" />
+        <span className="ce-divide" />
+        <ColorPicker editor={editor} />
+        <B run={() => { if (painter) { applyFormat(editor, painter); setPainter(null); } else { setPainter(captureFormat(editor)); } }}
+          active={!!painter} icon="fa-paintbrush" label={painter ? 'Select text, then click to apply copied format' : 'Copy formatting (then select target & click again)'} />
         <span className="ce-divide" />
         <B run={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} icon="fa-list-ul" label="Bulleted list" />
         <B run={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} icon="fa-list-ol" label="Numbered list" />

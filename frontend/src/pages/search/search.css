@@ -87,7 +87,7 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 /* Rich edited clause body (HTML) — same treatment as the PQ renderer */
 .clause-html { font-size: 14px; line-height: 1.55; color: var(--ink); }
 .clause-html p { margin: 0 0 9px; }
-.clause-html strong, .clause-html b { font-weight: 700; }
+.clause-html strong, .clause-html b { font-weight: 700; color: var(--navy-700, #1a237e); }
 .clause-html em, .clause-html i { font-style: italic; }
 .clause-html u { text-decoration: underline; }
 .clause-html ol, .clause-html ul { margin: 0 0 10px; padding-left: 24px; }

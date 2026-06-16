@@ -273,7 +273,10 @@ def _load_registry():
 def _doc_status(source):
     d = _load_registry() and _REGISTRY_CACHE["by_id"].get(source)
     if not d:
-        return {}
+        # Documents not in the registry (e.g. freshly imported via Studio) are
+        # treated as Active so the status badge still shows; no effective date
+        # is asserted since it isn't known.
+        return {"doc_status": "Active", "effective_date": None, "repealed_on": None}
     return {"doc_status": d.get("status", "Active"),
             "effective_date": d.get("effective_date"),
             "repealed_on": d.get("repealed_on")}

@@ -76,6 +76,7 @@ function ClauseTags({ m }) {
     try {
       const r = await api.post('/clause/retag', { id: m.id, source: m.source, tags: val });
       setTags(r.tags || []); setEditing(false); toast.success('Tags updated');
+      window.dispatchEvent(new CustomEvent('iris:tags-changed'));   // refresh autocomplete vocab
     } catch (e) { toast.error(e.message || 'Could not update'); }
     finally { setBusy(false); }
   }
@@ -243,6 +244,16 @@ export default function Search({ module }) {
       groups.forEach((g) => g.docs.forEach((s) => all.add(s)));
       setSelected(all);
     }).catch(() => { setDocGroups([]); setDocTags({}); setSelected(new Set()); });
+  }, [module]);
+
+  // After a clause is re-tagged in-app, refresh the tag vocabulary (preserving the
+  // current doc selection) so autocomplete reflects the edit without a page reload.
+  useEffect(() => {
+    const refresh = () => api.get(`/docs?module=${module}`)
+      .then((d) => { setDocGroups(d.groups || []); setDocTags(d.doc_tags || {}); })
+      .catch(() => {});
+    window.addEventListener('iris:tags-changed', refresh);
+    return () => window.removeEventListener('iris:tags-changed', refresh);
   }, [module]);
 
   // Autocomplete vocabulary = tags present only in the currently selected documents.

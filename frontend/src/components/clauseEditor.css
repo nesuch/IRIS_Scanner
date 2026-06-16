@@ -42,3 +42,11 @@
 .clause-admin-row .clause-edit-btn i { margin-right: 5px; }
 
 @media (max-width: 640px) { .ce-overlay { padding: 0; } .ce-modal { max-height: 100vh; height: 100vh; width: 100vw; border-radius: 0; } }
+
+/* Text-colour picker (palette button + swatch popover) */
+.ce-color { position: relative; display: inline-flex; }
+.ce-color-pop { position: absolute; top: 34px; left: 0; z-index: 50; display: grid; grid-template-columns: repeat(3, 24px); gap: 5px; padding: 7px; background: #fff; border: 1px solid var(--line-strong); border-radius: var(--r-sm); box-shadow: var(--sh-2); }
+.ce-swatch { width: 24px; height: 24px; border: 1px solid var(--line-strong); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: var(--muted); padding: 0; }
+.ce-swatch:hover { transform: scale(1.08); }
+/* WYSIWYG: bold renders navy in the editor too, matching the read view */
+.ce-content .ProseMirror strong, .ce-content .ProseMirror b { color: var(--navy-700, #1a237e); }

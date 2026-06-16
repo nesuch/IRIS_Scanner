@@ -34,6 +34,7 @@ export default function Studio() {
   const [dragKey, setDragKey] = useState(null);
   const [docRev, setDocRev] = useState(null);
   const [others, setOthers] = useState([]);
+  const [tagDraft, setTagDraft] = useState('');   // free-text tag editing (commits on blur)
   const editorApi = useRef(null);
   const splitRef = useRef(null);
   // Refs mirror state so the editor's (stale-closure) onChange always sees current values.
@@ -72,6 +73,14 @@ export default function Studio() {
 
   const idx = () => (clauses ? clauses.findIndex((c) => c.key === activeKey) : -1);
   const active = clauses ? clauses.find((c) => c.key === activeKey) : null;
+
+  // Tag field holds raw text while typing (so commas/spaces print); re-sync only
+  // when the clause switches or an undo/restore happens (rev), commit on blur.
+  useEffect(() => { setTagDraft(active ? active.tags.join(', ') : ''); }, [activeKey, rev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const commitTags = () => setField('tags', tagDraft.split(',').map((t) => t.trim()).filter(Boolean));
+
+  // Step between clauses with the action-bar arrows (instead of clicking the rail).
+  const goClause = (delta) => { const i = idx(); const n = i + delta; if (clauses && n >= 0 && n < clauses.length) setActiveKey(clauses[n].key); };
 
   function pushHist() {
     setHist((h) => [...h.slice(-49), JSON.stringify({ c: clausesRef.current, a: activeKeyRef.current })]);
@@ -271,6 +280,9 @@ export default function Studio() {
         <button className="danger" title="Delete clause" onClick={delClause}><i className="fas fa-trash" /> Delete</button>
         <span className="ab-div" />
         <button title="Version history" onClick={() => setHistoryOpen(true)} disabled={!active}><i className="fas fa-clock-rotate-left" /> History</button>
+        <span className="ab-div" />
+        <button title="Previous clause" onClick={() => goClause(-1)} disabled={idx() <= 0}><i className="fas fa-chevron-up" /></button>
+        <button title="Next clause" onClick={() => goClause(1)} disabled={!clauses || idx() < 0 || idx() >= clauses.length - 1}><i className="fas fa-chevron-down" /></button>
         <span className="ab-spacer" />
         <span className="ab-hint">Drag clauses to reorder</span>
       </div>
@@ -307,8 +319,8 @@ export default function Studio() {
                       </label>
                       <label>
                         <span className="studio-meta-lbl">Tags <span className="studio-meta-hint">(comma-separated)</span></span>
-                        <input className="input" value={active.tags.join(', ')}
-                          onChange={(e) => setField('tags', e.target.value.split(',').map((t) => t.trim()).filter(Boolean))} />
+                        <input className="input" value={tagDraft}
+                          onChange={(e) => setTagDraft(e.target.value)} onBlur={commitTags} />
                       </label>
                     </div>
                     <StudioEditor key={`${active.key}:${rev}`} value={active.html} onChange={onEdit} apiRef={editorApi} />
