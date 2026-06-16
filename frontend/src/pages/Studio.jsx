@@ -35,6 +35,7 @@ export default function Studio() {
   const [docRev, setDocRev] = useState(null);
   const [others, setOthers] = useState([]);
   const [tagDraft, setTagDraft] = useState('');   // free-text tag editing (commits on blur)
+  const [metaOpen, setMetaOpen] = useState(false); // document settings (name/type/department)
   const editorApi = useRef(null);
   const splitRef = useRef(null);
   // Refs mirror state so the editor's (stale-closure) onChange always sees current values.
@@ -258,6 +259,7 @@ export default function Studio() {
       <PageHeader fullForm="Regulatory Library" title="Document Studio" scope={doc.source}>
         <button className="btn btn-ghost btn-sm" onClick={closeDoc}><i className="fas fa-arrow-left" /> Documents</button>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowRail((s) => !s)}><i className={`fas ${showRail ? 'fa-list-ul' : 'fa-list'}`} /> {showRail ? 'Hide clauses' : 'Show clauses'}</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setMetaOpen(true)}><i className="fas fa-gear" /> Settings</button>
         {doc.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}</button>}
         <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>{saving ? <Spinner size={13} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save{dirty ? ' *' : ''}</button>
       </PageHeader>
@@ -340,7 +342,63 @@ export default function Studio() {
         </div>
       </div>
       {historyOpen && active && <HistoryModal source={doc.source} id={active.id} onRestore={applyRestore} onClose={() => setHistoryOpen(false)} />}
+      {metaOpen && (
+        <DocMetaModal doc={doc} onClose={() => setMetaOpen(false)}
+          onSaved={(m) => { setMetaOpen(false); setDoc((dd) => ({ ...dd, source: m.source, type: m.type, category: m.category })); reloadDocs(); }} />
+      )}
     </div>
+  );
+}
+
+const DOC_TYPES = ['ACT', 'REGULATION', 'MASTER', 'CIRCULAR', 'GUIDELINE'];
+const DOC_CATEGORIES = ['HEALTH', 'LIFE', 'NONLIFE', 'GENERAL'];
+
+// Edit a document's name, type-band and department — applies across all its clauses.
+function DocMetaModal({ doc, onClose, onSaved }) {
+  const toast = useToast();
+  const [name, setName] = useState(doc.source || '');
+  const [type, setType] = useState((doc.type || '').toUpperCase());
+  const [category, setCategory] = useState((doc.category || '').toUpperCase());
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const finalName = name.trim();
+    if (!finalName) { toast.error('Name cannot be empty'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post('/clause/doc-meta', { source: doc.source, new_source: finalName, doc_type: type, category });
+      toast.success('Document updated');
+      onSaved({ source: r.source || finalName, type, category });
+    } catch (e) { toast.error(e.message || 'Could not update'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title="Document settings" width="520px" onClose={onClose}
+      footer={<>
+        <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? <Spinner size={13} color="#fff" /> : 'Save settings'}</button>
+      </>}>
+      <p className="guide-intro">Rename the document or change its type-band / department. Changes apply across all {doc.clauses != null ? `${doc.clauses} ` : ''}clauses of this document.</p>
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label>Document name</label>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label>Type band</label>
+        <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
+          {!DOC_TYPES.includes(type) && <option value={type}>{type || '— select —'}</option>}
+          {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Department</label>
+        <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+          {!DOC_CATEGORIES.includes(category) && <option value={category}>{category || '— select —'}</option>}
+          {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c === 'NONLIFE' ? 'NON-LIFE' : c}</option>)}
+        </select>
+      </div>
+    </Modal>
   );
 }
 

@@ -474,6 +474,41 @@ def update_clause_tags(clause_id, source, tags):
         _rebuild_vocab(KB_CACHE_DF)
     return [t.strip() for t in tags.split(",") if t.strip()]
 
+def update_document_meta(source, new_source=None, doc_type=None, doc_category=None):
+    """Admin: rename a document and/or change its type-band / department across ALL
+    its clauses (and cascade the rename to related tables). Returns (ok, error)."""
+    source = str(source)
+    new_source = (new_source or "").strip() or None
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        if not conn.execute("SELECT 1 FROM regulatory_clauses WHERE source_doc=? LIMIT 1", (source,)).fetchone():
+            return False, "Document not found."
+        if new_source and new_source != source and conn.execute(
+                "SELECT 1 FROM regulatory_clauses WHERE source_doc=? LIMIT 1", (new_source,)).fetchone():
+            return False, f"A document named '{new_source}' already exists."
+        sets, params = [], []
+        if new_source and new_source != source:
+            sets.append("source_doc=?"); params.append(new_source)
+        if doc_type:
+            sets.append("doc_type=?"); params.append(doc_type)
+        if doc_category:
+            sets.append("doc_category=?"); params.append(doc_category)
+        if not sets:
+            return True, None
+        conn.execute(f"UPDATE regulatory_clauses SET {', '.join(sets)} WHERE source_doc=?", (*params, source))
+        if new_source and new_source != source:
+            for tbl in ("clause_versions", "document_assets", "editing_sessions"):
+                try:
+                    conn.execute(f"UPDATE {tbl} SET source_doc=? WHERE source_doc=?", (new_source, source))
+                except sqlite3.OperationalError:
+                    pass
+        conn.commit()
+    finally:
+        conn.close()
+    refresh_kb()
+    return True, None
+
+
 def get_autocomplete_data():
     vocab = {"CONCEPTS": []}
     concepts = set(ALL_UNIQUE_TAGS)

@@ -318,7 +318,30 @@ def api_documents():
             nodes[n["parent"]]["children"].append(n)
         else:
             roots.append(n)
-    return jsonify({"tree": roots, "repealed": repealed})
+    # KB documents not in the registry (e.g. imported via Studio) that have a
+    # downloadable PDF attached — surfaced so they appear in Downloads too.
+    imported = []
+    reg_ids = set(nodes.keys())
+    try:
+        kb = brain.load_knowledge_base()
+        meta = {}
+        if kb is not None and not kb.empty:
+            for src, g in kb.groupby("Source_Doc"):
+                meta[str(src)] = (str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
+                                  str(g["Doc_Category"].iloc[0]) if "Doc_Category" in g.columns else "")
+        for src, n in sorted(counts.items()):
+            src = str(src)
+            if src in reg_ids:
+                continue
+            url = _doc_pdf_url(src)
+            if not url:
+                continue
+            dt, dc = meta.get(src, ("", ""))
+            imported.append({"id": src, "title": src, "type": dt, "category": dc,
+                             "status": "Active", "clauses": int(n), "download_url": url, "children": []})
+    except Exception:
+        pass
+    return jsonify({"tree": roots, "repealed": repealed, "imported": imported})
 
 
 def _pq_snippet(body, limit=220):
@@ -718,6 +741,7 @@ def api_clause_docs():
         docs.append({
             "source": str(src),
             "type": str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
+            "category": str(g["Doc_Category"].iloc[0]) if "Doc_Category" in g.columns else "",
             "clauses": int(len(g)),
             "edited": edited,
             "pdf_url": _doc_pdf_url(str(src)),
@@ -725,6 +749,27 @@ def api_clause_docs():
         })
     docs.sort(key=lambda d: d["source"].lower())
     return jsonify({"docs": docs})
+
+
+@api_bp.post("/clause/doc-meta")
+def api_clause_doc_meta():
+    """Admin: rename a document and/or change its type-band / department."""
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
+    d = request.get_json(silent=True) or {}
+    source = (d.get("source") or "").strip()
+    new_source = (d.get("new_source") or "").strip()
+    doc_type = (d.get("doc_type") or "").strip().upper()
+    category = (d.get("category") or "").strip().upper()
+    if not source:
+        return jsonify({"ok": False, "message": "Missing document."}), 400
+    ok, err = brain.update_document_meta(source, new_source or None, doc_type or None, category or None)
+    if not ok:
+        return jsonify({"ok": False, "message": err}), 409
+    final = new_source or source
+    renamed = bool(new_source and new_source != source)
+    _audit(f"Edited document '{source}'" + (f" → '{final}'" if renamed else ""), "Document meta")
+    return jsonify({"ok": True, "source": final})
 
 
 @api_bp.get("/clause/specs")

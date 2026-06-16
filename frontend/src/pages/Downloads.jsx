@@ -56,7 +56,7 @@ export default function Downloads() {
 
   if (!data) return (<><PageHeader fullForm="Regulatory Library" title="Downloads" scope="Acts, Regulations & Circulars" /><div className="page-body"><PageLoading /></div></>);
 
-  const { tree = [], repealed = [] } = data;
+  const { tree = [], repealed = [], imported = [] } = data;
   return (
     <>
       <PageHeader fullForm="Regulatory Library" title="Downloads" scope="Acts, Regulations & Circulars" />
@@ -64,6 +64,13 @@ export default function Downloads() {
         <p className="dl-intro">The regulatory hierarchy — circulars operationalise the regulations they sit under, which in turn flow from the Acts. Download any document as PDF.</p>
         {tree.length === 0 ? <EmptyState icon="fa-folder-open">No documents available.</EmptyState>
           : <div className="doc-tree card pad">{tree.map((n) => <DocNode key={n.id} node={n} depth={0} />)}</div>}
+
+        {imported.length > 0 && (
+          <>
+            <h3 className="dl-section-head"><i className="fas fa-file-import" /> Imported documents</h3>
+            <div className="doc-tree card pad">{imported.map((n) => <DocNode key={n.id} node={n} depth={0} />)}</div>
+          </>
+        )}
 
         {repealed.length > 0 && (
           <>
