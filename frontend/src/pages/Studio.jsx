@@ -397,41 +397,45 @@ function DocMetaModal({ doc, onClose, onSaved }) {
         <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? <Spinner size={13} color="#fff" /> : 'Save settings'}</button>
       </>}>
       <p className="guide-intro">Applies across all {doc.clauses != null ? `${doc.clauses} ` : ''}clauses. Parent &amp; status drive the Downloads hierarchy and the Active/Repealed badge.</p>
-      <div className="field" style={{ marginBottom: 12 }}>
+      <div className="field" style={{ marginBottom: 14 }}>
         <label>Document name</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
-      <div className="studio-meta" style={{ marginBottom: 12 }}>
-        <label><span className="studio-meta-lbl">Type band</span>
+      <div className="dm-grid">
+        <div className="field">
+          <label>Type band</label>
           <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
             {!DOC_TYPES.includes(type) && <option value={type}>{type || '— select —'}</option>}
             {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-        </label>
-        <label><span className="studio-meta-lbl">Department</span>
+        </div>
+        <div className="field">
+          <label>Department</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
             {!DOC_CATEGORIES.includes(category) && <option value={category}>{category || '— select —'}</option>}
             {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c === 'NONLIFE' ? 'NON-LIFE' : c}</option>)}
           </select>
-        </label>
+        </div>
       </div>
-      <div className="field" style={{ marginBottom: 12 }}>
-        <label>Parent document <span className="studio-meta-hint">(for the Downloads hierarchy)</span></label>
+      <div className="field" style={{ marginBottom: 14 }}>
+        <label>Parent document <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(for the Downloads hierarchy)</span></label>
         <select className="input" value={parent} onChange={(e) => setParent(e.target.value)}>
           <option value="">— none (top level) —</option>
           {parents.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
         </select>
       </div>
-      <div className="studio-meta">
-        <label><span className="studio-meta-lbl">Status</span>
+      <div className="dm-grid">
+        <div className="field">
+          <label>Status</label>
           <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="Active">Active</option>
             <option value="Repealed">Repealed</option>
           </select>
-        </label>
-        <label><span className="studio-meta-lbl">Effective date <span className="studio-meta-hint">(as it should display)</span></span>
+        </div>
+        <div className="field">
+          <label>Effective date <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(as it should display)</span></label>
           <input className="input" value={effDate} onChange={(e) => setEffDate(e.target.value)} placeholder="e.g. 14 March 2016" />
-        </label>
+        </div>
       </div>
     </Modal>
   );

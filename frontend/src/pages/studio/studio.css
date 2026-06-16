@@ -86,3 +86,8 @@
   .studio-rail { width: 220px; flex-basis: 220px; }
   .studio-pdf, .studio-resizer { display: none; }
 }
+
+/* Document-settings modal: two equal, aligned field columns */
+.dm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.dm-grid .field label { white-space: nowrap; }
+@media (max-width: 560px) { .dm-grid { grid-template-columns: 1fr; } }
