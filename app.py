@@ -260,6 +260,11 @@ class DocumentAsset(db.Model):
     pdf_filename = db.Column(db.String(300), nullable=True)
     uploaded_by = db.Column(db.String(255), nullable=True)
     uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # Doc-level metadata for imported (non-registry) documents: where they sit in
+    # the Act->Regulation->Circular hierarchy, and their active/effective status.
+    parent_doc = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(16), nullable=True)        # Active | Repealed
+    effective_date = db.Column(db.String(40), nullable=True)
 
 
 class ClauseVersion(db.Model):
@@ -572,6 +577,11 @@ def _ensure_database_schema():
         },
         "pq_documents": {
             "departments": "TEXT",          # comma-separated codes: HEALTH,LIFE,NONLIFE
+        },
+        "document_assets": {
+            "parent_doc": "VARCHAR(255)",
+            "status": "VARCHAR(16)",
+            "effective_date": "VARCHAR(40)",
         },
         "regulatory_clauses": {
             "clause_html": "TEXT",          # rich edited body (HTML); null => render clause_text

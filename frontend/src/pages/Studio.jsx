@@ -353,50 +353,85 @@ export default function Studio() {
 const DOC_TYPES = ['ACT', 'REGULATION', 'MASTER', 'CIRCULAR', 'GUIDELINE'];
 const DOC_CATEGORIES = ['HEALTH', 'LIFE', 'NONLIFE', 'GENERAL'];
 
-// Edit a document's name, type-band and department — applies across all its clauses.
+// Edit a document's name, type-band, department, hierarchy (parent) and status —
+// applies across all its clauses; hierarchy/status drive the Downloads tree.
 function DocMetaModal({ doc, onClose, onSaved }) {
   const toast = useToast();
   const [name, setName] = useState(doc.source || '');
   const [type, setType] = useState((doc.type || '').toUpperCase());
   const [category, setCategory] = useState((doc.category || '').toUpperCase());
+  const [parent, setParent] = useState(doc.parent || '');
+  const [status, setStatus] = useState(doc.status || 'Active');
+  const [effDate, setEffDate] = useState(doc.effective_date || '');
+  const [parents, setParents] = useState([]);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get('/documents').then((data) => {
+      const out = [];
+      const walk = (ns) => (ns || []).forEach((n) => { out.push({ id: n.id, title: n.title }); walk(n.children); });
+      walk(data.tree); walk(data.repealed); walk(data.imported);
+      setParents(out.filter((o) => o.id !== doc.source));
+    }).catch(() => {});
+  }, [doc.source]);
 
   async function save() {
     const finalName = name.trim();
     if (!finalName) { toast.error('Name cannot be empty'); return; }
     setBusy(true);
     try {
-      const r = await api.post('/clause/doc-meta', { source: doc.source, new_source: finalName, doc_type: type, category });
+      const r = await api.post('/clause/doc-meta', {
+        source: doc.source, new_source: finalName, doc_type: type, category,
+        parent, status, effective_date: effDate,
+      });
       toast.success('Document updated');
-      onSaved({ source: r.source || finalName, type, category });
+      onSaved({ source: r.source || finalName, type, category, parent, status, effective_date: effDate });
     } catch (e) { toast.error(e.message || 'Could not update'); }
     finally { setBusy(false); }
   }
 
   return (
-    <Modal title="Document settings" width="520px" onClose={onClose}
+    <Modal title="Document settings" width="540px" onClose={onClose}
       footer={<>
         <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
         <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? <Spinner size={13} color="#fff" /> : 'Save settings'}</button>
       </>}>
-      <p className="guide-intro">Rename the document or change its type-band / department. Changes apply across all {doc.clauses != null ? `${doc.clauses} ` : ''}clauses of this document.</p>
+      <p className="guide-intro">Applies across all {doc.clauses != null ? `${doc.clauses} ` : ''}clauses. Parent &amp; status drive the Downloads hierarchy and the Active/Repealed badge.</p>
       <div className="field" style={{ marginBottom: 12 }}>
         <label>Document name</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
+      <div className="studio-meta" style={{ marginBottom: 12 }}>
+        <label><span className="studio-meta-lbl">Type band</span>
+          <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
+            {!DOC_TYPES.includes(type) && <option value={type}>{type || '— select —'}</option>}
+            {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </label>
+        <label><span className="studio-meta-lbl">Department</span>
+          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+            {!DOC_CATEGORIES.includes(category) && <option value={category}>{category || '— select —'}</option>}
+            {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c === 'NONLIFE' ? 'NON-LIFE' : c}</option>)}
+          </select>
+        </label>
+      </div>
       <div className="field" style={{ marginBottom: 12 }}>
-        <label>Type band</label>
-        <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
-          {!DOC_TYPES.includes(type) && <option value={type}>{type || '— select —'}</option>}
-          {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        <label>Parent document <span className="studio-meta-hint">(for the Downloads hierarchy)</span></label>
+        <select className="input" value={parent} onChange={(e) => setParent(e.target.value)}>
+          <option value="">— none (top level) —</option>
+          {parents.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
         </select>
       </div>
-      <div className="field">
-        <label>Department</label>
-        <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-          {!DOC_CATEGORIES.includes(category) && <option value={category}>{category || '— select —'}</option>}
-          {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c === 'NONLIFE' ? 'NON-LIFE' : c}</option>)}
-        </select>
+      <div className="studio-meta">
+        <label><span className="studio-meta-lbl">Status</span>
+          <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="Active">Active</option>
+            <option value="Repealed">Repealed</option>
+          </select>
+        </label>
+        <label><span className="studio-meta-lbl">Effective date <span className="studio-meta-hint">(as it should display)</span></span>
+          <input className="input" value={effDate} onChange={(e) => setEffDate(e.target.value)} placeholder="e.g. 14 March 2016" />
+        </label>
       </div>
     </Modal>
   );

@@ -273,10 +273,13 @@ def _load_registry():
 def _doc_status(source):
     d = _load_registry() and _REGISTRY_CACHE["by_id"].get(source)
     if not d:
-        # Documents not in the registry (e.g. freshly imported via Studio) are
-        # treated as Active so the status badge still shows; no effective date
-        # is asserted since it isn't known.
-        return {"doc_status": "Active", "effective_date": None, "repealed_on": None}
+        # Imported (non-registry) docs: use the status/effective date stored on
+        # their DocumentAsset (set via Studio settings); default to Active.
+        a = _app.DocumentAsset.query.filter_by(source_doc=str(source)).first()
+        st = (a.status if a and a.status else "Active")
+        ed = (a.effective_date if a else None)
+        return {"doc_status": st, "effective_date": ed,
+                "repealed_on": (ed if str(st).lower() == "repealed" else None)}
     return {"doc_status": d.get("status", "Active"),
             "effective_date": d.get("effective_date"),
             "repealed_on": d.get("repealed_on")}
@@ -310,37 +313,51 @@ def api_documents():
             "download_url": ("/static/" + pdf) if pdf else None,
             "children": [],
         }
-    roots, repealed = [], []
-    for n in nodes.values():
-        if n["status"].lower() == "repealed":
-            repealed.append(n)
-        elif n["parent"] and n["parent"] in nodes:
-            nodes[n["parent"]]["children"].append(n)
-        else:
-            roots.append(n)
-    # KB documents not in the registry (e.g. imported via Studio) that have a
-    # downloadable PDF attached — surfaced so they appear in Downloads too.
-    imported = []
+    # KB documents not in the registry (e.g. imported via Studio) with a
+    # downloadable PDF — add them as nodes too, carrying their stored hierarchy
+    # (parent_doc), status and effective date so they slot into the tree.
+    imported_ids = set()
     reg_ids = set(nodes.keys())
     try:
         kb = brain.load_knowledge_base()
         meta = {}
         if kb is not None and not kb.empty:
             for src, g in kb.groupby("Source_Doc"):
-                meta[str(src)] = (str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
+                meta[str(src)] = (str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "Document",
                                   str(g["Doc_Category"].iloc[0]) if "Doc_Category" in g.columns else "")
-        for src, n in sorted(counts.items()):
+        assets = {a.source_doc: a for a in _app.DocumentAsset.query.all()}
+        for src in sorted(counts):
             src = str(src)
             if src in reg_ids:
                 continue
             url = _doc_pdf_url(src)
             if not url:
                 continue
-            dt, dc = meta.get(src, ("", ""))
-            imported.append({"id": src, "title": src, "type": dt, "category": dc,
-                             "status": "Active", "clauses": int(n), "download_url": url, "children": []})
+            a = assets.get(src)
+            dt, dc = meta.get(src, ("Document", ""))
+            nodes[src] = {
+                "id": src, "title": src, "type": dt or "Document", "category": dc,
+                "parent": (a.parent_doc if a else None),
+                "status": (a.status if a and a.status else "Active"),
+                "effective_date": (a.effective_date if a else None), "repealed_on": None,
+                "repealed_by": None, "clauses": int(counts.get(src, 0)),
+                "download_url": url, "children": [],
+            }
+            imported_ids.add(src)
     except Exception:
         pass
+    # Link the unified set. Imported docs with a resolvable parent slot into the
+    # main hierarchy; those without go to a separate 'Imported' catch-all.
+    roots, repealed, imported = [], [], []
+    for n in nodes.values():
+        if str(n["status"]).lower() == "repealed":
+            repealed.append(n)
+        elif n["parent"] and n["parent"] in nodes:
+            nodes[n["parent"]]["children"].append(n)
+        elif n["id"] in imported_ids:
+            imported.append(n)
+        else:
+            roots.append(n)
     return jsonify({"tree": roots, "repealed": repealed, "imported": imported})
 
 
@@ -742,6 +759,9 @@ def api_clause_docs():
             "source": str(src),
             "type": str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
             "category": str(g["Doc_Category"].iloc[0]) if "Doc_Category" in g.columns else "",
+            "parent": (asset.parent_doc if asset else None),
+            "status": (asset.status if asset and asset.status else "Active"),
+            "effective_date": (asset.effective_date if asset else None),
             "clauses": int(len(g)),
             "edited": edited,
             "pdf_url": _doc_pdf_url(str(src)),
@@ -767,6 +787,22 @@ def api_clause_doc_meta():
     if not ok:
         return jsonify({"ok": False, "message": err}), 409
     final = new_source or source
+    # Persist doc-level hierarchy/status on the DocumentAsset (create if needed).
+    m = _app
+    asset = m.DocumentAsset.query.filter_by(source_doc=final).first()
+    has_meta = any(k in d for k in ("parent", "status", "effective_date"))
+    if not asset and has_meta:
+        asset = m.DocumentAsset(source_doc=final, uploaded_at=datetime.utcnow())
+        m.db.session.add(asset)
+    if asset:
+        if "parent" in d:
+            p = (d.get("parent") or "").strip()
+            asset.parent_doc = (p if p and p != final else None)
+        if "status" in d:
+            asset.status = ((d.get("status") or "").strip() or "Active")
+        if "effective_date" in d:
+            asset.effective_date = ((d.get("effective_date") or "").strip() or None)
+        m.db.session.commit()
     renamed = bool(new_source and new_source != source)
     _audit(f"Edited document '{source}'" + (f" → '{final}'" if renamed else ""), "Document meta")
     return jsonify({"ok": True, "source": final})

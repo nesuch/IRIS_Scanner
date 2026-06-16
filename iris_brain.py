@@ -527,9 +527,10 @@ def get_autocomplete_data():
 def filter_df_by_module(df, module) -> pd.DataFrame:
     if df is None: return pd.DataFrame()
     if df.empty: return df
-    if module == "health": return df[df["Doc_Category"] == "HEALTH"]
-    elif module == "life": return df[df["Doc_Category"] == "LIFE"]
-    elif module == "nonlife": return df[df["Doc_Category"] == "NONLIFE"]
+    # GENERAL (cross-cutting) documents surface in every department module.
+    if module == "health": return df[df["Doc_Category"].isin(["HEALTH", "GENERAL"])]
+    elif module == "life": return df[df["Doc_Category"].isin(["LIFE", "GENERAL"])]
+    elif module == "nonlife": return df[df["Doc_Category"].isin(["NONLIFE", "GENERAL"])]
     elif module == "data": return pd.DataFrame(columns=df.columns)
     else: return df
 
