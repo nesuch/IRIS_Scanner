@@ -145,7 +145,7 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .clause-line { white-space: pre-wrap; overflow-wrap: anywhere; }
 .clause-head strong { color: var(--navy-700, #1a237e); }
 /* Rich edited clause body (HTML) — same treatment as the PQ renderer */
-.clause-html { font-size: 14px; line-height: 1.55; color: var(--ink); }
+.clause-html { font-size: calc(14px * var(--clause-zoom, 1)); line-height: 1.55; color: var(--ink); }
 .clause-html p { margin: 0 0 9px; }
 /* Blank lines (empty paragraphs from pressing Enter on an empty line) keep a
    line of height so the gaps the editor shows also render. */
