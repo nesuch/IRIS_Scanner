@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, EmptyState, PageLoading } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -92,6 +92,10 @@ function DocPicker() {
 // ---------------------------------------------------------------------------
 function DocReader({ source, target }) {
   const toast = useToast();
+  const navigate = useNavigate();
+  // Show a "Back" affordance only when we actually arrived from somewhere in-app
+  // (e.g. the "Read in full" button on a search result) — not on a fresh deep link.
+  const cameFromApp = typeof window !== 'undefined' && window.history.length > 1;
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || !!user?.is_admin;
   const [data, setData] = useState(null);
@@ -195,8 +199,9 @@ function DocReader({ source, target }) {
 
   return (
     <div className="reader-shell">
-      <PageHeader fullForm="Regulatory Library" title="Reader" scope={source} scopeDot={false}>
-        <Link className="btn btn-ghost btn-sm" to="/read"><i className="fas fa-arrow-left" /> All documents</Link>
+      <PageHeader fullForm="Regulatory Library" title="Reader" scope={source} scopeDot={false} showZoom>
+        {cameFromApp && <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} title="Return to where you came from (e.g. your search results)"><i className="fas fa-arrow-left" /> Back</button>}
+        <Link className="btn btn-ghost btn-sm" to="/read"><i className="fas fa-folder-open" /> All documents</Link>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowToc((s) => !s)}><i className={`fas ${showToc ? 'fa-list-ul' : 'fa-list'}`} /> {showToc ? 'Hide index' : 'Index'}</button>
         {data.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Original PDF'}</button>}
       </PageHeader>

@@ -152,9 +152,28 @@ UNIFIED_DF = pd.DataFrame()
 def get_stem(word):
     word = word.lower()
     if USE_NLTK: return stemmer.stem(word)
-    if len(word) < 4: return word 
+    if len(word) < 4: return word
     if word.endswith("ing"): return word[:-3]
     return word
+
+def common_prefix(a, b):
+    """Longest common prefix of two strings."""
+    n = min(len(a), len(b)); i = 0
+    while i < n and a[i] == b[i]: i += 1
+    return a[:i]
+
+def search_root(word, stem=None):
+    """Prefix safe to use for `\\broot\\w*` matching/highlighting. Porter sometimes
+    restores letters so the stem is NOT a prefix of the word it came from
+    (pricing -> 'price', which then can't match 'pricing'). Fall back to the
+    common prefix of the word and its stem so the root always *is* a real prefix
+    of the typed word. No-op when the stem is already a prefix (the usual case)."""
+    w = str(word).lower()
+    s = stem if stem is not None else get_stem(w)
+    if s and w.startswith(s):
+        return s                       # normal case — stem is a clean prefix
+    cp = common_prefix(w, s or "")
+    return cp if len(cp) >= 3 else (s or w)
 
 def get_doc_type(filename):
     fname = filename.upper()
@@ -842,11 +861,14 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
     core_words = []
     for raw, clean in keyword_tuples:
         if clean not in STOPWORDS_STRONG:
-            # `clean` is already the stem — re-stemming it over-shortens (e.g.
-            # "revis" -> "revi"), which then falsely matches "review"/"revival".
-            if clean not in core_stems:
-                core_stems.append(clean)
-            search_stems.add(clean)
+            # Use a prefix that is genuinely a prefix of the typed word. Porter can
+            # restore letters so the stem ("price" from "pricing") won't match the
+            # word via `\broot\w*`; search_root collapses to the common prefix
+            # ("pric") only in that case, otherwise the stem is unchanged.
+            root = search_root(raw, clean)
+            if root not in core_stems:
+                core_stems.append(root)
+            search_stems.add(root)
             # Only genuine single typed words (skip synthesized multi-word tags).
             rw = str(raw).lower().strip()
             if rw and " " not in rw and rw not in core_words:

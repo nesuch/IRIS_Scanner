@@ -249,6 +249,8 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
     return <p className="iris-msg">{resp.note} {flagNoResult}</p>;
   }
 
+  const phraseGroups = groupByType(resp.phrase_matches || []);
+  const hasPhrase = (resp.phrase_matches || []).length > 0;
   const groups = groupByType(resp.matches || []);
   const hasMatches = (resp.matches || []).length > 0;
   const contentGroups = groupByType(resp.content_matches || []);
@@ -262,7 +264,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
 
   // Only worth offering expand/collapse-all when something is likely collapsible
   // (coarse char check; each card still decides for itself by measured height).
-  const hasCollapsible = [...(resp.matches || []), ...(resp.content_matches || [])]
+  const hasCollapsible = [...(resp.phrase_matches || []), ...(resp.matches || []), ...(resp.content_matches || [])]
     .some((m) => String(m.raw_text || '').length > TOOLBAR_MIN_CHARS);
 
   return (
@@ -273,9 +275,9 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
       {resp.kind === 'tags' && hasMatches && (
         <div className="iris-foundvia">Found via <strong>Tags</strong>: {(resp.keywords || []).join(', ')}</div>
       )}
-      {resp.note && !hasMatches && !hasContent && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
+      {resp.note && !hasPhrase && !hasMatches && !hasContent && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
 
-      {hasCollapsible && (hasMatches || hasContent) && (
+      {hasCollapsible && (hasPhrase || hasMatches || hasContent) && (
         <div className="results-tools">
           <span className="results-tools-hint">Long clauses are previewed —</span>
           <button className="results-tool-btn" onClick={() => expandAll(true)}><i className="fas fa-angles-down" /> Expand all</button>
@@ -283,6 +285,27 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
         </div>
       )}
 
+      {/* Top tier: clauses that literally contain the typed phrase. */}
+      {hasPhrase && (
+        <div className="phrase-tier">
+          <div className="phrase-tier-band">
+            <i className="fas fa-bullseye" /> Exact phrase “{resp.phrase || resp.query_label}” — {(resp.phrase_matches || []).length} clause{(resp.phrase_matches || []).length === 1 ? '' : 's'}
+          </div>
+          {phraseGroups.map((g, gi) => {
+            const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
+            return (
+              <div key={gi}>
+                <div className="type-band" style={{ background: st.bg, color: st.color, borderLeftColor: st.bar }}>{st.label}</div>
+                {g.items.map(card)}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {hasPhrase && hasMatches && (
+        <div className="phrase-tier-divider">Other concept / tag matches</div>
+      )}
       {groups.map((g, gi) => {
         const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
         return (
@@ -326,6 +349,19 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   );
 }
 
+// Persist each module's search conversation for the tab session so navigating
+// away (e.g. "Read in full" → Reader) and back doesn't wipe the results. Only
+// settled blocks (with a response or error) are kept — never a pending live one.
+const SESSION_KEY = (m) => `iris_search_session_${m}`;
+function loadSession(m) {
+  try { const r = sessionStorage.getItem(SESSION_KEY(m)); return r ? JSON.parse(r) : []; }
+  catch { return []; }
+}
+function saveSession(m, hist) {
+  try { sessionStorage.setItem(SESSION_KEY(m), JSON.stringify(hist.filter((x) => x.response || x.error))); }
+  catch { /* quota / disabled — non-fatal */ }
+}
+
 export default function Search({ module }) {
   const toast = useToast();
   // Custom (admin-created) departments aren't in MODULE_META — resolve their
@@ -343,7 +379,8 @@ export default function Search({ module }) {
     icon: 'fa-folder',
     scope: `Regulatory Framework (${deptLabel || module})`,
   };
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => loadSession(module));
+  const mountedModuleRef = useRef(module);   // distinguishes initial mount from a real module switch
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
@@ -373,15 +410,25 @@ export default function Search({ module }) {
     return () => document.documentElement.classList.remove('app-fixed');
   }, []);
 
-  // Reset chat when switching modules (matches per-page server history reset).
-  useEffect(() => { liveIdRef.current = null; prevLenRef.current = 0; setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
+  // On a real module switch, restore that module's saved session (not the same
+  // as the initial mount, where the lazy initializer already loaded it).
+  useEffect(() => {
+    if (mountedModuleRef.current === module) return;   // initial mount — keep restored session
+    mountedModuleRef.current = module;
+    liveIdRef.current = null; prevLenRef.current = 0;
+    setHistory(loadSession(module)); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null);
+  }, [module]);
+
+  // Persist the conversation so it survives navigation away (e.g. to the Reader)
+  // and back within the same browser tab.
+  useEffect(() => { saveSession(module, history); }, [history, module]);
 
   // Re-clicking the active module in the sidebar clears the conversation.
   useEffect(() => {
-    const onReclick = () => { liveIdRef.current = null; prevLenRef.current = 0; setHistory([]); setQuery(''); setSuggestions([]); setPdfPane(null); };
+    const onReclick = () => { liveIdRef.current = null; prevLenRef.current = 0; setHistory([]); saveSession(module, []); setQuery(''); setSuggestions([]); setPdfPane(null); };
     window.addEventListener('iris:reclick', onReclick);
     return () => window.removeEventListener('iris:reclick', onReclick);
-  }, []);
+  }, [module]);
 
   // Load the documents available to this module (with their tags) and select all by default.
   useEffect(() => {
@@ -613,7 +660,7 @@ export default function Search({ module }) {
 
   return (
     <div className="search-shell">
-      <PageHeader fullForm="IRDAI's Regulatory Intelligence System" title={meta.title} scope={`Scope: ${meta.scope}`} />
+      <PageHeader fullForm="IRDAI's Regulatory Intelligence System" title={meta.title} scope={`Scope: ${meta.scope}`} showZoom />
 
       <div className={`search-main ${dragging ? 'dragging' : ''}`} ref={searchMainRef}>
       <div className={`chat-window ${empty ? 'is-empty' : ''}`} ref={chatRef}>

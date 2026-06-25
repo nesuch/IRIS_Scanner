@@ -284,6 +284,17 @@ table.data tbody tr:hover { background: var(--paper); }
 /* Bold clause text uses the brand navy everywhere (the rule also lives in the
    code-split search.css, which isn't loaded on /read — hence black bold there). */
 .clause-html strong, .clause-html b, .clause-body .clause-head strong { font-weight: 700; color: var(--navy-700, #1a237e); }
+/* Clause text honours the shared zoom setting (ZoomControl). 1em base so zoom=1
+   leaves the inherited size unchanged — it only scales when the user zooms. */
+.clause-html, .clause-body { font-size: calc(1em * var(--clause-zoom, 1)); }
+
+/* Shared A-/percentage/A+ text-size control. */
+.zoom-ctl { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; background: #fff; }
+.zoom-ctl .zoom-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; border: none; background: #fff; color: var(--navy-700, #1a237e); cursor: pointer; font-size: 12px; transition: 0.15s; }
+.zoom-ctl .zoom-btn:hover:not(:disabled) { background: rgba(26,35,126,0.07); }
+.zoom-ctl .zoom-btn:disabled { color: var(--faint); cursor: default; }
+.zoom-ctl .zoom-pct { min-width: 42px; height: 26px; border: none; border-left: 1px solid var(--line); border-right: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; font-variant-numeric: tabular-nums; }
+.zoom-ctl .zoom-pct:hover { color: var(--navy-700, #1a237e); }
 /* Clause table cell borders + header styling, global so tables look like tables
    on /read too (the rule also lives in code-split search.css, not loaded there —
    without this, reader tables render as borderless floating text). */

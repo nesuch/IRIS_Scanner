@@ -1342,7 +1342,10 @@ def _highlight_phrases(tuples):
     phrases, seen = [], set()
     for (raw, _clean) in tuples:
         words = [w for w in re.findall(r"[A-Za-z0-9%]+", str(raw)) if len(w) >= 2]
-        stems = [s for s in (brain.get_stem(w.lower()) for w in words) if s]
+        # search_root, not the bare stem: Porter can restore letters so the stem
+        # isn't a prefix of the word ("pricing" -> "price"), and the client matches
+        # by `root[a-z]*` — so "price" would fail to highlight "pricing".
+        stems = [s for s in (brain.search_root(w.lower()) for w in words) if s]
         key = " ".join(stems)
         if stems and key not in seen:
             seen.add(key)
@@ -1435,15 +1438,41 @@ def api_search():
         except Exception:
             content_matches = []
 
+    # Verbatim-phrase promotion: when the user types a multi-word phrase that
+    # appears literally in a clause (e.g. "premium rate"), that clause should rank
+    # FIRST — above concept/tag matches — instead of being buried in the text tier.
+    # Pull such clauses out of both tiers into a dedicated top "exact phrase" tier,
+    # ordered by regulatory hierarchy (Act > Regulation > Circular).
+    phrase_matches = []
+    phrase_l = re.sub(r"\s+", " ", (query or "").strip().lower())
+    if " " in phrase_l:
+        def _has_phrase(m):
+            return phrase_l in str(m.get("raw_text", "")).lower()
+        tag_keep, content_keep = [], []
+        for m in tag_matches:
+            (phrase_matches if _has_phrase(m) else tag_keep).append(m)
+        for m in content_matches:
+            (phrase_matches if _has_phrase(m) else content_keep).append(m)
+        tag_matches, content_matches = tag_keep, content_keep
+        # Order the exact-phrase tier by document authority (the Act/Regulation
+        # that *defines* a term should outrank a Circular that merely mentions it),
+        # then by the existing hierarchy. Otherwise sort_matches falls back to
+        # alphabetical source and buries e.g. "Product Regulations" under circulars.
+        _TYPE_RANK = {"ACT": 0, "REGULATION": 1, "MASTER": 2, "GUIDELINE": 3, "CIRCULAR": 4}
+        phrase_matches.sort(key=lambda m: (
+            _TYPE_RANK.get(str(m.get("type", "")).upper(), 9),
+            m.get("priority", 99), m.get("source", ""), m.get("id", "")))
+
     # Record the query for admin usage visibility (best-effort, non-blocking).
     try:
         email = _app.current_user.email if _app.current_user.is_authenticated else None
-        _app._record_search(email, module, query, len(tag_matches) + len(content_matches))
+        _app._record_search(email, module, query,
+                            len(phrase_matches) + len(tag_matches) + len(content_matches))
     except Exception:
         pass
 
     note = None
-    if not tag_matches and not content_matches:
+    if not phrase_matches and not tag_matches and not content_matches:
         if module == "life":
             note = "Life Department: No documents currently loaded."
         elif module == "nonlife":
@@ -1458,6 +1487,8 @@ def api_search():
         "query_label": query,
         "keywords": display_kws,
         "highlight": _highlight_phrases(kw_tuples),
+        "phrase": phrase_l if " " in phrase_l else None,
+        "phrase_matches": [_match_payload(m) for m in phrase_matches],
         "matches": [_match_payload(m) for m in tag_matches],
         "content_matches": [_match_payload(m) for m in content_matches],
         "chips": _build_chips(kw_tuples, query),
