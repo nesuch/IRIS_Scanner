@@ -1,0 +1,35 @@
+# Controls what `gcloud run deploy --source` uploads to Cloud Build. Without this,
+# gcloud would upload the whole directory — including ~1.4GB of iris_backup_*.db
+# snapshots, the venv, and node_modules. Keep the upload to just the build inputs.
+
+.git/
+.gitignore
+.gitattributes
+.claude/
+.vscode/
+
+# Python envs / caches
+venv/
+venv310/
+**/__pycache__/
+*.pyc
+
+# Node / frontend deps (only the committed frontend/dist is needed)
+**/node_modules/
+
+# Databases: upload ONLY iris.db (baked as the first-deploy seed). Never the
+# iris_backup_*.db snapshots, the pre-migration db, or WAL/SHM sidecars.
+*.db
+!iris.db
+*.db-wal
+*.db-shm
+
+# Obsolete handbook/POC seed files — superseded by the curated iris.db, kept
+# locally for reference only (never ingested; see SYNC_SKIP_FILES).
+seed_archive/
+
+# OS / editor junk
+**/.DS_Store
+*.bak
+*.orig
+*.log

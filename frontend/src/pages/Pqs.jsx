@@ -303,9 +303,14 @@ export default function Pqs() {
             {isEditor && <EditMeta pq={active}
               onSaved={(title, tags, departments, date) => { setActive({ ...active, title, tags, departments, date }); loadTags(); }} />}
             {isAdmin && <button className="btn btn-ghost btn-sm danger" onClick={() => del(active.id)}><i className="fas fa-trash" /> Delete</button>}
-            {active.download_url && (
-              <a className="btn btn-primary btn-sm" href={active.download_url} target="_blank" rel="noreferrer"><i className="fas fa-file-word" /> Download original (.docx)</a>
-            )}
+            {active.download_url && (() => {
+              const isPdf = /\.pdf$/i.test(active.filename || '');
+              return (
+                <a className="btn btn-primary btn-sm" href={active.download_url} target="_blank" rel="noreferrer">
+                  <i className={`fas ${isPdf ? 'fa-file-pdf' : 'fa-file-word'}`} /> Download original
+                </a>
+              );
+            })()}
           </div>
         </div>
         <div className="pq-read-scroll">
@@ -486,7 +491,7 @@ function UploadModal({ onClose, onDone }) {
   const [dup, setDup] = useState(null);   // existing PQ flagged as a likely duplicate
 
   async function submit(force = false) {
-    if (!file) { toast.error('Choose a .docx file'); return; }
+    if (!file) { toast.error('Choose a .docx or .pdf file'); return; }
     setBusy(true);
     try {
       const fd = new FormData();
@@ -524,10 +529,10 @@ function UploadModal({ onClose, onDone }) {
           </div>
         </div>
       )}
-      <p className="guide-intro">Upload the approved reply as a Word file. IRIS renders it on screen (formatting + tables preserved), keeps the original for download, and makes it searchable here.</p>
+      <p className="guide-intro">Upload the approved reply as a Word (.docx) or PDF file. IRIS renders it on screen, keeps the original for download, and makes it searchable here. Word preserves formatting and tables best; PDF is fully supported but its text-only rendering won’t carry bold/table styling.</p>
       <div className="field" style={{ marginBottom: 14 }}>
-        <label>Word document (.docx)</label>
-        <input className="input" type="file" accept=".docx" onChange={(e) => { setFile(e.target.files?.[0] || null); setDup(null); }} />
+        <label>Reply document (.docx or .pdf)</label>
+        <input className="input" type="file" accept=".docx,.pdf" onChange={(e) => { setFile(e.target.files?.[0] || null); setDup(null); }} />
       </div>
       <div className="field" style={{ marginBottom: 14 }}>
         <label>Date <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(optional — auto-detected from the file if left blank)</span></label>
@@ -560,7 +565,7 @@ function BulkUploadModal({ onClose, onDone }) {
   const [busy, setBusy] = useState(false);
 
   async function startUpload() {
-    if (!files.length) { toast.error('Choose .docx files'); return; }
+    if (!files.length) { toast.error('Choose .docx or .pdf files'); return; }
     setPhase('uploading');
     try {
       const fd = new FormData();
@@ -569,7 +574,7 @@ function BulkUploadModal({ onClose, onDone }) {
       const c = r.created || [];
       const dupes = r.duplicates || [];
       if (!c.length) {
-        toast.error(dupes.length ? `All ${dupes.length} already exist in IRIS — nothing uploaded.` : 'No valid .docx files');
+        toast.error(dupes.length ? `All ${dupes.length} already exist in IRIS — nothing uploaded.` : 'No valid .docx or .pdf files');
         setPhase('select'); return;
       }
       setCreated(c); setIdx(0); setTitle(c[0].title || ''); setDate(c[0].date || ''); setTags(''); setDepts([]);
@@ -629,10 +634,10 @@ function BulkUploadModal({ onClose, onDone }) {
           {phase === 'uploading' ? <Spinner size={14} color="#fff" /> : <i className="fas fa-upload" />} Upload{files.length ? ` ${files.length}` : ''}
         </button>
       </>}>
-      <p className="guide-intro">Select several approved replies (.docx). IRIS uploads them all, then walks you through each to confirm the title and add tags.</p>
+      <p className="guide-intro">Select several approved replies (.docx or .pdf). IRIS uploads them all, then walks you through each to confirm the title and add tags.</p>
       <div className="field">
-        <label>Word documents (.docx)</label>
-        <input className="input" type="file" accept=".docx" multiple onChange={(e) => setFiles(e.target.files)} />
+        <label>Reply documents (.docx or .pdf)</label>
+        <input className="input" type="file" accept=".docx,.pdf" multiple onChange={(e) => setFiles(e.target.files)} />
       </div>
       {files.length > 0 && <div className="pq-bulk-list">{[...files].map((f, i) => <div key={i} className="pq-bulk-file"><i className="fas fa-file-word" /> {f.name}</div>)}</div>}
     </Modal>

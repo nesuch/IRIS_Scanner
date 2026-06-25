@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import ClauseEditorModal from '../components/ClauseEditor.jsx';
 import { api } from '../api.js';
-import { copyText } from '../copy.js';
-import { TYPE_STYLES, ClauseBody, groupByType } from './search/clauseRender.jsx';
+import { copyText, copyRich } from '../copy.js';
+import { wrapClauseTables, inlineTableStyles, extractTableForCopy } from '../clauseHtml.js';
+import { TYPE_STYLES, ClauseBody, groupByType, highlightHtml } from './search/clauseRender.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
 import FlagModal from '../components/FlagModal.jsx';
 import './search/search.css';
@@ -39,14 +41,21 @@ function fmtClauseDate(d) {
 // so an edit shows immediately without re-running the search.
 function ClauseContent({ m, keywords }) {
   const { user } = useAuth();
+  const toast = useToast();
   const isAdmin = user?.role === 'admin' || !!user?.is_admin;
   const isEditor = isAdmin || user?.role === 'editor';
   const [html, setHtml] = useState(m.html || '');
   const [editing, setEditing] = useState(false);
+  async function onClauseAreaClick(e) {
+    const t = extractTableForCopy(e.target);
+    if (!t) return;
+    const ok = await copyRich(t.html, t.text);
+    toast[ok ? 'success' : 'error'](ok ? 'Table copied!' : 'Could not copy table');
+  }
   return (
     <>
       {html
-        ? <div className="clause-html" dangerouslySetInnerHTML={{ __html: html }} />
+        ? <div className="clause-html" onClick={onClauseAreaClick} dangerouslySetInnerHTML={{ __html: wrapClauseTables(highlightHtml(html, keywords)) }} />
         : <ClauseBody text={m.raw_text} keywords={keywords} />}
       {isEditor && (
         <div className="clause-admin-row">
@@ -102,10 +111,121 @@ function ClauseTags({ m }) {
   );
 }
 
+// Rough pre-filter for whether to show the Expand-all/Collapse-all toolbar.
+// Real collapsibility is decided per-card by measuring actual rendered height
+// (below); this only governs the toolbar's visibility, so a coarse char check
+// is fine.
+const TOOLBAR_MIN_CHARS = 1400;
+
+// One result card. The real, fully-formatted clause is rendered inside a
+// height-clamped box (~20 lines) with a fade-out; if it actually overflows that
+// height we offer Expand. Short clauses don't overflow, so they show whole with
+// no control. A global expand/collapse-all signal (globalSeq bumps each click)
+// overrides per-card state.
+function ClauseCard({ m, keywords, copy, onOpenPane, onFlag, globalExpand, globalSeq }) {
+  const st = TYPE_STYLES[m.type] || TYPE_STYLES.UNKNOWN;
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const cardRef = useRef(null);
+  const clampRef = useRef(null);
+
+  // Measure whether the clamped clause is taller than the clamp. Only meaningful
+  // while collapsed (when expanded the clamp is lifted); once we've seen it
+  // overflow, the collapse controls stay available. Re-checks on resize and when
+  // the stored HTML (tables/images) finishes laying out.
+  useEffect(() => {
+    if (expanded) return undefined;
+    const el = clampRef.current;
+    if (!el) return undefined;
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 4);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [expanded, m.id, m.html]);
+
+  useEffect(() => {
+    if (globalExpand !== null) setExpanded(globalExpand);
+  }, [globalSeq]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const collapse = () => {
+    setExpanded(false);
+    // Bring the card's top back into view so collapsing from deep inside a long
+    // clause doesn't leave you staring at blank space.
+    requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: 'nearest' }));
+  };
+
+  return (
+    <div className="clause-card" ref={cardRef}>
+      <div className="clause-title" style={{ color: st.color }}>
+        <i className="fas fa-file-lines" style={{ color: st.bar }} />
+        <span className="clause-source-name">{m.source}</span>
+        {m.doc_status && (() => {
+          const rep = m.doc_status.toLowerCase() === 'repealed';
+          return (
+            <span className={`clause-status ${rep ? 'cs-repealed' : 'cs-active'}`}>
+              <i className={`fas ${rep ? 'fa-ban' : 'fa-circle-check'}`} />
+              {rep
+                ? `Repealed${m.repealed_on ? ` ${fmtClauseDate(m.repealed_on)}` : ''}`
+                : `Active${m.effective_date ? ` · from ${fmtClauseDate(m.effective_date)}` : ''}`}
+            </span>
+          );
+        })()}
+      </div>
+      <div className="clause-meta">
+        <span className="clause-header">{m.header}</span>
+        <span className="sep">|</span>
+        <span className="clause-id">Clause: {m.id}</span>
+        <span className="clause-actions">
+          <Link className="pane-btn" title="Read this clause in the full document" to={`/read?source=${encodeURIComponent(m.source)}&c=${encodeURIComponent(m.id)}`}><i className="fas fa-book-open" /> Read in full</Link>
+          {m.pdf_url && (
+            <button className="pane-btn" title="Open PDF in side pane" onClick={() => onOpenPane(m)}><i className="fas fa-table-columns" /> Pane</button>
+          )}
+          {m.pdf_url && (
+            <a className="pdf-btn" href={m.pdf_url} target="_blank" rel="noreferrer"><i className="fas fa-file-pdf" /> PDF</a>
+          )}
+          <button className="copy-btn" title="Copy clause" onClick={() => copy(m.html, m.raw_text)}><i className="far fa-copy" /></button>
+          <button className="flag-btn" title="Flag this clause" onClick={() => onFlag(m)}><i className="fas fa-flag" /></button>
+        </span>
+      </div>
+      <div className={`clause-clamp ${expanded ? 'open' : ''} ${!expanded && overflowing ? 'has-more' : ''}`} ref={clampRef}>
+        {expanded && overflowing && (
+          // Floating, sticky collapse control — reachable from anywhere inside a
+          // long expanded clause without scrolling to the top or bottom.
+          <div className="clause-collapse-sticky">
+            <button className="clause-collapse-orb" onClick={collapse} title="Collapse this clause" aria-label="Collapse this clause">
+              <i className="fas fa-chevron-up" />
+            </button>
+          </div>
+        )}
+        <ClauseContent m={m} keywords={keywords} />
+      </div>
+      {!expanded && overflowing && (
+        <button className="clause-expand-btn" onClick={() => setExpanded(true)}>
+          <i className="fas fa-chevron-down" /> Expand clause
+        </button>
+      )}
+      {expanded && overflowing && (
+        <button className="clause-expand-btn collapse" onClick={collapse}>
+          <i className="fas fa-chevron-up" /> Collapse
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
-  const copy = async (text) => {
-    if (await copyText(text)) toast.success('Clause text copied!');
+  // Global expand/collapse-all: allState is the target (true/false) or null
+  // (untouched — cards keep their size-based default); allSeq forces cards to
+  // re-apply it even if the same button is clicked twice.
+  const [allState, setAllState] = useState(null);
+  const [allSeq, setAllSeq] = useState(0);
+  const expandAll = (v) => { setAllState(v); setAllSeq((s) => s + 1); };
+  const copy = async (html, text) => {
+    // Copy rich HTML when available so tables/bold paste into Word/Docs.
+    const ok = html ? await copyRich(inlineTableStyles(html), text) : await copyText(text);
+    if (ok) toast.success('Clause copied!');
     else toast.error('Could not copy');
   };
 
@@ -131,6 +251,19 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
 
   const groups = groupByType(resp.matches || []);
   const hasMatches = (resp.matches || []).length > 0;
+  const contentGroups = groupByType(resp.content_matches || []);
+  const hasContent = (resp.content_matches || []).length > 0;
+
+  const card = (m, mi) => (
+    <ClauseCard key={`${m.id}-${mi}`} m={m} keywords={resp.highlight || []}
+      copy={copy} onOpenPane={onOpenPane} onFlag={onFlag}
+      globalExpand={allState} globalSeq={allSeq} />
+  );
+
+  // Only worth offering expand/collapse-all when something is likely collapsible
+  // (coarse char check; each card still decides for itself by measured height).
+  const hasCollapsible = [...(resp.matches || []), ...(resp.content_matches || [])]
+    .some((m) => String(m.raw_text || '').length > TOOLBAR_MIN_CHARS);
 
   return (
     <div>
@@ -140,49 +273,44 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
       {resp.kind === 'tags' && hasMatches && (
         <div className="iris-foundvia">Found via <strong>Tags</strong>: {(resp.keywords || []).join(', ')}</div>
       )}
-      {resp.note && !hasMatches && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
+      {resp.note && !hasMatches && !hasContent && <p className="iris-msg">{resp.note} {flagNoResult}</p>}
+
+      {hasCollapsible && (hasMatches || hasContent) && (
+        <div className="results-tools">
+          <span className="results-tools-hint">Long clauses are previewed —</span>
+          <button className="results-tool-btn" onClick={() => expandAll(true)}><i className="fas fa-angles-down" /> Expand all</button>
+          <button className="results-tool-btn" onClick={() => expandAll(false)}><i className="fas fa-angles-up" /> Collapse all</button>
+        </div>
+      )}
 
       {groups.map((g, gi) => {
         const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
         return (
           <div key={gi}>
             <div className="type-band" style={{ background: st.bg, color: st.color, borderLeftColor: st.bar }}>{st.label}</div>
-            {g.items.map((m, mi) => (
-              <div className="clause-card" key={mi}>
-                <div className="clause-meta">
-                  <span className="clause-source">{m.source}</span>
-                  <span className="sep">|</span>
-                  <span className="clause-header">{m.header}</span>
-                  <span className="sep">|</span>
-                  <span className="clause-id">Clause: {m.id}</span>
-                  {m.doc_status && (() => {
-                    const rep = m.doc_status.toLowerCase() === 'repealed';
-                    return (
-                      <span className={`clause-status ${rep ? 'cs-repealed' : 'cs-active'}`}>
-                        <i className={`fas ${rep ? 'fa-ban' : 'fa-circle-check'}`} />
-                        {rep
-                          ? `Repealed${m.repealed_on ? ` ${fmtClauseDate(m.repealed_on)}` : ''}`
-                          : `Active${m.effective_date ? ` · from ${fmtClauseDate(m.effective_date)}` : ''}`}
-                      </span>
-                    );
-                  })()}
-                  <span className="clause-actions">
-                    {m.pdf_url && (
-                      <button className="pane-btn" title="Open PDF in side pane" onClick={() => onOpenPane(m)}><i className="fas fa-table-columns" /> Pane</button>
-                    )}
-                    {m.pdf_url && (
-                      <a className="pdf-btn" href={m.pdf_url} target="_blank" rel="noreferrer"><i className="fas fa-file-pdf" /> PDF</a>
-                    )}
-                    <button className="copy-btn" title="Copy clause" onClick={() => copy(m.raw_text)}><i className="far fa-copy" /></button>
-                    <button className="flag-btn" title="Flag this clause" onClick={() => onFlag(m)}><i className="fas fa-flag" /></button>
-                  </span>
-                </div>
-                <ClauseContent m={m} keywords={resp.highlight || []} />
-              </div>
-            ))}
+            {g.items.map(card)}
           </div>
         );
       })}
+
+      {/* Windows-style content tier: matched in the clause text, no manual deep scan. */}
+      {hasContent && (
+        <div className="content-tier">
+          <div className="content-tier-band">
+            <i className="fas fa-align-left" /> Also found in the text of {(resp.content_matches || []).length} clause{(resp.content_matches || []).length === 1 ? '' : 's'}
+            {hasMatches && <span className="content-tier-sub"> (beyond the tagged matches above)</span>}
+          </div>
+          {contentGroups.map((g, gi) => {
+            const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
+            return (
+              <div key={gi}>
+                <div className="type-band" style={{ background: st.bg, color: st.color, borderLeftColor: st.bar }}>{st.label}</div>
+                {g.items.map(card)}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {(resp.chips || []).length > 0 && (
         <div className="deep-chips">
@@ -199,14 +327,30 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
 }
 
 export default function Search({ module }) {
-  const meta = MODULE_META[module] || MODULE_META.universal;
   const toast = useToast();
+  // Custom (admin-created) departments aren't in MODULE_META — resolve their
+  // friendly label from the departments registry for the page title/scope.
+  const [deptLabel, setDeptLabel] = useState('');
+  useEffect(() => {
+    if (MODULE_META[module]) { setDeptLabel(''); return; }
+    api.get('/departments').then((d) => {
+      const found = (d.departments || []).find((x) => x.key.toLowerCase() === module);
+      setDeptLabel(found ? found.label : '');
+    }).catch(() => {});
+  }, [module]);
+  const meta = MODULE_META[module] || {
+    title: `${deptLabel || module} Department`,
+    icon: 'fa-folder',
+    scope: `Regulatory Framework (${deptLabel || module})`,
+  };
   const [history, setHistory] = useState([]);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [activeSugg, setActiveSugg] = useState(-1);   // keyboard-highlighted suggestion
   const [docGroups, setDocGroups] = useState([]);
   const [docTags, setDocTags] = useState({});
+  const [tagClauses, setTagClauses] = useState({}); // normalised tag -> [{id, source}]
   const [selected, setSelected] = useState(() => new Set());
   const [docFilterOpen, setDocFilterOpen] = useState(false);
   const [pdfPane, setPdfPane] = useState(null); // { url, source }
@@ -218,6 +362,10 @@ export default function Search({ module }) {
   const docFilterRef = useRef(null);
   const searchMainRef = useRef(null);
   const inputAreaRef = useRef(null);
+  const suggBoxRef = useRef(null);
+  const liveIdRef = useRef(null);     // id of the current live (as-you-type) result block, or null
+  const liveSeqRef = useRef(0);       // guards against out-of-order live responses
+  const prevLenRef = useRef(0);       // history length, to scroll only on NEW blocks
 
   // Lock the document to the viewport (fixed bottom bar; only results scroll).
   useEffect(() => {
@@ -226,11 +374,11 @@ export default function Search({ module }) {
   }, []);
 
   // Reset chat when switching modules (matches per-page server history reset).
-  useEffect(() => { setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
+  useEffect(() => { liveIdRef.current = null; prevLenRef.current = 0; setHistory([]); setQuery(''); setSuggestions([]); setDocFilterOpen(false); setPdfPane(null); }, [module]);
 
   // Re-clicking the active module in the sidebar clears the conversation.
   useEffect(() => {
-    const onReclick = () => { setHistory([]); setQuery(''); setSuggestions([]); setPdfPane(null); };
+    const onReclick = () => { liveIdRef.current = null; prevLenRef.current = 0; setHistory([]); setQuery(''); setSuggestions([]); setPdfPane(null); };
     window.addEventListener('iris:reclick', onReclick);
     return () => window.removeEventListener('iris:reclick', onReclick);
   }, []);
@@ -241,17 +389,18 @@ export default function Search({ module }) {
       const groups = d.groups || [];
       setDocGroups(groups);
       setDocTags(d.doc_tags || {});
+      setTagClauses(d.tag_clauses || {});
       const all = new Set();
       groups.forEach((g) => g.docs.forEach((s) => all.add(s)));
       setSelected(all);
-    }).catch(() => { setDocGroups([]); setDocTags({}); setSelected(new Set()); });
+    }).catch(() => { setDocGroups([]); setDocTags({}); setTagClauses({}); setSelected(new Set()); });
   }, [module]);
 
   // After a clause is re-tagged in-app, refresh the tag vocabulary (preserving the
   // current doc selection) so autocomplete reflects the edit without a page reload.
   useEffect(() => {
     const refresh = () => api.get(`/docs?module=${module}`)
-      .then((d) => { setDocGroups(d.groups || []); setDocTags(d.doc_tags || {}); })
+      .then((d) => { setDocGroups(d.groups || []); setDocTags(d.doc_tags || {}); setTagClauses(d.tag_clauses || {}); })
       .catch(() => {});
     window.addEventListener('iris:tags-changed', refresh);
     return () => window.removeEventListener('iris:tags-changed', refresh);
@@ -313,29 +462,46 @@ export default function Search({ module }) {
   }
 
   useEffect(() => {
-    // Scroll so the latest question sits near the top (jumpToLatestQuestionStart).
-    if (lastUserRef.current && chatRef.current) {
+    // Scroll so the latest question sits near the top — only when a NEW block is
+    // added, not on every in-place live-result update (that would jump on each key).
+    if (history.length > prevLenRef.current && lastUserRef.current && chatRef.current) {
       const top = lastUserRef.current.offsetTop - 16;
       chatRef.current.scrollTop = Math.max(top, 0);
     }
+    prevLenRef.current = history.length;
   }, [history]);
 
-  async function runSearch(q, displayLabel) {
-    if (!q.trim() || busy) return;
-    const entry = { id: Math.random().toString(36).slice(2), query: displayLabel ?? q, response: null };
-    setHistory((h) => [...h, entry]);
-    setBusy(true);
+  // live=true: as-you-type — replace the current live block in place (no chat
+  // spam) and apply only the newest response. live=false: a committed search
+  // (Enter / suggestion / deep-scan chip) appended as a normal block.
+  async function runSearch(q, displayLabel, { live = false } = {}) {
+    if (!q.trim()) return;
+    if (!live && busy) return;
+    let entryId;
+    if (live && liveIdRef.current) {
+      entryId = liveIdRef.current;
+      setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, query: displayLabel ?? q, response: null, error: null } : x)));
+    } else {
+      entryId = Math.random().toString(36).slice(2);
+      setHistory((h) => [...h, { id: entryId, query: displayLabel ?? q, response: null }]);
+      if (live) liveIdRef.current = entryId;
+      else liveIdRef.current = null;   // a committed search ends any live session
+    }
+    const seq = live ? (liveSeqRef.current += 1) : null;
+    if (!live) setBusy(true);
     try {
       const body = { module, query: q };
       const total = docGroups.reduce((n, g) => n + g.docs.length, 0);
       if (docGroups.length && selected.size < total) body.sources = [...selected]; // subset only; all => omit
       const resp = await api.post('/search', body);
-      setHistory((h) => h.map((x) => (x.id === entry.id ? { ...x, response: resp } : x)));
+      if (live && seq !== liveSeqRef.current) return;   // a newer keystroke superseded this
+      setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, response: resp } : x)));
     } catch (err) {
-      setHistory((h) => h.map((x) => (x.id === entry.id ? { ...x, error: err.message } : x)));
-      toast.error(err.message || 'Search failed');
+      if (live && seq !== liveSeqRef.current) return;
+      setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, error: err.message } : x)));
+      if (!live) toast.error(err.message || 'Search failed');
     } finally {
-      setBusy(false);
+      if (!live) setBusy(false);
     }
   }
 
@@ -344,9 +510,26 @@ export default function Search({ module }) {
     const q = query.trim();
     if (!q) return;
     setSuggestions([]);
+    // Live results are already on screen — Enter just commits the block & clears.
+    if (liveIdRef.current) { liveIdRef.current = null; setQuery(''); return; }
     setQuery('');
     runSearch(q);
   }
+
+  // As-you-type live search: debounced, replacing one live block in place (no
+  // chat spam). Skips clause-number mode, the data module, and very short queries.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3 || q.startsWith('/') || module === 'data') {
+      if (liveIdRef.current) {   // query cleared/too short — drop the pending live block
+        const id = liveIdRef.current; liveIdRef.current = null;
+        setHistory((h) => h.filter((x) => x.id !== id));
+      }
+      return undefined;
+    }
+    const t = setTimeout(() => { runSearch(q, undefined, { live: true }); }, 350);
+    return () => clearTimeout(t);
+  }, [query, module, selected]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function onChip(payload) {
     runSearch('__DEEP_SCAN__:' + payload, 'Deep Scan');
@@ -355,17 +538,21 @@ export default function Search({ module }) {
   function onInput(e) {
     const val = e.target.value;
     setQuery(val);
+    setActiveSugg(-1);
     // Clause-number mode: "/" then a number (e.g. /64VB, /4 (1) (i)).
     if (val.trimStart().startsWith('/')) {
       const key = val.replace(/[^a-z0-9]/gi, '');
       if (key.length < 1) { setSuggestions([]); return; }
-      const params = new URLSearchParams({ q: val.trim() });
+      const params = new URLSearchParams({ q: val.trim(), module });
       if (allDocs.length && selected.size < allDocs.length) [...selected].forEach((s) => params.append('source', s));
       api.get(`/clause-suggest?${params.toString()}`)
         .then((d) => setSuggestions((d.suggestions || []).map((s) => ({ ...s, clause: true }))))
         .catch(() => setSuggestions([]));
       return;
     }
+    // Once the query is long enough for the live as-you-type results to show
+    // (>=3 chars), hand off to them — don't pop the tag dropdown over the results.
+    if (val.trim().length >= 3) { setSuggestions([]); return; }
     const words = val.toLowerCase().split(/[\s,]+/);
     const lastWord = words[words.length - 1];
     if (lastWord.length < 2) { setSuggestions([]); return; }
@@ -382,6 +569,7 @@ export default function Search({ module }) {
     // the query and searches immediately (no separate "press search" step).
     if (value && typeof value === 'object' && value.clause) {
       setSuggestions([]);
+      setActiveSugg(-1);
       setQuery('');
       runSearch(`/${value.id}`, value.id);
       return;
@@ -390,13 +578,36 @@ export default function Search({ module }) {
     const lastSpace = val.lastIndexOf(' ');
     const next = (lastSpace === -1 ? value : val.substring(0, lastSpace + 1) + value).trim();
     setSuggestions([]);
-    setQuery('');
-    runSearch(next);
+    setActiveSugg(-1);
+    setQuery(next);   // live debounce searches the completed term; Enter commits it
   }
 
   function onKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(e); }
+    const open = suggestions.length > 0;
+    if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      setActiveSugg((i) => {
+        const n = suggestions.length;
+        // Hard stop at the top and bottom (no wrap-around).
+        if (e.key === 'ArrowDown') return Math.min(i + 1, n - 1);
+        return i < 0 ? 0 : Math.max(i - 1, 0);
+      });
+      return;
+    }
+    if (e.key === 'Escape' && open) { e.preventDefault(); setSuggestions([]); setActiveSugg(-1); return; }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (open && activeSugg >= 0 && activeSugg < suggestions.length) { selectSuggestion(suggestions[activeSugg]); return; }
+      onSubmit(e);
+    }
   }
+
+  // Keep the keyboard-highlighted suggestion scrolled into view in a long list.
+  useEffect(() => {
+    if (activeSugg < 0 || !suggBoxRef.current) return;
+    const el = suggBoxRef.current.children[activeSugg];
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [activeSugg]);
 
   const empty = history.length === 0;
 
@@ -497,18 +708,26 @@ export default function Search({ module }) {
               )}
             </div>
             {suggestions.length > 0 && (
-              <div className="suggestions-box">
+              <div className="suggestions-box" ref={suggBoxRef}>
                 {suggestions.map((s, i) => (
                   s && typeof s === 'object' && s.clause ? (
-                    <div className="suggestion-item clause-sugg" key={i} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
+                    <div className={`suggestion-item clause-sugg ${activeSugg === i ? 'is-active' : ''}`} key={i} onMouseEnter={() => setActiveSugg(i)} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
                       <span className="clause-sugg-main"><span className="clause-id">{s.id}</span> <span className="clause-snip">{s.snippet}</span></span>
                       <span className="badge badge-navy">{s.source}</span>
                     </div>
-                  ) : (
-                    <div className="suggestion-item" key={i} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
-                      <span>{s}</span><span className="badge badge-concept">Concept</span>
-                    </div>
-                  )
+                  ) : (() => {
+                    const hits = (tagClauses[String(s).toLowerCase()] || []).filter((c) => selected.has(c.source));
+                    return (
+                      <div className={`suggestion-item ${activeSugg === i ? 'is-active' : ''}`} key={i} onMouseEnter={() => setActiveSugg(i)} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
+                        <span>{s}</span>
+                        {hits.length === 1
+                          ? <span className="badge badge-concept">{hits[0].id}</span>
+                          : hits.length > 1
+                            ? <span className="badge badge-concept">{hits.length} clauses</span>
+                            : null}
+                      </div>
+                    );
+                  })()
                 ))}
               </div>
             )}

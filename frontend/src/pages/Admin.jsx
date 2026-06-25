@@ -167,6 +167,93 @@ function AnnouncementForm({ onPosted }) {
   );
 }
 
+const ICON_PRESETS = ['fa-folder', 'fa-user-tie', 'fa-users', 'fa-briefcase', 'fa-scale-balanced', 'fa-building-columns', 'fa-coins', 'fa-chart-pie', 'fa-file-shield', 'fa-handshake', 'fa-gears', 'fa-id-card'];
+
+// Manage Knowledge Base departments (each becomes a sidebar module + search scope).
+function DepartmentsManager() {
+  const toast = useToast();
+  const [depts, setDepts] = useState([]);
+  const [key, setKey] = useState('');
+  const [label, setLabel] = useState('');
+  const [icon, setIcon] = useState('fa-folder');
+  const [general, setGeneral] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { api.get('/departments').then((d) => setDepts(d.departments || [])).catch(() => {}); }, []);
+
+  const reset = () => { setEditing(null); setKey(''); setLabel(''); setIcon('fa-folder'); setGeneral(false); };
+
+  async function save(action, payload) {
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/departments', { action, ...payload });
+      setDepts(r.departments || []);
+      window.dispatchEvent(new CustomEvent('iris:departments-changed'));
+      return true;
+    } catch (e) { toast.error(e.message || 'Could not save'); return false; }
+    finally { setBusy(false); }
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!key.trim() || !label.trim()) { toast.error('Code and name are required'); return; }
+    const ok = await save(editing ? 'edit' : 'add', { key: key.trim(), label: label.trim(), icon: icon.trim(), general });
+    if (ok) { toast.success(editing ? 'Department updated' : `Added “${label.trim()}”`); reset(); }
+  }
+
+  async function remove(d) {
+    if (!window.confirm(`Remove the “${d.label}” department?\n\nIts documents keep their category but won't have a sidebar module until reassigned.`)) return;
+    if (await save('delete', { key: d.key })) toast.success('Department removed');
+  }
+
+  return (
+    <>
+      <p className="admin-help">Each department is a Knowledge Base module (own sidebar entry + search page) scoped to its documents plus the cross-cutting GENERAL ones. Assign documents to a department in Document Studio → Settings.</p>
+      <div className="dept-list">
+        {depts.map((d) => (
+          <div key={d.key} className={`dept-row ${editing === d.key ? 'is-editing' : ''}`}>
+            <span className="dept-ic"><i className={`fas ${d.icon || 'fa-folder'}`} /></span>
+            <span className="dept-name">{d.label}</span>
+            <span className="dept-code">{d.key}</span>
+            {d.general && <span className="dept-flag" title="Also shows cross-cutting GENERAL documents">+ GENERAL</span>}
+            <span className="dept-acts">
+              <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditing(d.key); setKey(d.key); setLabel(d.label); setIcon(d.icon || 'fa-folder'); setGeneral(!!d.general); }}><i className="fas fa-pen" /></button>
+              <button className="btn btn-ghost btn-sm danger" title="Remove" onClick={() => remove(d)}><i className="fas fa-trash" /></button>
+            </span>
+          </div>
+        ))}
+      </div>
+      <form onSubmit={submit} style={{ marginTop: 16 }}>
+        <div className="admin-form-grid">
+          <div className="field"><label>Code {editing && <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(fixed)</span>}</label>
+            <input className="input" value={key} disabled={!!editing} onChange={(e) => setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="e.g. HR" />
+          </div>
+          <div className="field"><label>Name</label><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Human Resources" /></div>
+        </div>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>Icon</label>
+          <div className="icon-picker">
+            {ICON_PRESETS.map((i) => (
+              <button type="button" key={i} className={`icon-opt ${icon === i ? 'is-active' : ''}`} title={i} onClick={() => setIcon(i)}><i className={`fas ${i}`} /></button>
+            ))}
+            <input className="input icon-text" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="or type a Font Awesome name e.g. fa-user-tie" />
+          </div>
+        </div>
+        <label className="dept-check">
+          <input type="checkbox" checked={general} onChange={(e) => setGeneral(e.target.checked)} />
+          <span>Also show cross-cutting <strong>GENERAL</strong> documents in this module <span style={{ color: 'var(--faint)' }}>(on for insurance lines; off for support departments like HR)</span></span>
+        </label>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button className="btn btn-primary" type="submit" disabled={busy}><i className={`fas ${editing ? 'fa-check' : 'fa-plus'}`} /> {editing ? 'Save changes' : 'Add department'}</button>
+          {editing && <button type="button" className="btn btn-ghost" onClick={reset}>Cancel</button>}
+        </div>
+        <p className="admin-help" style={{ marginTop: 10 }}>The code is the document category stored on clauses (letters/numbers only). It can’t be changed after creation — name and icon can.</p>
+      </form>
+    </>
+  );
+}
+
 export default function Admin() {
   const toast = useToast();
   const { user } = useAuth();
@@ -324,6 +411,10 @@ export default function Admin() {
               </tbody>
             </table>
           </div></div>
+        </Section>
+
+        <Section icon="fa-sitemap" title="Departments">
+          <DepartmentsManager />
         </Section>
 
         <Section icon="fa-magnifying-glass" title="Recent Search Queries"

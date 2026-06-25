@@ -16,9 +16,18 @@ if [ ! -f "$DB" ]; then
     echo "[entrypoint] Restored DB from GCS replica."
   else
     echo "[entrypoint] No replica found — seeding from image baseline."
-    cp /app/seed/iris.db "$DB"
+    cp /app/iris.db "$DB"
   fi
 fi
+
+# Version-gated swap of the handbook-sourced financial tables from the baked seed
+# into the live DB. financial_metrics (+ derived dim/flag tables) are purely
+# handbook data, so replacing just those tables brings the reconciliation to
+# production WITHOUT touching operational tables (users/flags/departments/clauses).
+# Runs BEFORE replicate so the change lands in a fresh GCS generation; idempotent.
+echo "[entrypoint] Applying financial-data migration (if needed)..."
+python /app/migrate_financial.py --live "$DB" --seed /app/iris.db || \
+  echo "[entrypoint] financial migration skipped/failed (continuing)"
 
 echo "[entrypoint] Starting gunicorn under Litestream replication..."
 exec litestream replicate -exec \

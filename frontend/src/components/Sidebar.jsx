@@ -1,18 +1,27 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { api } from '../api.js';
 
 const STORE_KEY = 'iris.sidebar.collapsed';
 
-const SECTIONS = [
+// Department modules are admin-managed, so the Knowledge Base section is built
+// at render time from the fetched list (with sensible defaults as a fallback).
+const DEFAULT_DEPTS = [
+  { key: 'HEALTH', label: 'Health', icon: 'fa-heart-pulse' },
+  { key: 'LIFE', label: 'Life', icon: 'fa-umbrella' },
+  { key: 'NONLIFE', label: 'Non-Life', icon: 'fa-shield-halved' },
+];
+
+function buildSections(depts) {
+  return [
   {
     label: 'Knowledge Base',
     items: [
       { to: '/', icon: 'fa-magnifying-glass', text: 'Universal Search', end: true },
-      { to: '/health', icon: 'fa-heart-pulse', text: 'Health Dept' },
-      { to: '/life', icon: 'fa-umbrella', text: 'Life Dept' },
-      { to: '/nonlife', icon: 'fa-shield-halved', text: 'Non-Life Dept' },
+      ...depts.map((d) => ({ to: `/dept/${d.key.toLowerCase()}`, icon: d.icon || 'fa-folder', text: `${d.label} Dept` })),
       { to: '/pqs', icon: 'fa-landmark', text: 'Parliamentary Q&A' },
+      { to: '/read', icon: 'fa-book-open', text: 'Read Documents' },
     ],
   },
   {
@@ -33,13 +42,24 @@ const SECTIONS = [
       { to: '/feedback', icon: 'fa-comment-dots', text: 'Feedback' },
     ],
   },
-];
+  ];
+}
 
 export default function Sidebar({ open, onNavigate }) {
   const { user } = useAuth();
   const location = useLocation();
   const isAdmin = user?.role === 'admin' || user?.is_admin;
   const isEditor = isAdmin || user?.role === 'editor';
+  const [depts, setDepts] = useState(DEFAULT_DEPTS);
+  useEffect(() => {
+    const load = () => api.get('/departments')
+      .then((d) => { if (d.departments?.length) setDepts(d.departments); })
+      .catch(() => {});
+    load();
+    window.addEventListener('iris:departments-changed', load);
+    return () => window.removeEventListener('iris:departments-changed', load);
+  }, []);
+  const SECTIONS = buildSections(depts);
   // Clicking the module you're already in resets that page (clears the chat).
   const handleNav = (to) => {
     if (location.pathname === to) {

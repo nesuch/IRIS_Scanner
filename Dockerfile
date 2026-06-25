@@ -23,12 +23,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # App code + built SPA + content sources (see .dockerignore for exclusions)
 COPY . .
 
-# Bake the current DB as the first-deploy seed (content + schema). Used only when
-# no GCS replica exists yet; thereafter the replica is authoritative. Checkpoint
-# so the seed reflects a consistent state even if a WAL was present.
-RUN mkdir -p /app/seed /data \
- && cp iris.db /app/seed/iris.db \
- && python -c "import sqlite3; c=sqlite3.connect('/app/seed/iris.db'); c.execute('PRAGMA wal_checkpoint(TRUNCATE)'); c.close()" || true
+# The committed iris.db (already at /app/iris.db from COPY .) IS the first-deploy
+# seed — used only when no GCS replica exists yet; thereafter the replica is
+# authoritative. Checkpoint it in place so the seed is consistent. We deliberately
+# do NOT copy it to a second path (that doubled the ~120MB DB in the image).
+RUN mkdir -p /data \
+ && python -c "import sqlite3; c=sqlite3.connect('/app/iris.db'); c.execute('PRAGMA wal_checkpoint(TRUNCATE)'); c.close()" || true
 
 COPY litestream.yml /etc/litestream.yml
 RUN chmod +x /app/docker-entrypoint.sh

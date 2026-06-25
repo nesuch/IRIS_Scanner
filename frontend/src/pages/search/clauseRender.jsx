@@ -1,4 +1,30 @@
-import { Fragment } from 'react';
+import { Fragment, useRef } from 'react';
+import { useToast } from '../../components/Toast.jsx';
+import { copyRich } from '../../copy.js';
+import { inlineTableStyles } from '../../clauseHtml.js';
+
+// A markdown-rendered table plus a "Copy table" button (matches the HTML clause
+// path). Copies the rendered table as Word-ready HTML so it pastes with gridlines.
+function CopyableTable({ children }) {
+  const ref = useRef(null);
+  const toast = useToast();
+  const copy = async () => {
+    const table = ref.current && ref.current.querySelector('table');
+    if (!table) return;
+    const ok = await copyRich(inlineTableStyles(table.outerHTML), table.innerText);
+    toast[ok ? 'success' : 'error'](ok ? 'Table copied!' : 'Could not copy table');
+  };
+  return (
+    <div className="clause-table-wrap" ref={ref}>
+      <div className="clause-table-bar">
+        <button type="button" className="clause-table-copy" title="Copy just this table" onClick={copy}>
+          <i className="fas fa-copy" /> Copy table
+        </button>
+      </div>
+      <div className="clause-table-scroll">{children}</div>
+    </div>
+  );
+}
 
 // Doc-type styles — ports app.py TYPE_STYLES, remapped onto the blue brand
 // palette (distinct by hue/lightness, all on-brand). ACT keeps a warm-gold law
@@ -14,20 +40,43 @@ export const TYPE_STYLES = {
   UNKNOWN:    { label: 'DOCUMENT',        color: '#475569', bg: 'rgba(148,163,184,0.14)', bar: '#94a3b8' }, // slate
 };
 
-// Build a case-insensitive matcher for keywords + simple suffix variants,
-// mirroring highlight_keywords() in app.py.
-function buildHighlightRegex(keywords) {
-  if (!keywords || !keywords.length) return null;
-  const expanded = new Set();
-  for (let k of keywords) {
-    k = String(k).toLowerCase();
-    if (k.length < 3) continue;
-    expanded.add(k); expanded.add(k + 's'); expanded.add(k + 'ed'); expanded.add(k + 'ing');
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// One word's pattern. Pure word stems prefix-match the whole family — Porter
+// turns a trailing 'y' into 'i' (policy->polici), so drop it to recover the
+// common prefix ("polic" covers policy/policies). Digit/symbol tokens ("10%")
+// match literally.
+function wordPattern(w) {
+  const t = String(w).toLowerCase().trim();
+  if (t.length < 1) return null;
+  if (/^[a-z]+$/.test(t)) {
+    const root = (t.length >= 4 && t.endsWith('i')) ? t.slice(0, -1) : t;
+    return `${escapeRe(root)}[a-z]*`;
   }
-  const parts = [...expanded].sort((a, b) => b.length - a.length)
-    .map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (!parts.length) return null;
-  return new RegExp(`\\b(${parts.join('|')})\\b`, 'gi');
+  // Literal — trailing boundary only when it ends in a word char (so "10" ≠ "100").
+  return `${escapeRe(t)}${/\w$/.test(t) ? '\\b' : ''}`;
+}
+
+// Build a case-insensitive matcher. The backend sends phrases (each a list of
+// word stems); a multi-word phrase like ["free","look","period"] is matched as a
+// consecutive unit (so standalone "period" is NOT highlighted), words separated
+// by whitespace/hyphen. Single string terms are treated as one-word phrases.
+function buildHighlightRegex(terms) {
+  if (!terms || !terms.length) return null;
+  const pats = [];
+  const seen = new Set();
+  for (const phrase of terms) {
+    const words = Array.isArray(phrase) ? phrase : [phrase];
+    const wps = words.map(wordPattern).filter(Boolean);
+    if (!wps.length) continue;
+    const pat = `\\b${wps.join('[\\s\\-]+')}`;
+    if (seen.has(pat)) continue;
+    seen.add(pat);
+    pats.push(pat);
+  }
+  if (!pats.length) return null;
+  pats.sort((a, b) => b.length - a.length);
+  return new RegExp(`(${pats.join('|')})`, 'gi');
 }
 
 function highlightInto(text, regex, keyPrefix) {
@@ -43,6 +92,44 @@ function highlightInto(text, regex, keyPrefix) {
   }
   if (last < text.length) out.push(text.slice(last));
   return out;
+}
+
+// Highlight keyword matches inside pre-rendered clause HTML (edited / imported
+// clauses that carry clause_html and render via dangerouslySetInnerHTML, so they
+// otherwise miss the keyword highlighting that ClauseBody applies). Walks text
+// nodes only — tags, attributes and existing <mark>s are left untouched.
+export function highlightHtml(html, keywords) {
+  const regex = buildHighlightRegex(keywords);
+  if (!regex || !html) return html;
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const targets = [];
+  let n;
+  // eslint-disable-next-line no-cond-assign
+  while ((n = walker.nextNode())) {
+    const tag = n.parentNode?.nodeName;
+    if (tag === 'MARK' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+    regex.lastIndex = 0;
+    if (regex.test(n.nodeValue)) targets.push(n);
+  }
+  targets.forEach((node) => {
+    const text = node.nodeValue;
+    const frag = doc.createDocumentFragment();
+    let last = 0; let m;
+    regex.lastIndex = 0;
+    while ((m = regex.exec(text)) !== null) {
+      if (m.index > last) frag.appendChild(doc.createTextNode(text.slice(last, m.index)));
+      const mark = doc.createElement('mark');
+      mark.className = 'hl';
+      mark.textContent = m[0];
+      frag.appendChild(mark);
+      last = m.index + m[0].length;
+      if (m.index === regex.lastIndex) regex.lastIndex++;
+    }
+    if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  });
+  return doc.body.innerHTML;
 }
 
 // Render one clause body: markdown tables -> <table>, heading lines (ending
@@ -70,21 +157,23 @@ export function ClauseBody({ text, keywords }) {
       : [];
     const rows = tableRows.filter((r) => !isSeparator(r));
     blocks.push(
-      <table className="clause-md-table" key={`t-${key}`}>
-        <tbody>
-          {rows.map((row, ri) => {
-            const cells = row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-            const Tag = ri === 0 ? 'th' : 'td';
-            return (
-              <tr key={ri}>
-                {cells.map((c, ci) => (
-                  <Tag key={ci} style={aligns[ci] ? { textAlign: aligns[ci] } : undefined}>{c}</Tag>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <CopyableTable key={`t-${key}`}>
+        <table className="clause-md-table">
+          <tbody>
+            {rows.map((row, ri) => {
+              const cells = row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+              const Tag = ri === 0 ? 'th' : 'td';
+              return (
+                <tr key={ri}>
+                  {cells.map((c, ci) => (
+                    <Tag key={ci} style={aligns[ci] ? { textAlign: aligns[ci] } : undefined}>{c}</Tag>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </CopyableTable>
     );
     tableRows = [];
   };
@@ -97,7 +186,7 @@ export function ClauseBody({ text, keywords }) {
     }
     flushTable(idx);
     if (stripped.endsWith(':') && stripped.length) {
-      blocks.push(<div className="clause-line clause-head" key={idx}><strong>{line}</strong></div>);
+      blocks.push(<div className="clause-line clause-head" key={idx}><strong>{highlightInto(line, regex, idx)}</strong></div>);
     } else {
       blocks.push(<div className="clause-line" key={idx}>{highlightInto(line, regex, idx)}</div>);
     }
@@ -105,6 +194,40 @@ export function ClauseBody({ text, keywords }) {
   flushTable('end');
 
   return <div className="clause-body">{blocks}</div>;
+}
+
+// A short preview of a long clause, centred on the first keyword match so the
+// relevant line is visible without scrolling/expanding. Built from the clause's
+// plain text (works uniformly for both render paths — HTML and markdown — and
+// never slices a <table> mid-tag). Falls back to the start of the text when no
+// keyword is present in the body (e.g. a tag-only match).
+export function ClauseSnippet({ text, keywords, radius = 170 }) {
+  const raw = String(text || '').replace(/\s+/g, ' ').trim();
+  const regex = buildHighlightRegex(keywords);
+  let start = 0;
+  if (regex) {
+    regex.lastIndex = 0;
+    const m = regex.exec(raw);
+    if (m && m.index > radius) start = m.index - radius;
+  }
+  let end = Math.min(raw.length, start + radius * 2);
+  // Snap the window edges to word boundaries so we never cut a word in half.
+  if (start > 0) {
+    const sp = raw.indexOf(' ', start);
+    if (sp !== -1 && sp < start + 40) start = sp + 1;
+  }
+  if (end < raw.length) {
+    const sp = raw.lastIndexOf(' ', end);
+    if (sp > start + 40) end = sp;
+  }
+  const slice = raw.slice(start, end);
+  return (
+    <div className="clause-snippet">
+      {start > 0 && '… '}
+      {highlightInto(slice, regex, 'snip')}
+      {end < raw.length && ' …'}
+    </div>
+  );
 }
 
 // Group consecutive matches by doc type (mirrors build_results_html ordering),

@@ -31,6 +31,10 @@
 .checkbox-item:hover { background: var(--paper); }
 .checkbox-item input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .no-data-msg { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 12px; font-style: italic; }
+/* Grouped option lists (Business lines / Totals / Sections …) in the LOB & Class steps */
+.filter-type-group + .filter-type-group { margin-top: 6px; }
+.filter-type-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 4px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
+.filter-type-group:first-child .filter-type-label { border-top: none; margin-top: 0; }
 .filter-count-note { margin-top: 12px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); text-align: right; }
 
 /* ---- Report table ---- */
@@ -101,6 +105,22 @@
 /* ---- Report dashboard (charts) ---- */
 .view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .view-toggle { display: inline-flex; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-md); padding: 3px; gap: 3px; }
+/* "Add totals" toggle — sits next to the view switch, pushes other actions right */
+.total-toggle { border: 1px solid var(--line-strong); background: var(--card); color: var(--ink-soft); }
+.total-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.total-toggle.is-on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, #eff6ff); }
+.view-toggle-bar .dt-actions { margin-left: auto; }
+/* Computed TOTAL row in the report table */
+.dt-table tr.is-total td { background: var(--paper-2, #f1f5f9); font-weight: 700; color: var(--ink); border-top: 2px solid var(--line-strong); }
+
+/* Data-quality caution banner + flagged-section markers */
+.caution-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 16px; }
+.caution-head { display: flex; align-items: center; gap: 8px; color: #92400e; font-size: 14px; margin-bottom: 6px; }
+.caution-head i { color: #d97706; }
+.caution-box ul { margin: 0; padding-left: 18px; }
+.caution-box li { font-size: 12.5px; color: #78350f; line-height: 1.5; margin-bottom: 3px; }
+.caution-stat { color: #b45309; font-family: var(--mono); font-size: 11px; }
+.lob-flag { color: #d97706; font-size: 11px; margin-left: 6px; }
 .vt-btn { display: inline-flex; align-items: center; gap: 7px; border: none; background: none; color: var(--ink-soft); font-family: inherit; font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: calc(var(--r-md) - 3px); cursor: pointer; transition: 0.15s; }
 .vt-btn:hover { color: var(--ink); }
 .vt-btn.active { background: var(--grad-primary, var(--accent)); color: #fff; box-shadow: 0 1px 4px rgba(26,35,126,0.25); }

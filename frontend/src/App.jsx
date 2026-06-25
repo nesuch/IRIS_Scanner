@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ProtectedRoute } from './auth/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
 import { PageLoading } from './components/UI.jsx';
@@ -21,6 +21,14 @@ const Feedback = lazy(() => import('./pages/Feedback.jsx'));
 const Downloads = lazy(() => import('./pages/Downloads.jsx'));
 const Pqs = lazy(() => import('./pages/Pqs.jsx'));
 const Studio = lazy(() => import('./pages/Studio.jsx'));
+const Reader = lazy(() => import('./pages/Reader.jsx'));
+
+// A department module is just Search scoped to a Doc_Category. The slug in the
+// URL (/dept/hr) is the lowercased category key the backend filters on.
+function DeptSearch() {
+  const { dept } = useParams();
+  return <Suspense fallback={<PageLoading />}><Search module={(dept || '').toLowerCase()} /></Suspense>;
+}
 
 export default function App() {
   return (
@@ -37,9 +45,11 @@ export default function App() {
         <Route path="health" element={<Suspense fallback={<PageLoading />}><Search module="health" /></Suspense>} />
         <Route path="life" element={<Suspense fallback={<PageLoading />}><Search module="life" /></Suspense>} />
         <Route path="nonlife" element={<Suspense fallback={<PageLoading />}><Search module="nonlife" /></Suspense>} />
+        <Route path="dept/:dept" element={<DeptSearch />} />
         <Route path="data" element={<Suspense fallback={<PageLoading />}><DataExplorer /></Suspense>} />
         <Route path="compliance" element={<Suspense fallback={<PageLoading />}><Compliance /></Suspense>} />
         <Route path="downloads" element={<Suspense fallback={<PageLoading />}><Downloads /></Suspense>} />
+        <Route path="read" element={<Suspense fallback={<PageLoading />}><Reader /></Suspense>} />
         <Route path="pqs" element={<Suspense fallback={<PageLoading />}><Pqs /></Suspense>} />
         <Route path="studio" element={<Suspense fallback={<PageLoading />}><Studio /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<PageLoading />}><Analytics /></Suspense>} />

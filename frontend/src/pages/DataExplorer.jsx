@@ -47,6 +47,11 @@ const ENTITY_NOUNS = {
   Channel: 'Channels', State: 'States', Ombudsman: 'Centres', TPA: 'TPAs',
 };
 const entityNoun = (dim) => ENTITY_NOUNS[dim] || `${dim}s`;
+// Sector/industry-level aggregates (e.g. "Life Insurance Sector") aren't a single
+// company, so in the entity picker they're pinned to the top under their own
+// heading instead of being buried alphabetically among the insurers.
+const isAggregateEntity = (name) => /\b(sector|industry)\b/i.test(String(name))
+  || /\ball insurers\b/i.test(String(name));
 // Friendly name for the report-view dropdown.
 const VIEW_LABELS = {
   Financials: 'Statements & Reports', Ombudsman: 'Ombudsman Centres', TPA: 'TPA Network',
@@ -57,8 +62,30 @@ const viewLabel = (dim) => VIEW_LABELS[dim] || `${dim}-wise View`;
 const STEP_LABEL_OVERRIDES = { Financials: { lobs: 'Statement', classes: 'Section', metrics: 'Line Item' } };
 const stepLabel = (dim, key) => STEP_LABEL_OVERRIDES[dim]?.[key] || STEP_LABELS[key];
 
+// Categorization (from the backend lob_meta/cob_meta type maps): the LOB and
+// Class dropdowns were a flat mix of real lines, totals, statement sections and
+// — in Class — insurer names that leaked in. Group them by type, and hide the
+// insurer-name 'entity' values from the Class filter entirely.
+const TYPE_GROUPS = {
+  lobs: [
+    ['business_line', 'Business lines'],
+    ['aggregate', 'Totals & aggregates'],
+    ['account_section', 'Account statements'],
+    ['breakdown', 'Breakdowns'],
+    ['other', 'Other'],
+  ],
+  classes: [
+    ['class', 'Classes of business'],
+    ['aggregate', 'Totals'],
+    ['fund', 'Funds'],
+    ['scheme', 'Govt schemes'],
+    ['other', 'Other'],
+  ],
+};
+const HIDDEN_TYPES = { classes: new Set(['entity']) };   // insurer names mis-filed as class
+
 const blankFilters = (dim = 'Insurer') => ({
-  dimension: dim, entities: [], metrics: [], classes: [], years: [], quarters: [], lobs: [],
+  dimension: dim, entities: [], metrics: [], classes: [], years: [], quarters: [], lobs: [], add_total: false,
 });
 
 // A plain number (not a year like "2014-15"); formatted with Indian grouping.
@@ -134,7 +161,8 @@ function FilterModal({ options, initial, onApply, onClose }) {
   // Select-all / clear for the active step (selects the full option list, not
   // just the search-filtered subset).
   const selectAllCat = (key) => setDraft((d) => {
-    const all = combos ? optionsForCat(d, key) : (key === 'entities' ? entityList : (dimOpts[key] || options[key] || []));
+    const all = (combos ? optionsForCat(d, key) : (key === 'entities' ? entityList : (dimOpts[key] || options[key] || [])))
+      .filter((o) => !(HIDDEN_TYPES[key]?.has(key === 'lobs' ? options.lob_meta?.[o] : key === 'classes' ? (options.cob_meta?.[o] || 'other') : null)));
     return prune({ ...d, [key]: [...all] });
   });
   const clearCat = (key) => setDraft((d) => prune({ ...d, [key]: [] }));
@@ -172,10 +200,22 @@ function FilterModal({ options, initial, onApply, onClose }) {
     if (ci === -1 || isLocked(ci)) { setCat(order[firstOpen] ?? order[0]); setSearch(''); }
   }, [firstOpen, draft.dimension]);
 
+  // Type of a LOB/Class option (from the backend categorization maps).
+  const typeOf = (key, opt) => {
+    const meta = key === 'lobs' ? options.lob_meta : key === 'classes' ? options.cob_meta : null;
+    return meta ? (meta[opt] || 'other') : null;
+  };
+  const isHidden = (key, opt) => HIDDEN_TYPES[key]?.has(typeOf(key, opt)) || false;
+  // LOB sections flagged for data-quality issues in the current report view.
+  const flaggedLobs = new Set((options.section_flags || [])
+    .filter((f) => f.dimension === draft.dimension)
+    .map((f) => f.line_of_business));
+
   const count = draft.entities.length + draft.metrics.length;
-  const baseList = combos
+  const baseList = (combos
     ? optionsForCat(draft, cat)
-    : (cat === 'entities' ? entityList : (dimOpts[cat] || options[cat] || []));
+    : (cat === 'entities' ? entityList : (dimOpts[cat] || options[cat] || [])))
+    .filter((o) => !isHidden(cat, o));
   const list = baseList.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
 
   function apply() {
@@ -249,6 +289,40 @@ function FilterModal({ options, initial, onApply, onClose }) {
             <div className="no-data-msg">{cat === 'entities'
               ? '⚠️ No entity data for this view. Try Admin → Sync Data.'
               : (search ? 'No options found.' : 'No options for the earlier selections — adjust a previous step.')}</div>
+          ) : (cat === 'entities' && list.some(isAggregateEntity) && list.some((o) => !isAggregateEntity(o))) ? (
+            // Pin sector/industry aggregates to the top under their own heading.
+            [['Sector & industry aggregates', list.filter(isAggregateEntity)],
+             [entityNoun(draft.dimension), list.filter((o) => !isAggregateEntity(o))]]
+              .filter(([, opts]) => opts.length)
+              .map(([label, opts]) => (
+                <div key={label} className="filter-type-group">
+                  <div className="filter-type-label">{label}</div>
+                  {opts.map((opt) => (
+                    <label key={opt} className="checkbox-item">
+                      <input type="checkbox" checked={draft[cat].includes(opt)} onChange={() => toggle(cat, opt)} />
+                      <span>{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              ))
+          ) : (TYPE_GROUPS[cat] && typeOf(cat, list[0]) !== null) ? (
+            // Grouped by type (Business lines / Totals / Sections …) for LOB & Class.
+            TYPE_GROUPS[cat].map(([type, label]) => {
+              const opts = list.filter((o) => typeOf(cat, o) === type);
+              if (!opts.length) return null;
+              return (
+                <div key={type} className="filter-type-group">
+                  <div className="filter-type-label">{label}</div>
+                  {opts.map((opt) => (
+                    <label key={opt} className="checkbox-item">
+                      <input type="checkbox" checked={draft[cat].includes(opt)} onChange={() => toggle(cat, opt)} />
+                      <span>{opt}{cat === 'lobs' && flaggedLobs.has(opt)
+                        && <i className="fas fa-triangle-exclamation lob-flag" title="This section has unresolved data-quality issues — figures may be unreliable" />}</span>
+                    </label>
+                  ))}
+                </div>
+              );
+            })
           ) : list.map((opt) => (
             <label key={opt} className="checkbox-item">
               <input type="checkbox" checked={draft[cat].includes(opt)} onChange={() => toggle(cat, opt)} />
@@ -318,8 +392,10 @@ function ReportTable({ report, onExport, onFlag }) {
             <tr>{cols.map((c) => <th key={c} className={c === 'Source_File' ? 'src-col' : ''}>{c.replace(/_/g, ' ')}</th>)}</tr>
           </thead>
           <tbody>
-            {rows.map((row, ri) => (
-              <tr key={ri}>
+            {rows.map((row, ri) => {
+              const isTotal = String(row[cols[0]] ?? '').startsWith('TOTAL (');
+              return (
+              <tr key={ri} className={isTotal ? 'is-total' : ''}>
                 {cols.map((c, ci) => (
                   <td key={c}
                     className={`${c === 'Source_File' ? 'src-col' : ''} ${ci < 2 ? 'fw-bold' : ''} ${numCls(c, row)}`}
@@ -328,7 +404,8 @@ function ReportTable({ report, onExport, onFlag }) {
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         )}
@@ -525,6 +602,20 @@ export default function DataExplorer() {
               </div>
             )}
 
+            {report.cautions?.length > 0 && (
+              <div className="caution-box anim-rise">
+                <div className="caution-head">
+                  <i className="fas fa-triangle-exclamation" /> <strong>Data-quality caution</strong>
+                </div>
+                <ul>{report.cautions.map((c, i) => (
+                  <li key={i}>
+                    <strong>{c.line_of_business}</strong> ({c.dimension}) — {c.note}
+                    {c.conflict_rows != null && <span className="caution-stat"> {c.conflict_rows}/{c.total_rows} rows affected</span>}
+                  </li>
+                ))}</ul>
+              </div>
+            )}
+
             {report.missing?.length > 0 && (
               <div className="gaps-box anim-rise">
                 <div className="gaps-head"><i className="fas fa-circle-info" /> <strong>Data Gaps Detected</strong></div>
@@ -545,6 +636,14 @@ export default function DataExplorer() {
                       <i className="fas fa-table" /> Table
                     </button>
                   </div>
+                  {filters.dimension !== 'Financials' && (
+                    <button
+                      className={`btn btn-sm total-toggle ${filters.add_total ? 'is-on' : ''}`}
+                      onClick={() => applyFilters({ ...filters, add_total: !filters.add_total })}
+                      title="Append a TOTAL row that sums the selected entities (amounts & counts only; percentages are left blank)">
+                      <i className={`fas ${filters.add_total ? 'fa-square-check' : 'fa-calculator'}`} /> {filters.add_total ? 'Totals on' : 'Add totals'}
+                    </button>
+                  )}
                   {view === 'chart' && (
                     <div className="dt-actions">
                       <button className="btn btn-ghost btn-sm" onClick={() => setFlagOpen(true)}><i className="fas fa-flag" /> Flag</button>

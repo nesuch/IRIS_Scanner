@@ -26,7 +26,7 @@ import iris_brain as brain
 import storage
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "tools"))
-from pq_to_iris import parse_docx  # noqa: E402
+from pq_to_iris import parse_docx, parse_pq  # noqa: E402
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -502,6 +502,7 @@ def api_pq_get(pid):
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
         "departments": _dept_list(r),
         "html": r.html,
+        "filename": r.docx_filename or "",
         "download_url": (f"/api/pq/{r.id}/download" if r.docx_filename else None),
     })
 
@@ -515,8 +516,10 @@ def api_pq_download(pid):
     data = storage.load_pq(r.docx_filename)
     if data is None:
         return jsonify({"ok": False, "message": "Original file not found."}), 404
+    is_pdf = (r.docx_filename or "").lower().endswith(".pdf")
     return send_file(io.BytesIO(data),
-                     mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                     mimetype=("application/pdf" if is_pdf
+                               else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
                      as_attachment=True, download_name=r.docx_filename)
 
 
@@ -534,15 +537,15 @@ def api_pq_upload():
     if not _require_role("editor"):
         return jsonify({"message": "Editor access required"}), 403
     f = request.files.get("file")
-    if not f or not f.filename.lower().endswith(".docx"):
-        return jsonify({"ok": False, "message": "Please upload a .docx file."}), 400
+    if not f or not f.filename.lower().endswith((".docx", ".pdf")):
+        return jsonify({"ok": False, "message": "Please upload a .docx or .pdf file."}), 400
     tags = (request.form.get("tags") or "").strip()
     departments = ",".join(_norm_departments(request.form.get("departments")))
     date_override = (request.form.get("date") or "").strip()[:40]
     force = str(request.form.get("force") or "").lower() in {"1", "true", "yes"}
     raw = f.read()
     try:
-        parsed = parse_docx(raw, filename=f.filename)
+        parsed = parse_pq(raw, filename=f.filename)
     except Exception as e:
         print(f"PQ parse error: {e}")
         return jsonify({"ok": False, "message": "Could not read that document."}), 400
@@ -578,11 +581,11 @@ def api_pq_bulk_upload():
     m = _app
     created, skipped, duplicates = [], [], []
     for f in files:
-        if not f.filename.lower().endswith(".docx"):
+        if not f.filename.lower().endswith((".docx", ".pdf")):
             skipped.append(f.filename); continue
         raw = f.read()
         try:
-            parsed = parse_docx(raw, filename=f.filename)
+            parsed = parse_pq(raw, filename=f.filename)
         except Exception as e:
             print(f"bulk PQ parse error ({f.filename}): {e}")
             skipped.append(f.filename); continue
@@ -974,11 +977,78 @@ def api_clause_doc_full():
     has_upd = "updated_by" in sub.columns
     for _, r in sub.iterrows():
         cid = str(r.get("Clause_ID", "")).strip()
-        html = brain.clause_html(cid, source) or _clause_text_to_html(str(r.get("Clause_Text", "")))
+        html = brain.clause_html(cid, source) or _clause_text_to_html(str(r.get("Clause_Text", "")), bold_headings=False)
         edited = bool(has_upd and pd.notna(r.get("updated_by")) and str(r.get("updated_by")).strip())
         out.append({"id": cid, "html": html, "edited": edited,
                     "tags": [t.strip() for t in str(r.get("Regulatory_Tags", "")).split(",") if t.strip()]})
     return jsonify({"source": source, "clauses": out, "rev": brain.doc_revision(source)})
+
+
+def _clause_toc_title(html, text):
+    """A short, plain-text label for a clause in the reader's table of contents."""
+    raw = (text or "").strip()
+    if not raw:
+        raw = re.sub(r"<[^>]+>", " ", html or "")
+    raw = re.sub(r"\s+", " ", raw).strip()
+    return raw[:90]
+
+
+@api_bp.get("/clause/readable")
+def api_clause_readable():
+    """Any signed-in user: documents available to read in full (from the KB)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"docs": []}), 401
+    df = brain.load_knowledge_base()
+    if df is None or df.empty:
+        return jsonify({"docs": []})
+    docs = []
+    for src, g in df.groupby("Source_Doc"):
+        asset = _app.DocumentAsset.query.filter_by(source_doc=str(src)).first()
+        docs.append({
+            "source": str(src),
+            "type": str(g["Doc_Type"].iloc[0]) if "Doc_Type" in g.columns else "",
+            "category": str(g["Doc_Category"].iloc[0]) if "Doc_Category" in g.columns else "",
+            "status": (asset.status if asset and asset.status else "Active"),
+            "effective_date": (asset.effective_date if asset else None),
+            "clauses": int(len(g)),
+            "pdf_url": _doc_pdf_url(str(src)),
+        })
+    docs.sort(key=lambda d: d["source"].lower())
+    return jsonify({"docs": docs})
+
+
+@api_bp.get("/clause/doc-read")
+def api_clause_doc_read():
+    """Any signed-in user: every clause of a document in order, for the full-doc
+    reader (read-only; the editor uses /clause/doc-full)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    source = (request.args.get("source") or "").strip()
+    df = brain.load_knowledge_base()
+    if df is None or df.empty:
+        return jsonify({"source": source, "clauses": []})
+    sub = df[df["Source_Doc"].astype(str) == source]
+    if sub.empty:
+        return jsonify({"ok": False, "message": "Document not found."}), 404
+    if "sort_order" in sub.columns:
+        sub = sub.sort_values("sort_order", kind="stable", na_position="last")
+    out = []
+    for _, r in sub.iterrows():
+        cid = str(r.get("Clause_ID", "")).strip()
+        text = str(r.get("Clause_Text", ""))
+        html = brain.clause_html(cid, source) or _clause_text_to_html(text)
+        out.append({"id": cid, "title": _clause_toc_title(html, text), "html": html,
+                    "tags": [t.strip() for t in str(r.get("Regulatory_Tags", "")).split(",") if t.strip()]})
+    asset = _app.DocumentAsset.query.filter_by(source_doc=source).first()
+    return jsonify({
+        "source": source,
+        "type": str(sub["Doc_Type"].iloc[0]) if "Doc_Type" in sub.columns else "",
+        "category": str(sub["Doc_Category"].iloc[0]) if "Doc_Category" in sub.columns else "",
+        "status": (asset.status if asset and asset.status else "Active"),
+        "effective_date": (asset.effective_date if asset else None),
+        "pdf_url": _doc_pdf_url(source),
+        "clauses": out,
+    })
 
 
 @api_bp.post("/clause/doc-save")
@@ -1088,9 +1158,10 @@ def api_clause_list_for_doc():
     return jsonify({"source": source, "clauses": out})
 
 
-def _clause_text_to_html(text):
-    """Seed the editor from a legacy plain-text/markdown clause: lines -> <p>,
-    a line ending in ':' -> bold heading, GFM table blocks -> <table>."""
+def _clause_text_to_html(text, bold_headings=True):
+    """Render a legacy plain-text/markdown clause: lines -> <p>, a line ending in
+    ':' -> bold heading, GFM table blocks -> <table>. Pass bold_headings=False to
+    seed the Studio editor plain (so bold is then controlled manually there)."""
     from html import escape
     lines = str(text or "").split("\n")
     out, tbl = [], []
@@ -1115,7 +1186,7 @@ def _clause_text_to_html(text):
         flush_tbl()
         if not s:
             continue
-        if s.endswith(":"):
+        if bold_headings and s.endswith(":"):
             out.append(f"<p><strong>{escape(s)}</strong></p>")
         else:
             out.append(f"<p>{escape(s)}</p>")
@@ -1140,7 +1211,7 @@ def api_clause_edit_get():
             sub = df.loc[mask, "Clause_Text"]
             if len(sub):
                 txt = str(sub.iloc[0])
-        existing = _clause_text_to_html(txt)
+        existing = _clause_text_to_html(txt, bold_headings=False)
     return jsonify({"ok": True, "id": cid, "source": source, "html": existing})
 
 
@@ -1253,13 +1324,30 @@ def api_pq_update(pid):
 def api_clause_suggest():
     """Typeahead for the '/'-prefixed clause-number search."""
     q = request.args.get("q", "")
+    module = (request.args.get("module") or "universal").strip()
     sources = request.args.getlist("source") or None
     KB_DF = brain.load_knowledge_base()
-    rows = brain.search_by_clause_number(q, KB_DF, sources=sources, limit=30)
+    rows = brain.search_by_clause_number(q, brain.filter_df_by_module(KB_DF, module), sources=sources, limit=30)
     out = [{"id": r["id"], "source": r["source"], "type": r["type"],
             "snippet": (str(r["raw_text"])[:90] + ("…" if len(str(r["raw_text"])) > 90 else ""))}
            for r in rows]
     return jsonify({"suggestions": out})
+
+
+def _highlight_phrases(tuples):
+    """Searched terms as phrases (each a list of word stems) for client-side
+    highlighting. A multi-word tag like 'free look period' stays one phrase so it
+    is matched as a unit (not standalone 'period'); stems let it light up word
+    families (migration->migrate). Digit/symbol tokens like '10%' are kept verbatim."""
+    phrases, seen = [], set()
+    for (raw, _clean) in tuples:
+        words = [w for w in re.findall(r"[A-Za-z0-9%]+", str(raw)) if len(w) >= 2]
+        stems = [s for s in (brain.get_stem(w.lower()) for w in words) if s]
+        key = " ".join(stems)
+        if stems and key not in seen:
+            seen.add(key)
+            phrases.append(stems)
+    return phrases
 
 
 @api_bp.post("/search")
@@ -1299,7 +1387,7 @@ def api_search():
         return jsonify({
             "ok": True, "module": module, "kind": "deep_scan",
             "query_label": "Deep Scan",
-            "keywords": display_kws, "highlight": display_kws,
+            "keywords": display_kws, "highlight": _highlight_phrases(keyword_tuples),
             "matches": [_match_payload(m) for m in matches],
             "chips": [],
             "note": None if matches else f"No additional matches found in {module.capitalize()} module.",
@@ -1307,7 +1395,7 @@ def api_search():
 
     # --- Clause-number lookup (query starts with "/") ---
     if query.lstrip().startswith("/"):
-        matches = _scope(brain.search_by_clause_number(query, KB_DF, sources=sources))
+        matches = _scope(brain.search_by_clause_number(query, brain.filter_df_by_module(KB_DF, module), sources=sources))
         try:
             email = _app.current_user.email if _app.current_user.is_authenticated else None
             _app._record_search(email, module, query, len(matches))
@@ -1334,17 +1422,28 @@ def api_search():
                         "note": "Query rejected. Please use regulatory terms."})
 
     tag_matches = _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module))
-    highlight_kws = [raw for (raw, clean) in kw_tuples if clean in brain.ALL_UNIQUE_TAGS]
+
+    # Windows-Explorer-style: also auto-scan the clause TEXT (no manual "deep scan"
+    # step), returned as a separate, clearly-subordinate tier. Capped to keep the
+    # live/as-you-type payload small and the precise tag matches on top.
+    CONTENT_CAP = 30
+    content_matches = []
+    if module != "data":
+        try:
+            content_matches = _scope(brain.deep_scan_brain(
+                kw_tuples, KB_DF, exclude_ids=[m["id"] for m in tag_matches], module=module, phrase=query))[:CONTENT_CAP]
+        except Exception:
+            content_matches = []
 
     # Record the query for admin usage visibility (best-effort, non-blocking).
     try:
         email = _app.current_user.email if _app.current_user.is_authenticated else None
-        _app._record_search(email, module, query, len(tag_matches))
+        _app._record_search(email, module, query, len(tag_matches) + len(content_matches))
     except Exception:
         pass
 
     note = None
-    if not tag_matches:
+    if not tag_matches and not content_matches:
         if module == "life":
             note = "Life Department: No documents currently loaded."
         elif module == "nonlife":
@@ -1358,8 +1457,9 @@ def api_search():
         "ok": True, "module": module, "kind": "tags",
         "query_label": query,
         "keywords": display_kws,
-        "highlight": highlight_kws if tag_matches else display_kws,
+        "highlight": _highlight_phrases(kw_tuples),
         "matches": [_match_payload(m) for m in tag_matches],
+        "content_matches": [_match_payload(m) for m in content_matches],
         "chips": _build_chips(kw_tuples, query),
         "note": note,
     })
@@ -1369,6 +1469,57 @@ def api_search():
 def api_vocab():
     brain.load_knowledge_base()
     return jsonify(brain.get_autocomplete_data())
+
+
+# --- Departments (Knowledge Base modules) ----------------------------------
+_RESERVED_DEPT = {"GENERAL", "UNIVERSAL", "ALL", "DATA"}
+
+
+@api_bp.get("/departments")
+def api_departments():
+    """Department list (drives the sidebar modules + category pickers)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"departments": []}), 401
+    depts = brain.load_departments()
+    return jsonify({"departments": depts,
+                    "categories": [d["key"] for d in depts] + ["GENERAL"]})
+
+
+@api_bp.post("/admin/departments")
+def api_departments_save():
+    """Admin: add / edit / remove a department (persists to departments.json)."""
+    if not _require_admin():
+        return jsonify({"message": "Admin access required"}), 403
+    d = request.get_json(silent=True) or {}
+    action = (d.get("action") or "").strip().lower()
+    depts = brain.load_departments()
+    by_key = {x["key"]: x for x in depts}
+    order = [x["key"] for x in depts]
+    if action in ("add", "edit"):
+        key = re.sub(r"[^A-Z0-9]", "", (d.get("key") or "").strip().upper())
+        label = (d.get("label") or "").strip()
+        icon = (d.get("icon") or "").strip() or "fa-folder"
+        if not key:
+            return jsonify({"ok": False, "message": "A department code is required (letters/numbers only)."}), 400
+        if key in _RESERVED_DEPT:
+            return jsonify({"ok": False, "message": f"'{key}' is a reserved name."}), 400
+        if action == "add" and key in by_key:
+            return jsonify({"ok": False, "message": f"Department '{key}' already exists."}), 409
+        general = bool(d.get("general"))
+        by_key[key] = {"key": key, "label": label or key.title(), "icon": icon, "general": general}
+        if key not in order:
+            order.append(key)
+        new_list = [by_key[k] for k in order]
+    elif action == "delete":
+        key = (d.get("key") or "").strip().upper()
+        if key not in by_key:
+            return jsonify({"ok": False, "message": "Department not found."}), 404
+        new_list = [x for x in depts if x["key"] != key]
+    else:
+        return jsonify({"ok": False, "message": "Unknown action."}), 400
+    saved = brain.save_departments(new_list)
+    _audit(f"Department {action}: {d.get('key')}", "Departments")
+    return jsonify({"ok": True, "departments": saved})
 
 
 # Documents available to a module, grouped by doc type (for the search source filter).
@@ -1387,12 +1538,14 @@ def api_docs():
 
     src_type = {}
     src_tags = {}
+    tag_clauses = {}   # normalised tag -> [{id, source}] for the suggestion dropdown
     if scoped is not None and not scoped.empty:
         for _, row in scoped.iterrows():
             src = str(row.get("Source_Doc") or "").strip()
             if not src:
                 continue
             src_type.setdefault(src, str(row.get("Doc_Type") or "UNKNOWN").strip().upper() or "UNKNOWN")
+            cid = str(row.get("Clause_ID") or "").strip()
             raw_tags = str(row.get("Regulatory_Tags") or "")
             if raw_tags:
                 tset = src_tags.setdefault(src, set())
@@ -1400,6 +1553,9 @@ def api_docs():
                     clean = t.strip().replace("_", " ").lower()
                     if len(clean) >= 2:
                         tset.add(clean)
+                        lst = tag_clauses.setdefault(clean, [])
+                        if cid and not any(e["id"] == cid and e["source"] == src for e in lst):
+                            lst.append({"id": cid, "source": src})
 
     by_type = {}
     for src, typ in src_type.items():
@@ -1411,7 +1567,7 @@ def api_docs():
     ordered_types += [t for t in by_type if t not in _DOC_TYPE_ORDER]
     groups = [{"type": t, "label": _DOC_TYPE_LABELS.get(t, t.title()), "docs": by_type[t]} for t in ordered_types]
     doc_tags = {src: sorted(tags) for src, tags in src_tags.items()}
-    return jsonify({"module": module, "groups": groups, "doc_tags": doc_tags})
+    return jsonify({"module": module, "groups": groups, "doc_tags": doc_tags, "tag_clauses": tag_clauses})
 
 
 # ----------------------------------------------------------------------------
@@ -1428,6 +1584,7 @@ def _filters_from_request():
             "quarters": data.get("quarters", []) or [],
             "lobs": data.get("lobs", []) or [],
             "classes": data.get("classes", []) or [],
+            "add_total": bool(data.get("add_total", False)),
         }
     return {
         "dimension": request.form.get("dimension", "Insurer"),
@@ -1437,6 +1594,7 @@ def _filters_from_request():
         "quarters": request.form.getlist("quarters"),
         "lobs": request.form.getlist("lobs"),
         "classes": request.form.getlist("classes"),
+        "add_total": request.form.get("add_total") in ("1", "true", "True", "on"),
     }
 
 

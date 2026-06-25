@@ -22,9 +22,18 @@ frontend/package.json
 frontend/package-lock.json
 frontend/eslint.config.js
 
-# Runtime / OS junk — never bake these into the image
+# Databases: ship ONLY iris.db (baked as the seed); never the ~1.4GB of
+# iris_backup_*.db snapshots, the pre-migration db, or WAL/SHM sidecars.
+*.db
+!iris.db
 *.db-wal
 *.db-shm
+
+# Obsolete handbook/POC seed files — superseded by the curated iris.db, kept
+# locally for reference only (never ingested; see SYNC_SKIP_FILES).
+seed_archive/
+
+# Runtime / OS junk — never bake these into the image
 **/.DS_Store
 *.bak
 *.orig

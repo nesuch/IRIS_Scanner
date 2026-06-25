@@ -12,6 +12,7 @@ Usage:
 import argparse
 import os
 import re
+import sqlite3
 import sys
 
 import openpyxl
@@ -20,11 +21,19 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(__file__))
 import handbook_parts_to_iris as H
 
+# Per-table pick corrections (keyed by Part, Table). Used where the generated LOB
+# pick doesn't match a real line_of_business in the data — e.g. a combined label,
+# or a re-sourced table. Validated against the live DB below so they can't rot.
+PICK_FIXES = {
+    ("Part II", "55"): "Rural Sector Obligations",   # was "Rural / Social ..." (not one LOB)
+    ("Part IV", "82"): "All Lines",                  # Net Retention re-sourced -> Industry/All Lines
+}
+
 # How each report view cascades, with a placeholder for the table-specific pick.
 PATHS = {
     "Insurer": "Insurer-wise View → pick Insurer → Line of Business = «{pick}» → "
                "Class of Biz → Metric → Fin Year → Quarter",
-    "Financials": "Statements & Reports → pick Insurer → Statement = «{pick}» → Fin Year → Quarter",
+    "Financials": "Statements & Reports → pick {who} → Statement = «{pick}» → Fin Year → Quarter",
     "State": "State-wise View → pick State → Line of Business = «{pick}» → "
              "Class of Biz → Metric → Fin Year",
     "Industry": "Industry-wise View → pick Sector → Line of Business = «{pick}» → Metric → Fin Year",
@@ -76,6 +85,13 @@ ONE_OFFS = [
     ("Part III", "66", "Industry", "Claims Development & Aging"),
     ("Part II", "55", "Insurer", "Rural / Social Sector Obligations"),
     ("Part II", "43", "Industry", "Policies Issued"),
+    # Deep-pivot tables ingested as Financials statements (reingest_pivot_statements.py)
+    # so their detail stays out of the Insurer-view filters. Pick = the statement name.
+    # Optional 5th item overrides the entity noun in the path (Table 4 is industry-level).
+    ("Part I", "4", "Financials", "Life Segment-wise Premium", "Life Insurance Sector"),
+    ("Part I", "21", "Financials", "AUM — Insurer-wise (Investments)"),
+    ("Part V", "100", "Financials", "Life Individual New Business by Channel (2024-25)"),
+    ("Part V", "102", "Financials", "Life Group New Business by Channel (2024-25)"),
 ]
 
 # Summary-sheet tables (separate converter -> Industry / Country views).
@@ -105,10 +121,36 @@ def table_title(parts_dir, part, sheet, _cache={}):
     return ""
 
 
+def validate_picks(df, db):
+    """Check every non-blank Pick resolves to a real line_of_business in that view's
+    dimension — so the guide can't silently drift from the data again."""
+    if not os.path.exists(db):
+        print(f"[validate] DB {db} not found — skipping pick validation")
+        return []
+    con = sqlite3.connect(db)
+    data = pd.read_sql_query(
+        "SELECT DISTINCT dimension, line_of_business FROM financial_metrics", con)
+    con.close()
+    lobs = data.groupby("dimension")["line_of_business"].apply(set).to_dict()
+    stale = []
+    for _, r in df.iterrows():
+        pick, dim = str(r["Pick"]).strip(), str(r["Dimension"]).strip()
+        if pick and pick not in lobs.get(dim, set()):
+            stale.append((r.get("Table"), dim, pick))
+    if stale:
+        print(f"[validate] {len(stale)} STALE pick(s):")
+        for t, d, p in stale:
+            print(f"   T{t} | {d} | pick={p!r} not a line_of_business in that view")
+    else:
+        print("[validate] all picks resolve to a real line_of_business ✓")
+    return stale
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("parts_dir", help="Folder with 'Part I.xlsx' … 'Part V.xlsx'")
     ap.add_argument("--out", default=os.path.join("knowledge_base", "IRIS_Handbook_Access_Guide.xlsx"))
+    ap.add_argument("--db", default="iris.db", help="DB to validate picks against")
     args = ap.parse_args()
 
     rows = []
@@ -116,13 +158,14 @@ def main():
 
     generic = {SEG, PLAN_SEG, *NONE_PICK.values()}
 
-    def add(part, sheet, view, pick):
+    def add(part, sheet, view, pick, who="Insurer"):
+        pick = PICK_FIXES.get((part, sheet), pick)
         key = (part, sheet, view, pick)
         if key in seen:
             return
         seen.add(key)
         title = table_title(args.parts_dir, part, sheet)
-        path = (PATHS.get(view, "{pick}").format(pick=pick))
+        path = (PATHS.get(view, "{pick}").format(pick=pick, who=who))
         # Structured fields for the in-app one-click "Open": the report view and the
         # specific Line of Business / Statement to pre-select (blank if generic).
         specific = "" if pick in generic else pick
@@ -144,8 +187,10 @@ def main():
                 pick = NONE_PICK.get(attr, SEG)
             add(part, sheet, view, pick)
 
-    for part, sheet, view, pick in ONE_OFFS:
-        add(part, sheet, view, pick)
+    for entry in ONE_OFFS:
+        part, sheet, view, pick = entry[:4]
+        who = entry[4] if len(entry) > 4 else "Insurer"
+        add(part, sheet, view, pick, who)
 
     df = pd.DataFrame(rows)
     df["_n"] = df["Table"].str.extract(r"(\d+)").astype(float)
@@ -157,6 +202,8 @@ def main():
           "Dimension": v, "Pick": ""}
          for p, t, v, title, path in SUMMARY_ROWS])
     df = pd.concat([df, summary_df], ignore_index=True)
+
+    stale = validate_picks(df, args.db)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with pd.ExcelWriter(args.out, engine="openpyxl") as xl:

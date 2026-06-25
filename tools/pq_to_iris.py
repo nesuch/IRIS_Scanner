@@ -40,6 +40,49 @@ def parse_docx(src, filename=""):
             "subject": subject, "doc_date": doc_date, "title": title}
 
 
+def _text_to_html(text):
+    """Wrap extracted plain text into simple paragraph HTML (PDF has no styling
+    we can reliably recover, so blank-line-separated blocks become <p> blocks)."""
+    import html as _h
+    parts = []
+    for block in re.split(r"\n\s*\n", text or ""):
+        block = block.strip()
+        if not block:
+            continue
+        parts.append("<p>" + _h.escape(block).replace("\n", "<br>") + "</p>")
+    return "\n".join(parts)
+
+
+def parse_pdf(src, filename=""):
+    """Extract a PQ .pdf (path or raw bytes) to HTML + text + metadata.
+
+    Returns the same dict shape as parse_docx so the upload endpoints are
+    format-agnostic. Bold/table fidelity is lower than .docx (PDF carries no
+    semantic styling), but the reply text and metadata are preserved."""
+    import pdfplumber
+    fobj = io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else open(src, "rb")
+    pages = []
+    try:
+        with pdfplumber.open(fobj) as pdf:
+            for page in pdf.pages:
+                pages.append(page.extract_text() or "")
+    finally:
+        if not isinstance(src, (bytes, bytearray)):
+            fobj.close()
+    text = "\n\n".join(t.strip() for t in pages if t.strip())
+    html = _text_to_html(text)
+    pq_no, house, subject, doc_date, title = _meta(text, filename or "")
+    return {"html": html, "text": text, "pq_no": pq_no, "house": house,
+            "subject": subject, "doc_date": doc_date, "title": title}
+
+
+def parse_pq(src, filename=""):
+    """Dispatch to the right parser based on the file extension."""
+    if (filename or "").lower().endswith(".pdf"):
+        return parse_pdf(src, filename=filename)
+    return parse_docx(src, filename=filename)
+
+
 def _meta(text, filename):
     pq_no = (re.search(r"(?:question\s*no\.?\s*|pq[\s_-]*)(\d{2,6})", filename + " " + text, re.I)
              or re.search(r"\b(\d{3,6})\b", filename))

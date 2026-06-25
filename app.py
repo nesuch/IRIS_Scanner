@@ -282,6 +282,20 @@ class ClauseVersion(db.Model):
     edited_by = db.Column(db.String(255), nullable=True)
     edited_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+class DeletedClause(db.Model):
+    """Tombstone for clauses deleted in Document Studio. The data Sync rebuilds
+    Excel-backed documents from scratch, so without a tombstone a deleted clause
+    is re-created on the next sync. The sync skips any (source_doc, clause_id)
+    listed here. Cleared when the same clause is re-added or the doc re-imported."""
+    __tablename__ = "deleted_clauses"
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_doc = db.Column(db.String(255), nullable=False, index=True)
+    clause_id = db.Column(db.String(120), nullable=False, index=True)
+    deleted_by = db.Column(db.String(255), nullable=True)
+    deleted_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
 # ==========================================
 # CRITICAL FIX: FORCE DATA LOAD ON STARTUP
 # ==========================================

@@ -4,6 +4,7 @@ import { Spinner, EmptyState, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import StudioEditor from '../components/StudioEditor.jsx';
+import { preserveSpaces } from '../components/ClauseEditor.jsx';
 import PdfViewer from './search/PdfViewer.jsx';
 import { api } from '../api.js';
 import './studio/studio.css';
@@ -11,6 +12,33 @@ import './studio/studio.css';
 let KEYSEQ = 1;
 const nk = () => `k${KEYSEQ++}`;
 const clone = (cs) => cs.map((c) => ({ ...c, tags: [...c.tags] }));
+
+function relTime(ts) {
+  if (!ts) return '';
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
+}
+
+// Live save-state pill: shows saving / unsaved / saved-just-now next to the buttons.
+function SaveStatus({ saving, dirty, lastSaved, autoPaused, autoSave }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (saving || dirty || !lastSaved) return undefined;
+    const t = setInterval(() => tick((x) => x + 1), 15000); // refresh "Saved 1m ago"
+    return () => clearInterval(t);
+  }, [saving, dirty, lastSaved]);
+  let cls = 'studio-savestate';
+  let body;
+  if (saving) { body = <><Spinner size={11} /> Saving…</>; }
+  else if (autoPaused) { cls += ' is-warn'; body = <><i className="fas fa-triangle-exclamation" /> Autosave paused</>; }
+  else if (dirty) { cls += ' is-dirty'; body = <><i className="fas fa-circle" /> {autoSave ? 'Unsaved — autosaving…' : 'Unsaved changes'}</>; }
+  else if (lastSaved) { cls += ' is-saved'; body = <><i className="fas fa-circle-check" /> Saved {relTime(lastSaved)}</>; }
+  else return null;
+  return <span className={cls}>{body}</span>;
+}
 
 export default function Studio() {
   const toast = useToast();
@@ -26,8 +54,14 @@ export default function Studio() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showPdf, setShowPdf] = useState(true);
-  const [showRail, setShowRail] = useState(true);
+  const [autoSave, setAutoSave] = useState(true);
+  const [lastSaved, setLastSaved] = useState(null);   // ms timestamp of last successful save
+  const [autoPaused, setAutoPaused] = useState(false); // autosave suspended after a conflict
+  // On a phone the rail and PDF are full-screen overlays, so don't pop either of
+  // them open on load — start on the editor; the toolbar buttons open them on tap.
+  const wideInit = typeof window === 'undefined' || window.innerWidth > 900;
+  const [showPdf, setShowPdf] = useState(wideInit);
+  const [showRail, setShowRail] = useState(wideInit);
   const [paneW, setPaneW] = useState(38);
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -38,6 +72,7 @@ export default function Studio() {
   const [metaOpen, setMetaOpen] = useState(false); // document settings (name/type/department)
   const editorApi = useRef(null);
   const splitRef = useRef(null);
+  const editorScrollRef = useRef({ key: null, top: 0 });   // preserve editor scroll across remounts (undo/restore)
   // Refs mirror state so the editor's (stale-closure) onChange always sees current values.
   const clausesRef = useRef(clauses); clausesRef.current = clauses;
   const activeKeyRef = useRef(activeKey); activeKeyRef.current = activeKey;
@@ -59,6 +94,7 @@ export default function Studio() {
 
   function openDoc(d) {
     setDoc(d); setClauses(null); setActiveKey(null); setHist([]); setFuture([]); setDirty(false); setLoading(true); setOthers([]);
+    setLastSaved(null); setAutoPaused(false);
     api.get(`/clause/doc-full?source=${encodeURIComponent(d.source)}`)
       .then((r) => {
         const cs = (r.clauses || []).map((c) => ({ key: nk(), id: c.id, html: c.html || '<p></p>', tags: c.tags || [], edited: !!c.edited, changed: false }));
@@ -82,6 +118,8 @@ export default function Studio() {
 
   // Step between clauses with the action-bar arrows (instead of clicking the rail).
   const goClause = (delta) => { const i = idx(); const n = i + delta; if (clauses && n >= 0 && n < clauses.length) setActiveKey(clauses[n].key); };
+  // Pick a clause from the rail; on a phone the rail is an overlay, so close it.
+  const pickClause = (key) => { setActiveKey(key); if (window.innerWidth <= 900) setShowRail(false); };
 
   function pushHist() {
     setHist((h) => [...h.slice(-49), JSON.stringify({ c: clausesRef.current, a: activeKeyRef.current })]);
@@ -195,21 +233,38 @@ export default function Studio() {
     commit(c, activeKey);
   }
 
-  async function save() {
+  async function save({ auto = false } = {}) {
+    if (auto && (!dirty || saving)) return;
     setSaving(true);
     try {
-      const payload = clauses.map((c) => ({ id: c.id, html: c.html, tags: c.tags, changed: !!c.changed }));
+      const payload = clauses.map((c) => ({ id: c.id, html: preserveSpaces(c.html), tags: c.tags, changed: !!c.changed }));
       const r = await api.post('/clause/doc-save', { source: doc.source, clauses: payload, base_rev: docRev });
-      toast.success(`Saved ${r.clauses} clauses`);
       setClauses((cs) => cs.map((c) => ({ ...c, changed: false })));
       setDocRev(r.rev || docRev);
-      setDirty(false); setHist([]); setFuture([]); reloadDocs();
+      setDirty(false); setLastSaved(Date.now()); setAutoPaused(false);
+      reloadDocs();
+      if (!auto) { toast.success(`Saved ${r.clauses} clauses`); setHist([]); setFuture([]); }
+      // Autosave keeps the undo/redo stacks intact so editing isn't interrupted.
     } catch (e) {
       if (e.status === 409) {
-        if (window.confirm(`${e.message}\n\nReload the latest version now? Your unsaved changes will be lost.`)) openDoc(doc);
-      } else { toast.error(e.message || 'Save failed'); }
+        if (auto) { setAutoPaused(true); toast.error('Autosave paused — another editor saved first. Save manually to resolve.'); }
+        else if (window.confirm(`${e.message}\n\nReload the latest version now? Your unsaved changes will be lost.`)) openDoc(doc);
+      } else if (!auto) { toast.error(e.message || 'Save failed'); }
+      else { setAutoPaused(true); }
     } finally { setSaving(false); }
   }
+
+  // Debounced autosave: 2.5s after the last edit, unless a co-editor is present
+  // (last-writer-wins risk) or autosave was paused by a conflict. Re-arms on each edit.
+  useEffect(() => {
+    if (!autoSave || autoPaused || !dirty || saving) return undefined;
+    if (others.length) return undefined;
+    const t = setTimeout(() => save({ auto: true }), 2500);
+    return () => clearTimeout(t);
+  }, [clauses, dirty, autoSave, autoPaused, others]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A fresh manual edit after a conflict re-enables autosave.
+  useEffect(() => { if (dirty) setAutoPaused(false); }, [activeKey]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function delDoc(d) {
     if (!window.confirm(`Delete "${d.source}" and all ${d.clauses} clauses? This cannot be undone.`)) return;
@@ -261,7 +316,11 @@ export default function Studio() {
         <button className="btn btn-ghost btn-sm" onClick={() => setShowRail((s) => !s)}><i className={`fas ${showRail ? 'fa-list-ul' : 'fa-list'}`} /> {showRail ? 'Hide clauses' : 'Show clauses'}</button>
         <button className="btn btn-ghost btn-sm" onClick={() => setMetaOpen(true)}><i className="fas fa-gear" /> Settings</button>
         {doc.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Show PDF'}</button>}
-        <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>{saving ? <Spinner size={13} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save{dirty ? ' *' : ''}</button>
+        <SaveStatus saving={saving} dirty={dirty} lastSaved={lastSaved} autoPaused={autoPaused} autoSave={autoSave} />
+        <button className={`btn btn-ghost btn-sm ${autoSave ? 'auto-on' : ''}`} title={autoSave ? 'Autosave is on — turn off' : 'Autosave is off — turn on'} onClick={() => setAutoSave((s) => !s)}>
+          <i className={`fas ${autoSave ? 'fa-toggle-on' : 'fa-toggle-off'}`} /> Autosave
+        </button>
+        <button className="btn btn-primary btn-sm" onClick={() => save()} disabled={saving || !dirty}>{saving ? <Spinner size={13} color="#fff" /> : <i className="fas fa-floppy-disk" />} Save{dirty ? ' *' : ''}</button>
       </PageHeader>
 
       {others.length > 0 && (
@@ -291,14 +350,17 @@ export default function Studio() {
 
       <div className="studio-body">
         {showRail && (
+        <>
+        <div className="studio-rail-backdrop" onClick={() => setShowRail(false)} />
         <aside className="studio-rail">
+          <div className="studio-rail-mhead">Clauses<button className="studio-rail-close" onClick={() => setShowRail(false)} title="Close" aria-label="Close"><i className="fas fa-xmark" /></button></div>
           <div className="studio-rail-body">
             {clauses === null ? <div className="studio-loading"><Spinner size={15} /> Loading…</div>
               : clauses.map((c) => (
                 <div key={c.key}
                   className={`studio-clause ${activeKey === c.key ? 'is-active' : ''} ${dragKey === c.key ? 'dragging' : ''}`}
                   draggable onDragStart={() => setDragKey(c.key)} onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(c.key)}
-                  onClick={() => setActiveKey(c.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setActiveKey(c.key); }}>
+                  onClick={() => pickClause(c.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') pickClause(c.key); }}>
                   <i className="fas fa-grip-vertical studio-grip" />
                   <span className="studio-clause-id">{c.id}</span>
                   {c.edited && <i className="fas fa-pen studio-edited" title="Edited" />}
@@ -306,6 +368,7 @@ export default function Studio() {
               ))}
           </div>
         </aside>
+        </>
         )}
 
         <div className="studio-main" ref={splitRef}>
@@ -325,7 +388,8 @@ export default function Studio() {
                           onChange={(e) => setTagDraft(e.target.value)} onBlur={commitTags} />
                       </label>
                     </div>
-                    <StudioEditor key={`${active.key}:${rev}`} value={active.html} onChange={onEdit} apiRef={editorApi} />
+                    <StudioEditor key={`${active.key}:${rev}`} value={active.html} onChange={onEdit} apiRef={editorApi}
+                      scrollState={editorScrollRef} clauseKey={active.key} />
                   </>
                 )}
           </div>
@@ -334,7 +398,7 @@ export default function Studio() {
             <>
               <div className="studio-resizer" onMouseDown={startResize} />
               <aside className="studio-pdf" style={{ flexBasis: `${paneW}%` }}>
-                <div className="studio-pdf-head"><i className="fas fa-file-pdf" /> {doc.source}<span className="studio-pdf-tag">{doc.has_uploaded_pdf ? 'uploaded' : 'bundled'}</span></div>
+                <div className="studio-pdf-head"><i className="fas fa-file-pdf" /> {doc.source}<span className="studio-pdf-tag">{doc.has_uploaded_pdf ? 'uploaded' : 'bundled'}</span><button className="studio-pdf-close" onClick={() => setShowPdf(false)} title="Close PDF" aria-label="Close PDF"><i className="fas fa-xmark" /></button></div>
                 <PdfViewer key={doc.pdf_url} url={doc.pdf_url} />
               </aside>
             </>
@@ -351,7 +415,8 @@ export default function Studio() {
 }
 
 const DOC_TYPES = ['ACT', 'REGULATION', 'MASTER', 'CIRCULAR', 'GUIDELINE'];
-const DOC_CATEGORIES = ['HEALTH', 'LIFE', 'NONLIFE', 'GENERAL'];
+const DEFAULT_CATEGORIES = ['HEALTH', 'LIFE', 'NONLIFE', 'GENERAL'];
+const catLabel = (c) => (c === 'NONLIFE' ? 'NON-LIFE' : c);
 
 // Edit a document's name, type-band, department, hierarchy (parent) and status —
 // applies across all its clauses; hierarchy/status drive the Downloads tree.
@@ -364,7 +429,12 @@ function DocMetaModal({ doc, onClose, onSaved }) {
   const [status, setStatus] = useState(doc.status || 'Active');
   const [effDate, setEffDate] = useState(doc.effective_date || '');
   const [parents, setParents] = useState([]);
+  const [cats, setCats] = useState(DEFAULT_CATEGORIES);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get('/departments').then((d) => setCats(d.categories || DEFAULT_CATEGORIES)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.get('/documents').then((data) => {
@@ -412,8 +482,8 @@ function DocMetaModal({ doc, onClose, onSaved }) {
         <div className="field">
           <label>Department</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-            {!DOC_CATEGORIES.includes(category) && <option value={category}>{category || '— select —'}</option>}
-            {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c === 'NONLIFE' ? 'NON-LIFE' : c}</option>)}
+            {!cats.includes(category) && <option value={category}>{category || '— select —'}</option>}
+            {cats.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
           </select>
         </div>
       </div>
@@ -483,7 +553,9 @@ function ImportModal({ onClose, onDone }) {
   const [detecting, setDetecting] = useState(false);
   const [detected, setDetected] = useState(null);
 
+  const [cats, setCats] = useState(DEFAULT_CATEGORIES);
   useEffect(() => { api.get('/clause/specs').then((d) => setSpecs(d.specs || [])).catch(() => {}); }, []);
+  useEffect(() => { api.get('/departments').then((d) => setCats(d.categories || DEFAULT_CATEGORIES)).catch(() => {}); }, []);
 
   async function onFile(e) {
     const f = e.target.files?.[0] || null;
@@ -558,8 +630,8 @@ function ImportModal({ onClose, onDone }) {
         <div className="field" style={{ flex: 1 }}>
           <label>Department</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="GENERAL">General</option><option value="HEALTH">Health</option>
-            <option value="LIFE">Life</option><option value="NONLIFE">Non-Life</option>
+            {!cats.includes(category) && <option value={category}>{category}</option>}
+            {cats.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
           </select>
         </div>
       </div>

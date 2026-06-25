@@ -37,6 +37,17 @@
 .studio-actionbar .ab-spacer { flex: 1; }
 .studio-actionbar .ab-hint { font-size: 11px; color: var(--faint); font-style: italic; }
 
+/* Save-state pill + autosave toggle (in the page header) */
+.studio-savestate { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 0 8px; color: var(--muted); white-space: nowrap; }
+.studio-savestate i { font-size: 9px; }
+.studio-savestate.is-dirty { color: var(--warn, #b45309); }
+.studio-savestate.is-dirty i { font-size: 7px; }
+.studio-savestate.is-saved { color: var(--good, #15803d); }
+.studio-savestate.is-saved i { font-size: 11px; }
+.studio-savestate.is-warn { color: var(--bad, #dc2626); }
+.btn.auto-on { color: var(--accent); border-color: var(--accent); }
+.btn.auto-on i { color: var(--good, #15803d); }
+
 /* Draggable clause list */
 .studio-clause { position: relative; display: flex; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: var(--r-sm); padding: 7px 10px; margin-bottom: 2px; cursor: pointer; transition: 0.1s; }
 .studio-clause:hover { background: var(--card); }
@@ -61,7 +72,10 @@
 .hist-snip { font-size: 12.5px; color: var(--ink); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Main split: editor + PDF */
-.studio-main { flex: 1; display: flex; min-height: 0; }
+/* min-width:0 lets the editor pane shrink when it holds a very wide table —
+   without it the table forces the pane wide and shoves the PDF off-screen, and
+   the split resizer "resists". The table then scrolls inside .ce-body instead. */
+.studio-main { flex: 1; display: flex; min-height: 0; min-width: 0; }
 .studio-editor { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .studio-editing-id { padding: 9px 18px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); font-family: var(--mono); }
 .studio-editing-id strong { color: var(--ink); }
@@ -75,16 +89,39 @@
 
 .studio-resizer { width: 6px; flex: 0 0 6px; cursor: col-resize; background: var(--line); transition: background 0.15s; }
 .studio-resizer:hover { background: var(--accent); }
-.studio-pdf { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
+.studio-pdf { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-left: 1px solid var(--line); }
 .studio-pdf-head { padding: 9px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 7px; }
 .studio-pdf-tag { margin-left: auto; font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); background: var(--paper-2, #f1f5f9); padding: 2px 8px; border-radius: var(--r-pill); }
 .studio-detect { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
 .studio-detect i { color: var(--accent); }
 .studio-detect strong { color: var(--ink); }
 
+.studio-pdf-close { display: none; margin-left: 10px; width: 28px; height: 28px; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); border-radius: var(--r-sm); cursor: pointer; align-items: center; justify-content: center; font-size: 14px; }
+
+/* Rail overlay chrome — only shown on phones (the rail floats over the editor). */
+.studio-rail-mhead { display: none; }
+.studio-rail-backdrop { display: none; }
+.studio-rail-close { display: none; }
+
 @media (max-width: 900px) {
-  .studio-rail { width: 220px; flex-basis: 220px; }
-  .studio-pdf, .studio-resizer { display: none; }
+  .studio-resizer { display: none; }
+  /* The clause list floats over the editor instead of squeezing it (which used to
+     shove the editor pane right and leave the header strip short). */
+  .studio-rail { position: fixed; top: 0; left: 0; bottom: 0; width: 86%; max-width: 320px; flex-basis: auto; z-index: 62; box-shadow: var(--sh-3); }
+  .studio-rail-backdrop { display: block; position: fixed; inset: 0; z-index: 61; background: rgba(15,23,42,0.42); }
+  .studio-rail-mhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .studio-rail-close { display: inline-flex; width: 28px; height: 28px; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); border-radius: var(--r-sm); cursor: pointer; align-items: center; justify-content: center; font-size: 14px; }
+  /* The side-by-side PDF pane can't fit on a phone — show it full-screen so the
+     "Show PDF" toggle actually does something. */
+  .studio-pdf { position: fixed; inset: 0; z-index: 64; flex-basis: auto !important; width: 100% !important; background: var(--card); overflow: hidden; }
+  .studio-pdf-head { flex: 0 0 auto; }
+  .studio-pdf-close { display: inline-flex; }
+}
+
+/* Hide the green scope dot in the editor header on phones held upright (it
+   crowds the doc name); keep it in landscape and on desktop. */
+@media (max-width: 900px) and (orientation: portrait) {
+  .studio-shell .page-header .scope-dot { display: none; }
 }
 
 /* Document-settings modal: two equal, aligned field columns */

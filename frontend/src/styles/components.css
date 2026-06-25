@@ -264,3 +264,29 @@ table.data tbody tr:hover { background: var(--paper); }
   .header-actions { gap: 8px; }
   .collapse-btn, .notif-btn, .header-avatar, .header-icon-btn { width: 36px; height: 36px; }
 }
+
+/* Canonical responsive rule for rendered clause tables (search + reader + read
+   views). Lives here (always loaded) so a wide table always scrolls within its
+   clause rather than overflowing the page — independent of any code-split chunk. */
+/* Rendered clause tables keep their natural width; the wrapper injected around
+   each one (wrapClauseTables) does the horizontal scrolling, so a wide table
+   stays within its clause and scrolls at readable column widths instead of
+   overflowing the page or squishing. (A <table> can't be shrunk below its
+   min-content via CSS, hence the wrapper rather than overflow on the table.) */
+/* Table copy-toolbar — used by both the HTML clause path (.clause-html) and the
+   plain-text/markdown path (.clause-body), so these are not parent-scoped. */
+.clause-table-wrap { margin: 12px 0; max-width: 100%; }
+.clause-table-scroll { overflow-x: auto; max-width: 100%; }
+.clause-table-bar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.clause-table-copy { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--accent); background: #fff; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 3px 9px; cursor: pointer; transition: 0.14s; }
+.clause-table-copy:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.clause-table-copy i { font-size: 10px; }
+/* Bold clause text uses the brand navy everywhere (the rule also lives in the
+   code-split search.css, which isn't loaded on /read — hence black bold there). */
+.clause-html strong, .clause-html b, .clause-body .clause-head strong { font-weight: 700; color: var(--navy-700, #1a237e); }
+/* Clause table cell borders + header styling, global so tables look like tables
+   on /read too (the rule also lives in code-split search.css, not loaded there —
+   without this, reader tables render as borderless floating text). */
+.clause-html table { border-collapse: collapse; }
+.clause-html table td, .clause-html table th { border: 1px solid var(--line-strong); padding: 6px 10px; vertical-align: top; text-align: left; }
+.clause-html table th { background: var(--paper); font-weight: 700; color: var(--navy-700, #1a237e); }

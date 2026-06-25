@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd # type: ignore
 import os
 import re
+import json
 from datetime import datetime
 import glob
 import difflib
@@ -28,6 +29,89 @@ RAW_SUBMISSIONS_FOLDER = os.path.join(KB_FOLDER, "raw_submissions")
 
 # Ensure folders exist (for admin upload staging)
 if not os.path.exists(RAW_SUBMISSIONS_FOLDER): os.makedirs(RAW_SUBMISSIONS_FOLDER)
+
+# --- Departments registry -------------------------------------------------
+# Each department is a Knowledge Base module (own sidebar entry + search page,
+# scoped to its Doc_Category + cross-cutting GENERAL). Admins manage the list
+# in-app; it persists to knowledge_base/departments.json. GENERAL is implicit
+# (it surfaces in every module) and is never itself a department.
+DEPARTMENTS_PATH = os.path.join(KB_FOLDER, "departments.json")
+DEFAULT_DEPARTMENTS = [
+    {"key": "HEALTH",  "label": "Health",   "icon": "fa-heart-pulse",  "general": True},
+    {"key": "LIFE",    "label": "Life",     "icon": "fa-umbrella",     "general": True},
+    {"key": "NONLIFE", "label": "Non-Life", "icon": "fa-shield-halved", "general": True},
+]
+
+def _ensure_dept_table(conn):
+    """Create the departments table on first use, seeding it from a legacy
+    departments.json if present, otherwise from the built-in defaults. Stored in
+    iris.db so it persists across redeploys (Litestream-replicated) — a JSON file
+    on the container filesystem would be wiped on every deploy."""
+    exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='departments'"
+    ).fetchone() is not None
+    conn.execute("""CREATE TABLE IF NOT EXISTS departments (
+        key TEXT PRIMARY KEY, label TEXT, icon TEXT, general INTEGER DEFAULT 0, ord INTEGER DEFAULT 0)""")
+    if not exists:
+        seed = DEFAULT_DEPARTMENTS
+        try:
+            if os.path.exists(DEPARTMENTS_PATH):
+                with open(DEPARTMENTS_PATH, "r", encoding="utf-8") as f:
+                    js = json.load(f)
+                if js:
+                    seed = js
+        except Exception:
+            pass
+        for i, d in enumerate(seed):
+            k = str(d.get("key", "")).strip().upper()
+            if not k or k == "GENERAL":
+                continue
+            conn.execute("INSERT OR IGNORE INTO departments (key,label,icon,general,ord) VALUES (?,?,?,?,?)",
+                         (k, (d.get("label") or k.title()), (d.get("icon") or "fa-folder"),
+                          1 if d.get("general") else 0, i))
+        conn.commit()
+
+def load_departments():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        _ensure_dept_table(conn)
+        rows = conn.execute("SELECT key,label,icon,general FROM departments ORDER BY ord, key").fetchall()
+        conn.close()
+        out, seen = [], set()
+        for (k, label, icon, general) in rows:
+            k = str(k or "").strip().upper()
+            if not k or k == "GENERAL" or k in seen:
+                continue
+            seen.add(k)
+            out.append({"key": k,
+                        "label": (str(label or "").strip() or k.title()),
+                        "icon": (str(icon or "").strip() or "fa-folder"),
+                        # Whether this module also surfaces cross-cutting GENERAL
+                        # documents (insurance lines do; e.g. HR does not).
+                        "general": bool(general)})
+        if out:
+            return out
+    except Exception:
+        pass
+    return [dict(d) for d in DEFAULT_DEPARTMENTS]
+
+def save_departments(depts):
+    conn = sqlite3.connect(DB_NAME)
+    _ensure_dept_table(conn)
+    conn.execute("DELETE FROM departments")
+    for i, d in enumerate(depts):
+        k = str(d.get("key", "")).strip().upper()
+        if not k or k == "GENERAL":
+            continue
+        conn.execute("INSERT OR REPLACE INTO departments (key,label,icon,general,ord) VALUES (?,?,?,?,?)",
+                     (k, (d.get("label") or k.title()), (d.get("icon") or "fa-folder"),
+                      1 if d.get("general") else 0, i))
+    conn.commit()
+    conn.close()
+    return load_departments()
+
+def department_keys():
+    return [d["key"] for d in load_departments()]
 
 DOC_HIERARCHY = { "ACT": 1, "REGULATION": 2, "MASTER": 3, "CIRCULAR": 4, "GUIDELINE": 5, "UNKNOWN": 99 }
 GREETINGS = { "hi", "hello", "hey", "iris", "help", "greetings" }
@@ -294,10 +378,14 @@ def replace_document_clauses(source, clauses, editor=None):
             cid = f"{cid}-{i}"
         seen.add(cid); norm.append((cid, c))
 
-    # snapshot clauses that are being removed
-    for oid, ex in existing.items():
-        if oid not in seen:
-            _snapshot(conn, oid, source, ex["html"], ex["text"], ex["tags"], editor, " (doc save: removed)")
+    # snapshot + tombstone clauses that are being removed (so a later sync won't
+    # resurrect them); lift tombstones for clauses present in the saved set.
+    removed = [oid for oid in existing if oid not in seen]
+    for oid in removed:
+        ex = existing[oid]
+        _snapshot(conn, oid, source, ex["html"], ex["text"], ex["tags"], editor, " (doc save: removed)")
+    _tombstone(conn, source, removed, editor)
+    _clear_tombstones(conn, source, list(seen))
 
     conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=?", (str(source),))
     for i, (cid, c) in enumerate(norm, 1):
@@ -327,6 +415,43 @@ def replace_document_clauses(source, clauses, editor=None):
     return len(clauses)
 
 
+def _ensure_tombstone_table(conn):
+    """Tombstones for Studio-deleted clauses. The data Sync rebuilds Excel-backed
+    docs from scratch, so without this a deleted clause is re-created next sync."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS deleted_clauses ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, source_doc TEXT NOT NULL, "
+        "clause_id TEXT NOT NULL, deleted_by TEXT, deleted_at TEXT, "
+        "UNIQUE(source_doc, clause_id))")
+
+
+def _tombstone(conn, source, clause_ids, editor=None):
+    """Record (source, clause_id) deletions so the next sync won't resurrect them."""
+    _ensure_tombstone_table(conn)
+    now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
+    conn.executemany(
+        "INSERT OR IGNORE INTO deleted_clauses (source_doc, clause_id, deleted_by, deleted_at) "
+        "VALUES (?,?,?,?)",
+        [(str(source), str(cid), editor or "", now) for cid in clause_ids if str(cid)])
+
+
+def _clear_tombstones(conn, source, clause_ids=None):
+    """Lift tombstones when a clause/doc is (re)added or re-imported."""
+    _ensure_tombstone_table(conn)
+    if clause_ids is None:
+        conn.execute("DELETE FROM deleted_clauses WHERE source_doc=?", (str(source),))
+    else:
+        conn.executemany("DELETE FROM deleted_clauses WHERE source_doc=? AND clause_id=?",
+                         [(str(source), str(cid)) for cid in clause_ids])
+
+
+def _load_tombstones(conn):
+    """Return the set of (source_doc, clause_id) the sync must skip re-creating."""
+    _ensure_tombstone_table(conn)
+    return {(str(s), str(c)) for s, c in
+            conn.execute("SELECT source_doc, clause_id FROM deleted_clauses").fetchall()}
+
+
 def delete_document(source, editor=None):
     """Delete an entire document and all its clauses. Snapshots each clause to
     clause_versions first (recoverable), then refreshes the in-memory KB.
@@ -346,6 +471,7 @@ def delete_document(source, editor=None):
             "INSERT INTO clause_versions (clause_id, source_doc, html, body_text, tags, edited_by, edited_at) "
             "VALUES (?,?,?,?,?,?,?)", (r[0], str(source), r[1], r[2], r[3], tag, now))
     conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=?", (str(source),))
+    _tombstone(conn, source, [r[0] for r in rows], editor)
     conn.commit()
     conn.close()
     refresh_kb()
@@ -390,6 +516,7 @@ def add_clause(source, after_id, editor=None):
         "context_header, regulatory_tags, priority, is_header, sort_order, updated_by) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (str(source), meta[0], meta[1], new_id, "New clause:", "New clause", "", 99, 0, after_so + 5, editor or ""))
+    _clear_tombstones(conn, source, [new_id])
     _renumber(conn, source)
     conn.commit(); conn.close()
     refresh_kb()
@@ -404,6 +531,7 @@ def delete_clause(source, clause_id, editor=None):
         conn.close(); return False
     _snapshot(conn, clause_id, source, r[0], r[1], r[2], editor, " (delete)")
     conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=? AND clause_id=?", (str(source), str(clause_id)))
+    _tombstone(conn, source, [clause_id], editor)
     _renumber(conn, source)
     conn.commit(); conn.close()
     refresh_kb()
@@ -430,6 +558,7 @@ def merge_clause(source, clause_id, editor=None):
     conn.execute("UPDATE regulatory_clauses SET clause_text=?, clause_html=?, updated_by=?, updated_at=? "
                  "WHERE source_doc=? AND clause_id=?", (new_text, new_html, editor or "", now, str(source), prev[0]))
     conn.execute("DELETE FROM regulatory_clauses WHERE source_doc=? AND clause_id=?", (str(source), str(clause_id)))
+    _tombstone(conn, source, [clause_id], editor)
     _renumber(conn, source)
     conn.commit(); conn.close()
     refresh_kb()
@@ -527,12 +656,18 @@ def get_autocomplete_data():
 def filter_df_by_module(df, module) -> pd.DataFrame:
     if df is None: return pd.DataFrame()
     if df.empty: return df
-    # GENERAL (cross-cutting) documents surface in every department module.
-    if module == "health": return df[df["Doc_Category"].isin(["HEALTH", "GENERAL"])]
-    elif module == "life": return df[df["Doc_Category"].isin(["LIFE", "GENERAL"])]
-    elif module == "nonlife": return df[df["Doc_Category"].isin(["NONLIFE", "GENERAL"])]
-    elif module == "data": return pd.DataFrame(columns=df.columns)
-    else: return df
+    m = (module or "").strip().lower()
+    if m in ("", "universal", "all"): return df
+    if m == "data": return pd.DataFrame(columns=df.columns)
+    # A department module shows its own Doc_Category, plus cross-cutting GENERAL
+    # documents only if that department opts in. The category key is the module
+    # slug upper-cased (health->HEALTH, hr->HR), so new departments need no code.
+    key = m.upper()
+    dept = next((d for d in load_departments() if d["key"] == key), None)
+    cats = [key]
+    if dept is None or dept.get("general"):
+        cats.append("GENERAL")
+    return df[df["Doc_Category"].isin(cats)]
 
 def check_greeting(query):
     return re.sub(r'[^\w\s]', '', query.lower().strip()) in GREETINGS
@@ -616,11 +751,18 @@ def search_tags_only(keyword_tuples, df, module="universal"):
         found = False
         for target in detected_tags:
             target_stem = get_stem(target)
+            single_target = len(target.split()) == 1
             for doc_tag in tag_list:
                 if doc_tag == target or normalize_tag_text(doc_tag) == normalize_tag_text(target):
                     found = True; break
-                if target_stem == get_stem(doc_tag) and len(target.split()) == 1 and len(doc_tag.split()) == 1:
+                if target_stem == get_stem(doc_tag) and single_target and len(doc_tag.split()) == 1:
                     found = True; break
+                # A single query word also matches a multi-word tag when it equals
+                # (by stem) one of the words inside that tag, so "criticism"
+                # surfaces the tag "criticism of authority or government".
+                if single_target and len(doc_tag.split()) > 1:
+                    if any(target == tw or target_stem == get_stem(tw) for tw in doc_tag.split()):
+                        found = True; break
             if found: break
         
         if found:
@@ -686,41 +828,79 @@ def search_by_clause_number(raw_query, df, sources=None, limit=12):
     return (primary or loose)[:limit]
 
 
-def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal"):
+def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", phrase=None):
     scoped_df: pd.DataFrame = filter_df_by_module(df, module)
     if scoped_df.empty: return []
 
-    search_stems = set()
+    # Keep the core query stems (the words the user typed) separate from synonym
+    # expansions, so relevance can reward the words actually typed.
+    core_stems, search_stems = [], set()
+    # The literal surface words the user typed (e.g. "criticism"), kept apart from
+    # their stem ("critic"). Porter collapses "criticism"/"critical"/"criticize"
+    # to the same stem, so without this the ranker can't tell them apart and a
+    # "critical"-heavy clause outranks the "criticism" the user actually wanted.
+    core_words = []
     for raw, clean in keyword_tuples:
         if clean not in STOPWORDS_STRONG:
-            search_stems.add(get_stem(clean))
+            # `clean` is already the stem — re-stemming it over-shortens (e.g.
+            # "revis" -> "revi"), which then falsely matches "review"/"revival".
+            if clean not in core_stems:
+                core_stems.append(clean)
+            search_stems.add(clean)
+            # Only genuine single typed words (skip synthesized multi-word tags).
+            rw = str(raw).lower().strip()
+            if rw and " " not in rw and rw not in core_words:
+                core_words.append(rw)
             if clean in SYNONYM_MAP:
                 for syn in SYNONYM_MAP[str(clean)]:
                     search_stems.add(get_stem(syn))
 
+    # Normalised verbatim phrase the user typed (for exact-phrase ranking).
+    phrase_l = re.sub(r"\s+", " ", str(phrase or "").strip().lower()) or None
     exclude_set: set[str] = set(exclude_ids) if exclude_ids else set()
     matches = []
-    
+
     for _, row in scoped_df.iterrows():
         if row.get("Is_Header"): continue
         c_id = str(row.get("Clause_ID", "")).strip()
         if c_id in exclude_set: continue
-        
+
         text = str(row.get("Clause_Text", "")).lower()
-        found = False
-        for stem in search_stems:
-            if re.search(rf"\b{re.escape(stem)}\w*", text): found = True; break
-        
-        if found:
-            matches.append({
-                "source": row.get("Source_Doc", "UNKNOWN"),
-                "type": row.get("Doc_Type", "UNKNOWN"),
-                "priority": row.get("Priority", 99),
-                "id": c_id,
-                "header": row.get("Context_Header", ""),
-                "raw_text": str(row.get("Clause_Text", ""))
-            })
-    return sort_matches(matches)
+        hit_stems = [s for s in search_stems if re.search(rf"\b{re.escape(s)}\w*", text)]
+        if not hit_stems:
+            continue
+
+        # Relevance score (dominates the regulatory-hierarchy order below):
+        #   verbatim phrase >> all typed words present >> more distinct words >> density.
+        score = 0
+        if phrase_l and " " in phrase_l and phrase_l in text:
+            score += 1000
+        core_hits = [s for s in core_stems if re.search(rf"\b{re.escape(s)}\w*", text)]
+        if core_stems and len(core_hits) == len(core_stems):
+            score += 200            # every word the user typed appears in this clause
+        score += 10 * len(core_hits)
+        # Reward the exact surface word the user typed over same-stem cousins:
+        # a clause with literal "criticism" beats one that only has "critical"
+        # (prefix on the full word, so "criticism" also catches "criticisms" but
+        # never "critical"). 50 dominates the density term below.
+        score += 50 * sum(1 for w in core_words if re.search(rf"\b{re.escape(w)}\w*", text))
+        score += sum(len(re.findall(rf"\b{re.escape(s)}\w*", text)) for s in core_hits)
+
+        matches.append({
+            "source": row.get("Source_Doc", "UNKNOWN"),
+            "type": row.get("Doc_Type", "UNKNOWN"),
+            "priority": row.get("Priority", 99),
+            "id": c_id,
+            "header": row.get("Context_Header", ""),
+            "raw_text": str(row.get("Clause_Text", "")),
+            "_score": score,
+        })
+
+    # Hierarchy order first, then a stable sort by relevance so the best textual
+    # matches (e.g. the clause with the exact phrase) rise to the top.
+    matches = sort_matches(matches)
+    matches.sort(key=lambda m: -m.get("_score", 0))
+    return matches
 
 # ==========================================
 # 5. EARLY WARNING SYSTEM (RISK LOGIC - TRENDS)
@@ -869,6 +1049,29 @@ def aggregate_regulatory_documents():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
+    # --- Preserve in-app work that the Excel rebuild would otherwise wipe -----
+    # The sync rebuilds clauses from the knowledge_base Excel/CSV files, but
+    # Document Studio imports (PDF->clauses) and in-app clause edits/retags live
+    # only in the DB. Snapshot them so we can restore them after the rebuild.
+    cols = [r[1] for r in c.execute("PRAGMA table_info(regulatory_clauses)").fetchall()]
+    snapshot = [dict(zip(cols, row))
+                for row in c.execute(f"SELECT {', '.join(cols)} FROM regulatory_clauses").fetchall()]
+    # Clauses the user deleted in Document Studio — never re-create them from Excel.
+    tombstones = _load_tombstones(c)
+
+    def _excel_src(fn):
+        return re.sub(r"\.(xlsx|xls|csv|xlxs)$", "", fn, flags=re.IGNORECASE).replace("_", " ").upper().title()
+    excel_sources = {_excel_src(os.path.basename(p)) for p in doc_files}
+
+    db_only_rows = []   # whole documents not backed by any Excel file (Studio imports)
+    edits = {}          # (source, clause_id) -> row, for clauses edited/retagged in-app
+    for r in snapshot:
+        src = str(r.get("source_doc") or "")
+        if src not in excel_sources:
+            db_only_rows.append(r)
+        elif str(r.get("clause_html") or "").strip() or str(r.get("updated_by") or "").strip():
+            edits[(src, str(r.get("clause_id") or ""))] = r
+
     c.execute("DELETE FROM regulatory_clauses")
 
     for file_path in doc_files:
@@ -911,11 +1114,16 @@ def aggregate_regulatory_documents():
                 if (clause_text.lower().startswith("chapter") or clause_text.lower().startswith("part")) and len(clause_text) < 120:
                     is_header = 1
 
+                cid = str(row.get(clause_id_col, "")).strip() if clause_id_col else ""
+                # Don't resurrect a clause the user deleted in Document Studio.
+                if cid and (source_doc.title(), cid) in tombstones:
+                    continue
+
                 insert_rows.append((
                     source_doc.title(),
                     category,
                     doc_type,
-                    str(row.get(clause_id_col, "")).strip() if clause_id_col else "",
+                    cid,
                     clause_text,
                     str(row.get(context_col, "General")) if context_col else "General",
                     str(row.get(tags_col, "")) if tags_col else "",
@@ -934,122 +1142,145 @@ def aggregate_regulatory_documents():
         except Exception as e:
             print(f"[!] Error processing regulatory file {filename}: {e}")
 
+    # --- Restore the preserved in-app work -----------------------------------
+    restored_docs, restored_edits = 0, 0
+    if db_only_rows:
+        ins_cols = [col for col in cols if col != "id"]   # let id autoincrement
+        placeholders = ", ".join(["?"] * len(ins_cols))
+        c.executemany(
+            f"INSERT INTO regulatory_clauses ({', '.join(ins_cols)}) VALUES ({placeholders})",
+            [tuple(r.get(col) for col in ins_cols) for r in db_only_rows],
+        )
+        restored_docs = len({r.get("source_doc") for r in db_only_rows})
+    preserve = [col for col in ("clause_html", "regulatory_tags", "clause_text",
+                                "sort_order", "updated_at", "updated_by") if col in cols]
+    if preserve:
+        set_sql = ", ".join(f"{col}=?" for col in preserve)
+        for (src, cid), r in edits.items():
+            c.execute(
+                f"UPDATE regulatory_clauses SET {set_sql} WHERE source_doc=? AND clause_id=?",
+                tuple(r.get(col) for col in preserve) + (src, cid),
+            )
+            if c.rowcount:
+                restored_edits += 1
+
     conn.commit()
     conn.close()
 
     load_knowledge_base(force_reload=True)
-    return f"[+] Regulatory sync complete: {total_files} files ({total_rows} clauses)."
+    extra = ""
+    if restored_docs or restored_edits:
+        extra = f" | preserved {restored_docs} imported doc(s) + {restored_edits} in-app edit(s)"
+    return f"[+] Regulatory sync complete: {total_files} files ({total_rows} clauses){extra}."
+
+# Obsolete seed/POC files that must never be re-ingested by a sync: the curated
+# iris.db supersedes them, and re-adding their rows would resurrect data we
+# deliberately removed (POC unified_database.csv) or de-duplicated (HDFC ERGO).
+SYNC_SKIP_FILES = {"unified_database.csv",
+                   "handbook_2024-25_parts.xlsx", "handbook_2024-25_summary.xlsx"}
+
 
 def aggregate_submissions():
     """
-    Reads Excel AND CSV files from raw_submissions and INSERTs them into SQL DB.
-    Supports 'dimension' column. Defaults to 'Insurer' if not present.
-    Automatically converts '-' quarters to 'Annual'.
+    Ingest Excel/CSV files from raw_submissions into financial_metrics.
+
+    NON-DESTRUCTIVE / ADDITIVE: the curated DB is authoritative. We no longer wipe
+    the table — that used to destroy every surgical handbook re-ingest (Tables
+    4/21/66/69/78/82/100/102/AUM …) and resurrect removed POC/HDFC-ERGO rows. A
+    row is inserted only if its key (dimension, insurer, year, quarter, metric,
+    LOB, class) isn't already present, so existing curated rows always win and a
+    new submission file only adds genuinely new keys. Supports a 'dimension'
+    column (defaults to 'Insurer'); converts '-' quarters to 'Annual'.
     """
-    # --- UPDATED: Look for files in ALL subdirectories using os.walk ---
     all_files = []
     for root, dirs, files in os.walk(RAW_SUBMISSIONS_FOLDER):
         for file in files:
-            if file.startswith("~$"): continue # Skip Excel temp files
+            if file.startswith("~$"): continue                 # Excel temp files
+            if file in SYNC_SKIP_FILES: continue               # obsolete seed/POC
             if file.endswith(".xlsx") or file.endswith(".csv"):
                 all_files.append(os.path.join(root, file))
-    
-    if not all_files: 
+
+    if not all_files:
         return "[-] No new files found in 'raw_submissions' or subfolders."
 
-    total_rows: int = 0
-    total_files: int = 0
+    added_rows = 0
+    skipped_existing = 0
+    total_files = 0
 
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        
+
         # --- MIGRATION: Ensure columns exist in DB ---
         try: c.execute("ALTER TABLE financial_metrics ADD COLUMN dimension TEXT DEFAULT 'Insurer'")
-        except sqlite3.OperationalError: pass 
+        except sqlite3.OperationalError: pass
         try: c.execute("ALTER TABLE financial_metrics ADD COLUMN source_file TEXT")
         except sqlite3.OperationalError: pass
 
-        # --- CLEAN SLATE: Wipe table before import to prevent duplicates ---
-        c.execute("DELETE FROM financial_metrics")
+        # Snapshot existing keys — curated data is authoritative and is preserved.
+        def _key(insurer, fy, q, metric, lob, cob, dim):
+            return (str(dim).strip(), str(insurer).strip(), str(fy).strip(),
+                    str(q).strip(), str(metric).strip(), str(lob).strip(), str(cob).strip())
+        existing = set(c.execute(
+            "SELECT dimension, insurer, financial_year, quarter, metric, "
+            "line_of_business, class_of_business FROM financial_metrics"))
+        existing = {tuple((x or "").strip() for x in row) for row in existing}
 
         for file_path in all_files:
             filename = os.path.basename(file_path)
-            
             try:
-                # --- READ BASED ON EXTENSION ---
-                if file_path.endswith('.csv'):
-                    df = pd.read_csv(file_path)
-                else:
-                    df = pd.read_excel(file_path)
-
+                df = pd.read_csv(file_path) if file_path.endswith('.csv') else pd.read_excel(file_path)
                 if df.empty: continue
-
-                # Standardize columns to match SQL
                 df.columns = [str(col).strip().replace(" ", "_").lower() for col in df.columns]
-                
+
                 rows_to_insert = []
                 for _, row in df.iterrows():
-                    # --- SMART ADAPTER LOGIC ---
-                    # 1. Detect Dimension
                     dim_raw = row.get('dimension')
                     if not dim_raw:
-                        # Infer based on available columns
                         if 'insurer' in df.columns: dim_raw = 'Insurer'
                         elif 'state' in df.columns: dim_raw = 'State'
                         elif 'tpa' in df.columns: dim_raw = 'TPA'
                         else: dim_raw = 'Insurer'
+                    entity_raw = (row.get('insurer') or row.get('entity') or
+                                  row.get('state') or row.get('tpa') or "Unknown")
 
-                    # 2. Detect Entity Name
-                    entity_raw = (row.get('insurer') or 
-                                  row.get('entity') or 
-                                  row.get('state') or 
-                                  row.get('tpa') or 
-                                  "Unknown")
-
-                    # 3. Clean and Standardize (Strip Whitespace)
                     dim = str(dim_raw).strip()
                     entity_name = str(entity_raw).strip()
                     metric_name = str(row.get('metric', '')).strip()
-                    
-                    # 4. Handle Quarter
+                    fy = str(row.get('financial_year')).replace('.0', '').strip()
                     quarter_val = str(row.get('quarter', 'Annual')).strip()
-                    if quarter_val in ['-', 'nan', 'None', '', 'nan']: 
+                    if quarter_val in ['-', 'nan', 'None', '']:
                         quarter_val = 'Annual'
+                    lob = str(row.get('line_of_business', 'General')).strip()
+                    cob = str(row.get('class_of_business', 'General')).strip()
 
-                    # Skip invalid rows
-                    if not metric_name or pd.isna(row.get('value')): continue
+                    if not metric_name or pd.isna(row.get('value')):
+                        continue
 
-                    rows_to_insert.append((
-                        entity_name, 
-                        str(row.get('financial_year')).replace('.0','').strip(), 
-                        quarter_val,
-                        metric_name, 
-                        row.get('value'), 
-                        str(row.get('line_of_business', 'General')).strip(), 
-                        str(row.get('class_of_business', 'General')).strip(),
-                        dim,
-                        filename # Task 3: Store Source File
-                    ))
-                
+                    k = _key(entity_name, fy, quarter_val, metric_name, lob, cob, dim)
+                    if k in existing:                       # curated/existing wins
+                        skipped_existing += 1
+                        continue
+                    existing.add(k)                         # also dedups within the file
+                    rows_to_insert.append((entity_name, fy, quarter_val, metric_name,
+                                           row.get('value'), lob, cob, dim, filename))
+
                 if rows_to_insert:
-                    c.executemany('''
-                        INSERT INTO financial_metrics (insurer, financial_year, quarter, metric, value, line_of_business, class_of_business, dimension, source_file)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', rows_to_insert)
-                    
-                    total_files += 1  # type: ignore
-                    total_rows += len(rows_to_insert)  # type: ignore
-                
+                    c.executemany(
+                        "INSERT INTO financial_metrics (insurer, financial_year, quarter, "
+                        "metric, value, line_of_business, class_of_business, dimension, source_file) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_to_insert)
+                    total_files += 1
+                    added_rows += len(rows_to_insert)
             except Exception as e:
                 print(f"[!] Error processing {filename}: {e}")
 
         conn.commit()
         conn.close()
-        
-        # Reload the engine to reflect new data
+
         load_master_data_engine()
-        return f"[+] Success! Synced {total_files} files ({total_rows} rows) into SQL Database."
+        return (f"[+] Sync complete: added {added_rows} new rows from {total_files} file(s); "
+                f"preserved existing data ({skipped_existing} duplicate rows skipped).")
 
     except Exception as e:
         return f"Error syncing data: {e}"
@@ -1175,6 +1406,35 @@ def load_master_data_engine():
         print(f"[!] Error loading SQL data: {e}")
         UNIFIED_DF = pd.DataFrame()
 
+HDFC_ERGO_DISCLAIMER = (
+    "HDFC ERGO General Insurance is a merged entity — it absorbed L&T General "
+    "Insurance (2016-17) and Apollo Munich / HDFC ERGO Health (2020). Figures for "
+    "the merger-era years reflect entity consolidation and may not be directly "
+    "comparable across years. For merger-era figures, verify against the IRDAI "
+    "Handbook before relying on them.")
+
+
+def load_data_quality_flags():
+    """Sections (dimension, line_of_business) whose source table lost a
+    sub-dimension — surfaced as cautions in the Data Explorer. Cached; empty list
+    on un-migrated DBs (no data_quality_flags table)."""
+    if 'dq_flags' in _CACHE:
+        return _CACHE['dq_flags']
+    flags = []
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.execute("SELECT dimension, line_of_business, severity, note, "
+                           "conflict_rows, total_rows FROM data_quality_flags")
+        flags = [{"dimension": d, "line_of_business": lob, "severity": sev,
+                  "note": note, "conflict_rows": cr, "total_rows": tr}
+                 for d, lob, sev, note, cr, tr in cur.fetchall()]
+        conn.close()
+    except Exception:
+        flags = []
+    _CACHE['dq_flags'] = flags
+    return flags
+
+
 def get_filter_options():
     """
     Returns options structured by Dimension for the new UI. Memoised — the result
@@ -1244,6 +1504,19 @@ def get_filter_options():
         "lobs": _uniq(UNIFIED_DF, 'Line_of_Business'),
         "classes": _uniq(UNIFIED_DF, 'Class_of_Business'),
     }
+
+    # Type metadata from the categorization layer (categorize_dimensions.py):
+    # value -> type, so the UI can group the dropdowns and hide insurer names
+    # ('entity') that leaked into class_of_business. Absent on un-migrated DBs.
+    def _meta(col, typecol):
+        if col in UNIFIED_DF.columns and typecol in UNIFIED_DF.columns:
+            sub = UNIFIED_DF[[col, typecol]].dropna().drop_duplicates()
+            return {str(k): str(v) for k, v in zip(sub[col], sub[typecol])}
+        return {}
+    result["lob_meta"] = _meta('Line_of_Business', 'lob_type')
+    result["cob_meta"] = _meta('Class_of_Business', 'cob_type')
+    result["section_flags"] = load_data_quality_flags()
+
     _CACHE['filter_options'] = result
     return result
 
@@ -1281,7 +1554,30 @@ def _create_pivoted_view(filters):
         if 'Source_File' in df.columns: index_cols.append('Source_File')
         
         pivot_df = df.pivot_table(index=index_cols, columns='Metric', values='Value', aggfunc='sum').reset_index()
-        
+
+        # Computed totals: the Handbook omits industry/group totals, so users used
+        # to export every insurer and sum in Excel. Append a TOTAL row = sum across
+        # the selected entities for each Year/LOB/Class/Quarter. Unit-safe: only
+        # additive metrics (amounts, counts) are summed; percentages and ratios are
+        # left blank (summing them is meaningless), and value columns are consistent
+        # within a metric so a plain column-sum is correct.
+        if filters.get('add_total'):
+            n_ent = df['Entity'].nunique()
+            if n_ent >= 2:
+                t_index = [c for c in ['Financial_Year', 'Line_of_Business',
+                           'Class_of_Business', 'Quarter', 'Source_File'] if c in df.columns]
+                tot = df.pivot_table(index=t_index, columns='Metric',
+                                     values='Value', aggfunc='sum').reset_index()
+                tot.insert(0, 'Entity', f'TOTAL ({n_ent})')
+                if 'unit_code' in UNIFIED_DF.columns:
+                    munit = dict(zip(UNIFIED_DF['Metric'].astype(str),
+                                     UNIFIED_DF['unit_code'].astype(str)))
+                    ADDITIVE = {'INR', 'COUNT', 'NUMBER', 'USD'}
+                    for c in list(tot.columns):
+                        if str(c) in munit and munit[str(c)] not in ADDITIVE:
+                            tot[c] = pd.NA   # don't sum a % / ratio / unitless metric
+                pivot_df = pd.concat([pivot_df, tot], ignore_index=True)
+
         # Rename 'Entity' to Dimension Name
         pivot_df = pivot_df.rename(columns={'Entity': target_dim})
         
@@ -1320,7 +1616,26 @@ def filter_data(filters):
     if 'Source_File' in pivot_df.columns:
         final_cols.append('Source_File')
     
-    return {'columns': final_cols, 'rows': pivot_df.to_dict('records'), 'missing': missing_alerts, 'risks': risk_alerts}
+    # Surface data-quality cautions for the sections actually in this report.
+    cautions = []
+    if 'Line_of_Business' in pivot_df.columns:
+        shown_lobs = set(pivot_df['Line_of_Business'].astype(str).unique())
+        for f in load_data_quality_flags():
+            if f['dimension'] == target_dim and f['line_of_business'] in shown_lobs:
+                cautions.append(f)
+
+    # Entity disclaimer: HDFC ERGO merger lineage. Show whenever HDFC ERGO appears
+    # anywhere in the report (as the entity, or as a class — e.g. State views).
+    text_cells = set()
+    for col in (target_dim, 'Class_of_Business'):
+        if col in pivot_df.columns:
+            text_cells |= set(pivot_df[col].astype(str).unique())
+    if any('HDFC ERGO' in s for s in text_cells):
+        cautions.append({"dimension": "Entity note", "line_of_business": "HDFC ERGO",
+                         "severity": "info", "note": HDFC_ERGO_DISCLAIMER})
+
+    return {'columns': final_cols, 'rows': pivot_df.to_dict('records'),
+            'missing': missing_alerts, 'risks': risk_alerts, 'cautions': cautions}
 
 def generate_excel(filters):
     pivot_df, _, _ = _create_pivoted_view(filters)

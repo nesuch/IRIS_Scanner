@@ -66,6 +66,17 @@
       "effective_date": "2024-05-29",
       "repealed_on": null,
       "repealed_by": null
+    },
+    {
+      "id": "Reinsurance Regulations 2018",
+      "title": "IRDAI (Re-insurance) Regulations, 2018 (Consolidated)",
+      "type": "Regulation",
+      "category": "GENERAL",
+      "parent": "Irdai Act 1999",
+      "status": "Active",
+      "effective_date": "2019-01-01",
+      "repealed_on": null,
+      "repealed_by": null
     }
   ]
 }

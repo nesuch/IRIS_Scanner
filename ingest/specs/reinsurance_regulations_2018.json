@@ -1,0 +1,23 @@
+{
+  "doc_id": "REINSURANCE_REGS",
+  "sheet_name": "IRDAI (Re-insurance) Regulations 2018 (Consolidated)",
+  "ignore_patterns": [
+    "^Page\\s*\\d+\\s*of\\s*\\d+\\s*$",
+    "irdai\\.gov\\.in",
+    "THE GAZETTE OF INDIA",
+    "INSURANCE REGULATORY AND",
+    "DEVELOPMENT AUTHORITY OF INDIA",
+    "Amrit Mahotsav",
+    "^और\\s*/\\s*And\\s*$",
+    "^Vide Notification\\b",
+    "^Substituted (by|for)\\b",
+    "^Inserted by\\b",
+    "^Omitted by\\b",
+    "Prior to its substitution read as under",
+    "^Regulations,\\s*20\\d\\d\\s*$"
+  ],
+  "scope_start": "^1\\)\\s*Short title",
+  "default_section_prefix": "REINSURANCE_REGS",
+  "section": {"match": "^(\\d+)\\)\\s", "delimiter": ":", "max_x0": 80},
+  "tag_rule": {"max_len": 300}
+}

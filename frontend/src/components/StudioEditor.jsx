@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { DOMSerializer } from '@tiptap/pm/model';
-import { EXTENSIONS, cleanPastedHTML, joinTableBelow, ColorPicker, captureFormat, applyFormat } from './ClauseEditor.jsx';
+import { EXTENSIONS, cleanPastedHTML, joinTableBelow, ColorPicker, FontControls, captureFormat, applyFormat } from './ClauseEditor.jsx';
 
 // Split the current document at the caret into two HTML fragments.
 function splitAtCursor(editor) {
@@ -15,7 +15,7 @@ function splitAtCursor(editor) {
 
 // Content editor for the active clause. Reports edits via onChange and exposes
 // splitAtCursor through apiRef so the Studio action bar can split at the caret.
-export default function StudioEditor({ value, onChange, apiRef }) {
+export default function StudioEditor({ value, onChange, apiRef, scrollState, clauseKey }) {
   const editor = useEditor({
     extensions: EXTENSIONS,
     content: value || '<p></p>',
@@ -23,11 +23,21 @@ export default function StudioEditor({ value, onChange, apiRef }) {
     onUpdate: ({ editor: ed }) => onChange?.(ed.getHTML()),
   });
   const [painter, setPainter] = useState(null);   // captured format for the format-painter
+  const bodyRef = useRef(null);
 
   useEffect(() => {
     if (apiRef) apiRef.current = editor ? { split: () => splitAtCursor(editor) } : null;
     return () => { if (apiRef) apiRef.current = null; };
   }, [editor, apiRef]);
+
+  // The editor is remounted on undo/restore/merge (Studio bumps a `rev` in its
+  // key), which would otherwise reset this scroll container to the top. Restore
+  // the saved scroll position when we remount onto the SAME clause.
+  useEffect(() => {
+    if (!editor || !bodyRef.current || !scrollState?.current) return;
+    if (scrollState.current.key === clauseKey) bodyRef.current.scrollTop = scrollState.current.top || 0;
+  }, [editor, clauseKey, scrollState]);
+  const onBodyScroll = (e) => { if (scrollState) scrollState.current = { key: clauseKey, top: e.currentTarget.scrollTop }; };
 
   const B = ({ run, active, icon, label }) => (
     <button type="button" className={`ce-tool ${active ? 'is-active' : ''}`} title={label}
@@ -48,13 +58,17 @@ export default function StudioEditor({ value, onChange, apiRef }) {
         <B run={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} icon="fa-align-justify" label="Justify" />
         <span className="ce-divide" />
         <ColorPicker editor={editor} />
+        <FontControls editor={editor} />
         <B run={() => { if (painter) { applyFormat(editor, painter); setPainter(null); } else { setPainter(captureFormat(editor)); } }}
           active={!!painter} icon="fa-paintbrush" label={painter ? 'Select text, then click to apply copied format' : 'Copy formatting (then select target & click again)'} />
         <span className="ce-divide" />
         <B run={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} icon="fa-list-ul" label="Bulleted list" />
         <B run={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} icon="fa-list-ol" label="Numbered list" />
+        <B run={() => editor.chain().focus().outdent().run()} icon="fa-outdent" label="Decrease indent" />
+        <B run={() => editor.chain().focus().indent().run()} icon="fa-indent" label="Increase indent" />
         <span className="ce-divide" />
         <B run={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} icon="fa-table" label="Insert table" />
+        <B run={() => editor.chain().focus().toggleHeaderRow().run()} icon="fa-heading" label="Toggle header row (bold first row on/off)" />
         <B run={() => editor.chain().focus().addRowAfter().run()} icon="fa-grip-lines" label="Add row below" />
         <B run={() => editor.chain().focus().addColumnAfter().run()} icon="fa-grip-lines-vertical" label="Add column right" />
         <B run={() => editor.chain().focus().deleteRow().run()} icon="fa-delete-left" label="Delete row" />
@@ -68,7 +82,7 @@ export default function StudioEditor({ value, onChange, apiRef }) {
         <B run={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} icon="fa-equals" label="Cell align middle" />
         <B run={() => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()} icon="fa-angle-down" label="Cell align bottom" />
       </div>
-      <div className="ce-body">
+      <div className="ce-body" ref={bodyRef} onScroll={onBodyScroll}>
         <EditorContent editor={editor} className="clause-html ce-content" />
       </div>
     </div>

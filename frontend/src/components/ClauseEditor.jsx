@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Extension } from '@tiptap/core';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -7,7 +9,7 @@ import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
-import { TextStyle } from '@tiptap/extension-text-style';
+import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { Spinner } from './UI.jsx';
 import { useToast } from './Toast.jsx';
@@ -26,14 +28,92 @@ const vAlignAttr = {
 const CellWithVAlign = TableCell.extend({ addAttributes() { return { ...this.parent?.(), ...vAlignAttr }; } });
 const HeaderWithVAlign = TableHeader.extend({ addAttributes() { return { ...this.parent?.(), ...vAlignAttr }; } });
 
+// Block indentation: a margin-left step on paragraphs/headings, round-tripped as
+// an inline style. indent()/outdent() bump the level on the current block.
+const INDENT_STEP = 26;   // px per level
+const Indent = Extension.create({
+  name: 'indent',
+  addOptions() { return { types: ['paragraph', 'heading'], max: 10 }; },
+  addGlobalAttributes() {
+    return [{
+      types: this.options.types,
+      attributes: {
+        indent: {
+          default: 0,
+          parseHTML: (el) => Math.round((parseInt(el.style.marginLeft, 10) || 0) / INDENT_STEP) || 0,
+          renderHTML: (attrs) => (attrs.indent ? { style: `margin-left: ${attrs.indent * INDENT_STEP}px` } : {}),
+        },
+      },
+    }];
+  },
+  addCommands() {
+    const bump = (dir) => () => ({ editor, commands }) => {
+      const type = editor.isActive('heading') ? 'heading' : 'paragraph';
+      const cur = editor.getAttributes(type).indent || 0;
+      const next = Math.max(0, Math.min(this.options.max, cur + dir));
+      return commands.updateAttributes(type, { indent: next });
+    };
+    return { indent: bump(1), outdent: bump(-1) };
+  },
+});
+
+// The editor surface is white-space:pre-wrap, so typed alignment gaps (e.g. a
+// signature block with columns spaced apart) are visible while editing — but a
+// normal HTML render collapses runs of spaces, gluing the words together. Walk
+// only the text nodes and convert each run of 2+ spaces to non-breaking spaces
+// so the gap survives rendering. Tags/attributes are never touched.
+export function preserveSpaces(html) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  let n;
+  // eslint-disable-next-line no-cond-assign
+  while ((n = walker.nextNode())) {
+    if (/ {2,}/.test(n.nodeValue)) {
+      n.nodeValue = n.nodeValue.replace(/ {2,}/g, (run) => ' '.repeat(run.length));
+    }
+  }
+  return doc.body.innerHTML;
+}
+
 export const EXTENSIONS = [
   StarterKit,
   Underline,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
-  Table.configure({ resizable: true }),
+  // Wider grab handle + a resizable last column make column-edge dragging reliable.
+  Table.configure({ resizable: true, handleWidth: 8, cellMinWidth: 40, lastColumnResizable: true }),
   TableRow, HeaderWithVAlign, CellWithVAlign,
-  TextStyle, Color,
+  TextStyle, Color, FontFamily, FontSize, Indent,
 ];
+
+// Font choices for the editor toolbars.
+export const FONT_FAMILIES = [
+  { label: 'Font', value: '' },
+  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Sans', value: 'Inter, Arial, sans-serif' },
+  { label: 'Mono', value: 'ui-monospace, "Courier New", monospace' },
+  { label: 'Times', value: '"Times New Roman", serif' },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+];
+export const FONT_SIZES = ['', '11px', '12px', '13px', '14px', '16px', '18px', '20px', '24px'];
+
+// Font family + size dropdowns shared by both toolbars (Studio + modal).
+export function FontControls({ editor }) {
+  const fam = editor.getAttributes('textStyle').fontFamily || '';
+  const size = editor.getAttributes('textStyle').fontSize || '';
+  return (
+    <>
+      <select className="ce-select" title="Font family" value={fam}
+        onChange={(e) => { const v = e.target.value; const c = editor.chain().focus(); (v ? c.setFontFamily(v) : c.unsetFontFamily()).run(); }}>
+        {FONT_FAMILIES.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
+      </select>
+      <select className="ce-select ce-select-sm" title="Font size" value={size}
+        onChange={(e) => { const v = e.target.value; const c = editor.chain().focus(); (v ? c.setFontSize(v) : c.unsetFontSize()).run(); }}>
+        <option value="">Size</option>
+        {FONT_SIZES.filter(Boolean).map((s) => <option key={s} value={s}>{parseInt(s, 10)}</option>)}
+      </select>
+    </>
+  );
+}
 
 // Text colours offered in the editor (label + value). "Default" clears the
 // inline colour so the text inherits the clause styling (fixes pasted teal text).
@@ -51,11 +131,14 @@ export const TEXT_COLORS = [
 export function captureFormat(editor) {
   if (!editor) return null;
   const align = ['left', 'center', 'right', 'justify'].find((a) => editor.isActive({ textAlign: a }));
+  const ts = editor.getAttributes('textStyle');
   return {
     bold: editor.isActive('bold'),
     italic: editor.isActive('italic'),
     underline: editor.isActive('underline'),
-    color: editor.getAttributes('textStyle').color || null,
+    color: ts.color || null,
+    fontFamily: ts.fontFamily || null,
+    fontSize: ts.fontSize || null,
     align: align || null,
   };
 }
@@ -66,6 +149,8 @@ export function applyFormat(editor, fmt) {
   fmt.italic ? c.setItalic() : c.unsetItalic();
   fmt.underline ? c.setUnderline() : c.unsetUnderline();
   fmt.color ? c.setColor(fmt.color) : c.unsetColor();
+  fmt.fontFamily ? c.setFontFamily(fmt.fontFamily) : c.unsetFontFamily();
+  fmt.fontSize ? c.setFontSize(fmt.fontSize) : c.unsetFontSize();
   if (fmt.align) c.setTextAlign(fmt.align);
   c.run();
 }
@@ -142,11 +227,19 @@ export function joinTableBelow(editor) {
 // so a pasted table parses — but KEEP inline styles so bold/italic/alignment from
 // the original document survive (ProseMirror drops styles it doesn't understand).
 export function cleanPastedHTML(html) {
-  if (!/mso-|MsoNormal|schemas-microsoft|<o:p/i.test(html)) return html;
-  return html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<\/?o:p[^>]*>/gi, '')
-    .replace(/<\/?w:[^>]*>/gi, '');
+  let out = html;
+  if (/mso-|MsoNormal|schemas-microsoft|<o:p/i.test(out)) {
+    out = out
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<\/?o:p[^>]*>/gi, '')
+      .replace(/<\/?w:[^>]*>/gi, '');
+  }
+  // Strip explicit text colours. PDF/Office copy often carries a white or
+  // near-invisible colour, so pasted text shows up blank until manually
+  // recoloured. Removing `color` (but not `background-color`) lets pasted text
+  // inherit the clause's own colour. Other styles (bold/italic/align) are kept.
+  out = out.replace(/(?<![\w-])color\s*:\s*[^;"']*;?/gi, '');
+  return out;
 }
 
 export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {
@@ -164,7 +257,7 @@ export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {
     try {
       const r = await api.post('/clause/edit', {
         id: clause.id, source: clause.source,
-        html: editor.getHTML(), text: editor.getText(),
+        html: preserveSpaces(editor.getHTML()), text: editor.getText(),
       });
       toast.success('Clause saved');
       onSaved?.(r.html);
@@ -191,11 +284,15 @@ export function ClauseEditorPanel({ clause, initialHtml, onSaved, onCancel }) {
             <B run={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} icon="fa-align-right" label="Align right" />
             <B run={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} icon="fa-align-justify" label="Justify" />
             <ColorPicker editor={editor} />
+            <FontControls editor={editor} />
             <span className="ce-divide" />
             <B run={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} icon="fa-list-ul" label="Bulleted list" />
             <B run={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} icon="fa-list-ol" label="Numbered list" />
+            <B run={() => editor.chain().focus().outdent().run()} icon="fa-outdent" label="Decrease indent" />
+            <B run={() => editor.chain().focus().indent().run()} icon="fa-indent" label="Increase indent" />
             <span className="ce-divide" />
             <B run={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} icon="fa-table" label="Insert table" />
+            <B run={() => editor.chain().focus().toggleHeaderRow().run()} icon="fa-heading" label="Toggle header row (bold first row on/off)" />
             <B run={() => editor.chain().focus().addRowAfter().run()} icon="fa-grip-lines" label="Add row below" />
             <B run={() => editor.chain().focus().addColumnAfter().run()} icon="fa-grip-lines-vertical" label="Add column right" />
             <B run={() => editor.chain().focus().deleteRow().run()} icon="fa-delete-left" label="Delete row" />
@@ -238,7 +335,9 @@ export default function ClauseEditorModal({ clause, onClose, onSaved }) {
       .catch((e) => { toast.error(e.message || 'Could not open editor'); onClose(); });
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  return (
+  // Portal to <body> so the fixed-position overlay is centred on the viewport
+  // rather than trapped inside a transformed/animated results ancestor.
+  return createPortal(
     <div className="ce-overlay" onMouseDown={onClose}>
       <div className="ce-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="ce-head">
@@ -252,6 +351,7 @@ export default function ClauseEditorModal({ clause, onClose, onSaved }) {
           ? <div className="ce-loading"><Spinner size={16} /> Loading…</div>
           : <ClauseEditorPanel clause={clause} initialHtml={html} onSaved={onSaved} onCancel={onClose} />}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -13,11 +13,16 @@
 .ce-tool:hover { background: var(--line); }
 .ce-tool.is-active { background: var(--accent); color: #fff; }
 .ce-divide { width: 1px; height: 20px; background: var(--line); margin: 0 5px; }
+.ce-select { height: 30px; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); border-radius: var(--r-sm); font-size: 12px; padding: 0 4px; cursor: pointer; max-width: 92px; }
+.ce-select-sm { max-width: 62px; }
+.ce-select:focus { outline: none; border-color: var(--accent); }
 
 /* Panel fills its container as a flex column so the body scrolls and the
    toolbar + footer (Save) stay pinned (in both the modal and the Studio pane). */
-.ce-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ce-body { flex: 1; overflow-y: auto; padding: 22px 26px; min-height: 120px; }
+.ce-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+/* overflow:auto contains very wide tables so they scroll WITHIN the editor body
+   instead of stretching the pane and fighting the PDF split (the resize thrash). */
+.ce-body { flex: 1; overflow: auto; padding: 22px 26px; min-height: 120px; }
 .ce-content { outline: none; }
 .ce-content .ProseMirror { outline: none; min-height: 180px; }
 .ce-content .ProseMirror:focus { outline: none; }
@@ -27,7 +32,7 @@
 .ce-content .ProseMirror td, .ce-content .ProseMirror th { border: 1px solid #334155; padding: 6px 9px; min-width: 56px; vertical-align: top; box-sizing: border-box; position: relative; }
 .ce-content .ProseMirror th { background: #eef2f7; font-weight: 700; }
 .ce-content .ProseMirror .selectedCell:after { content: ''; position: absolute; inset: 0; background: rgba(13,148,136,0.18); pointer-events: none; z-index: 2; }
-.ce-content .ProseMirror .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; background: var(--accent); pointer-events: none; }
+.ce-content .ProseMirror .column-resize-handle { position: absolute; right: -3px; top: 0; bottom: -2px; width: 7px; background: var(--accent); pointer-events: none; z-index: 3; }
 .ce-content .ProseMirror.resize-cursor { cursor: col-resize; }
 .ce-content p.is-editor-empty:first-child::before { content: 'Write the clause…'; color: var(--faint); float: left; height: 0; pointer-events: none; }
 

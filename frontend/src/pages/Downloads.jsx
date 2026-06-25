@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { EmptyState, PageLoading } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
+import PdfViewer from './search/PdfViewer.jsx';
 import { api } from '../api.js';
 import './downloads/downloads.css';
 
@@ -16,7 +17,7 @@ function fmtDate(d) {
   catch { return d; }
 }
 
-function DocNode({ node, depth }) {
+function DocNode({ node, depth, onView }) {
   const repealed = (node.status || '').toLowerCase() === 'repealed';
   return (
     <div className="doc-node" style={{ marginLeft: depth ? 22 : 0 }}>
@@ -34,13 +35,40 @@ function DocNode({ node, depth }) {
             {repealed && node.repealed_on && <span className="meta-repeal">Repealed {fmtDate(node.repealed_on)}{node.repealed_by ? ` · by ${node.repealed_by}` : ''}</span>}
           </div>
         </div>
-        {node.download_url
-          ? <a className="btn btn-ghost btn-sm doc-dl" href={node.download_url} target="_blank" rel="noreferrer"><i className="fas fa-download" /> PDF</a>
-          : <span className="doc-dl-missing">No file</span>}
+        {node.download_url ? (
+          <span className="doc-node-actions">
+            <button className="btn btn-ghost btn-sm doc-dl" onClick={() => onView(node)}><i className="fas fa-eye" /> View</button>
+            <a className="btn btn-ghost btn-sm doc-dl" href={node.download_url} target="_blank" rel="noreferrer"><i className="fas fa-download" /> PDF</a>
+          </span>
+        ) : <span className="doc-dl-missing">No file</span>}
       </div>
       {node.children?.length > 0 && (
-        <div className="doc-children">{node.children.map((c) => <DocNode key={c.id} node={c} depth={depth + 1} />)}</div>
+        <div className="doc-children">{node.children.map((c) => <DocNode key={c.id} node={c} depth={depth + 1} onView={onView} />)}</div>
       )}
+    </div>
+  );
+}
+
+// In-page PDF viewer overlay (so a doc can be read without leaving Downloads).
+function DocViewer({ node, onClose }) {
+  // Freeze the background page scroll while the viewer is open.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  return (
+    <div className="dl-viewer-overlay" onMouseDown={onClose}>
+      <div className="dl-viewer" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dl-viewer-head">
+          <span className="dl-viewer-title"><i className="fas fa-file-pdf" /> {node.title}</span>
+          <span className="dl-viewer-actions">
+            <a href={node.download_url} target="_blank" rel="noreferrer" title="Open in new tab"><i className="fas fa-arrow-up-right-from-square" /></a>
+            <button onClick={onClose} title="Close" aria-label="Close"><i className="fas fa-xmark" /></button>
+          </span>
+        </div>
+        <div className="dl-viewer-body"><PdfViewer url={node.download_url} /></div>
+      </div>
     </div>
   );
 }
@@ -48,6 +76,7 @@ function DocNode({ node, depth }) {
 export default function Downloads() {
   const toast = useToast();
   const [data, setData] = useState(null);
+  const [viewing, setViewing] = useState(null);
 
   useEffect(() => {
     api.get('/documents').then(setData)
@@ -61,24 +90,25 @@ export default function Downloads() {
     <>
       <PageHeader fullForm="Regulatory Library" title="Downloads" scope="Acts, Regulations & Circulars" />
       <div className="page-body">
-        <p className="dl-intro">The regulatory hierarchy — circulars operationalise the regulations they sit under, which in turn flow from the Acts. Download any document as PDF.</p>
+        <p className="dl-intro">The regulatory hierarchy — circulars operationalise the regulations they sit under, which in turn flow from the Acts. View any document in-app or download it as PDF.</p>
         {tree.length === 0 ? <EmptyState icon="fa-folder-open">No documents available.</EmptyState>
-          : <div className="doc-tree card pad">{tree.map((n) => <DocNode key={n.id} node={n} depth={0} />)}</div>}
+          : <div className="doc-tree card pad">{tree.map((n) => <DocNode key={n.id} node={n} depth={0} onView={setViewing} />)}</div>}
 
         {imported.length > 0 && (
           <>
             <h3 className="dl-section-head"><i className="fas fa-file-import" /> Imported documents</h3>
-            <div className="doc-tree card pad">{imported.map((n) => <DocNode key={n.id} node={n} depth={0} />)}</div>
+            <div className="doc-tree card pad">{imported.map((n) => <DocNode key={n.id} node={n} depth={0} onView={setViewing} />)}</div>
           </>
         )}
 
         {repealed.length > 0 && (
           <>
             <h3 className="dl-section-head"><i className="fas fa-ban" /> Repealed / Superseded</h3>
-            <div className="doc-tree card pad repealed-tree">{repealed.map((n) => <DocNode key={n.id} node={n} depth={0} />)}</div>
+            <div className="doc-tree card pad repealed-tree">{repealed.map((n) => <DocNode key={n.id} node={n} depth={0} onView={setViewing} />)}</div>
           </>
         )}
       </div>
+      {viewing && <DocViewer node={viewing} onClose={() => setViewing(null)} />}
     </>
   );
 }

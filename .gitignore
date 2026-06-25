@@ -187,3 +187,10 @@ frontend/.vite/
 !frontend/dist/**
 !frontend/src/lib/
 !frontend/src/lib/**
+
+# Local SQLite runtime state + safety backups (never commit — 128M+ binary churn)
+iris.db-wal
+iris.db-shm
+iris_backup_*.db
+seed_archive/
+frontend/.claude/
