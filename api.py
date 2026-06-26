@@ -16,6 +16,7 @@ import io
 import os
 import re
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 
@@ -88,6 +89,54 @@ def _audit(action, status):
 
 
 # ----------------------------------------------------------------------------
+# Brute-force throttle for auth endpoints. In-process + thread-safe, which is
+# sufficient for the single-worker gunicorn deployment (one shared process). We
+# track failures by both client IP and target email, and block if either trips
+# the threshold, so neither IP-rotation nor email-rotation alone defeats it.
+# ----------------------------------------------------------------------------
+_AUTH_LOCK = threading.Lock()
+_auth_fails = {}                 # key -> [unix timestamps of recent failures]
+_AUTH_WINDOW = 900               # 15 minutes
+_AUTH_MAX = 8                    # failures per window before lockout
+
+def _client_ip():
+    fwd = request.headers.get("X-Forwarded-For", "")
+    return (fwd.split(",")[0].strip() if fwd else "") or request.remote_addr or "?"
+
+def _auth_keys(email):
+    keys = ["ip:" + _client_ip()]
+    if email:
+        keys.append("em:" + email)
+    return keys
+
+def _auth_blocked(email):
+    now = time.time()
+    with _AUTH_LOCK:
+        for k in _auth_keys(email):
+            recent = [t for t in _auth_fails.get(k, []) if now - t < _AUTH_WINDOW]
+            _auth_fails[k] = recent
+            if len(recent) >= _AUTH_MAX:
+                return True
+    return False
+
+def _auth_record_fail(email):
+    now = time.time()
+    with _AUTH_LOCK:
+        for k in _auth_keys(email):
+            _auth_fails.setdefault(k, []).append(now)
+        if len(_auth_fails) > 5000:          # bound memory: drop empty/expired keys
+            for k in list(_auth_fails):
+                _auth_fails[k] = [t for t in _auth_fails[k] if now - t < _AUTH_WINDOW]
+                if not _auth_fails[k]:
+                    del _auth_fails[k]
+
+def _auth_clear(email):
+    with _AUTH_LOCK:
+        for k in _auth_keys(email):
+            _auth_fails.pop(k, None)
+
+
+# ----------------------------------------------------------------------------
 # AUTH
 # ----------------------------------------------------------------------------
 @api_bp.post("/login")
@@ -97,16 +146,23 @@ def api_login():
     password = data.get("password") or ""
     next_url = _app._safe_next_url(data.get("next") or "/")
 
+    if _auth_blocked(email):
+        _app._record_admin_audit(email, "login_attempt", "rate_limited")
+        return jsonify({"ok": False, "message": "Too many attempts. Please wait a few minutes and try again."}), 429
+
     user = _app.User.query.filter(_app.db.func.lower(_app.User.email) == email).first()
 
     if not _app._is_allowed_email(email):
+        _auth_record_fail(email)
         _app._record_admin_audit(email, "login_attempt", "failure")
         return jsonify({"ok": False, "message": "Invalid credentials."}), 401
     if user and user.is_active and _app.check_password_hash(user.password_hash, password):
+        _auth_clear(email)
         _app.login_user(user)
         _app._start_user_session(user)
         _app._record_admin_audit(email, "login_attempt", "success")
         return jsonify({"ok": True, "user": _user_payload(), "next": next_url})
+    _auth_record_fail(email)
     _app._record_admin_audit(email, "login_attempt", "failure")
     return jsonify({"ok": False, "message": "Invalid credentials."}), 401
 
@@ -147,7 +203,12 @@ def api_forgot_password():
     data = request.get_json(silent=True) or request.form
     email = (data.get("email") or "").strip().lower()
     generic_msg = "If the account is eligible, a password reset link has been generated."
+    # Throttle reset-link generation per IP to prevent spam/abuse (generic
+    # response regardless, so this leaks nothing about account existence).
+    if _auth_blocked(""):
+        return jsonify({"ok": True, "message": generic_msg})
     if email and _app._is_allowed_email(email):
+        _auth_record_fail("")
         user = _app.User.query.filter(_app.db.func.lower(_app.User.email) == email).first()
         if user and user.is_active:
             import secrets

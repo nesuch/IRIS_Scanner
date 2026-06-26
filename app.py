@@ -36,6 +36,22 @@ running_in_cloud = any(os.getenv(flag) for flag in ("K_SERVICE", "GAE_ENV", "GOO
 # data on redeploy. Without it, a cloud deploy still requires a Postgres URL.
 persistent_sqlite = os.getenv("IRIS_PERSIST_SQLITE", "").lower() in {"1", "true", "yes"}
 
+# --- Security hardening ------------------------------------------------------
+# Refuse to boot in the cloud with the insecure dev session secret (forgeable
+# sessions). Locally the fallback is fine for development.
+if running_in_cloud and app.secret_key == "iris-dev-session-secret":
+    raise RuntimeError(
+        "IRIS_SESSION_SECRET must be set in cloud deployments — the built-in dev "
+        "fallback would let anyone forge session cookies."
+    )
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,                 # JS can't read the session cookie
+    SESSION_COOKIE_SAMESITE="Lax",                # block cross-site POST/CSRF
+    SESSION_COOKIE_SECURE=running_in_cloud,       # HTTPS-only cookie in the cloud
+    # Cap request bodies so a single large upload/body can't OOM the worker.
+    MAX_CONTENT_LENGTH=int(os.getenv("IRIS_MAX_UPLOAD_MB", "64")) * 1024 * 1024,
+)
+
 if AUTH_DATABASE_URL:
     if AUTH_DATABASE_URL.startswith("postgres://"):
         AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -706,7 +722,11 @@ def log_interaction(status_code, error_msg=None):
     Filters out static assets and favicons to keep analytics clean.
     """
     # --- FILTER: Ignore static files AND favicon ---
-    if request.path.startswith('/static') or request.path == '/favicon.ico': 
+    if request.path.startswith('/static') or request.path == '/favicon.ico':
+        return
+    # /api/me is polled frequently by the SPA (auth heartbeat) and carries no
+    # analytics value — skip it so it doesn't amplify writes to single-writer SQLite.
+    if request.path == '/api/me':
         return
     
     try:
