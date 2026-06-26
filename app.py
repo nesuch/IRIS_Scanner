@@ -747,10 +747,21 @@ def log_interaction(status_code, error_msg=None):
 
 @app.after_request
 def record_success(response):
-    """Logs successful requests (200, 302, 404, etc.)"""
+    """Logs successful requests (200, 302, 404, etc.) and sets security headers."""
     # We only log here if it's NOT a 500 (500s are handled by handle_crash)
     if response.status_code < 500:
         log_interaction(response.status_code)
+
+    # Baseline security headers (OWASP Secure Headers). Conservative set that
+    # won't break the SPA: no CSP here (would need per-asset tuning) but the
+    # high-value clickjacking / MIME-sniffing / referrer protections are applied.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if running_in_cloud:  # HSTS only over real HTTPS, never on localhost http
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
 @app.errorhandler(Exception)

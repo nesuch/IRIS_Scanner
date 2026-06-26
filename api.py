@@ -136,6 +136,26 @@ def _auth_clear(email):
             _auth_fails.pop(k, None)
 
 
+# Password policy: min 8 (ASVS L1), and a hard max so an attacker can't feed a
+# megabyte-long password into the (deliberately slow) hash to burn CPU.
+_PW_MIN = 8
+_PW_MAX = 128
+
+# A throwaway hash used to spend the same CPU on a non-existent/ineligible account
+# as on a real one, so login response time can't reveal whether an email exists.
+from werkzeug.security import generate_password_hash as _wz_gen, check_password_hash as _wz_check
+_DUMMY_HASH = _wz_gen("timing-equalization-dummy-not-a-real-password")
+
+def _password_error(pw, confirm):
+    if len(pw) < _PW_MIN:
+        return f"Password must be at least {_PW_MIN} characters."
+    if len(pw) > _PW_MAX:
+        return f"Password must be at most {_PW_MAX} characters."
+    if pw != confirm:
+        return "Passwords do not match."
+    return None
+
+
 # ----------------------------------------------------------------------------
 # AUTH
 # ----------------------------------------------------------------------------
@@ -150,13 +170,21 @@ def api_login():
         _app._record_admin_audit(email, "login_attempt", "rate_limited")
         return jsonify({"ok": False, "message": "Too many attempts. Please wait a few minutes and try again."}), 429
 
-    user = _app.User.query.filter(_app.db.func.lower(_app.User.email) == email).first()
+    # Over-long passwords can't be valid (policy max) but must not skip the hash
+    # path, or that itself becomes a timing signal — cap to bound hash CPU.
+    password = password[:_PW_MAX + 1]
 
-    if not _app._is_allowed_email(email):
-        _auth_record_fail(email)
-        _app._record_admin_audit(email, "login_attempt", "failure")
-        return jsonify({"ok": False, "message": "Invalid credentials."}), 401
-    if user and user.is_active and _app.check_password_hash(user.password_hash, password):
+    user = _app.User.query.filter(_app.db.func.lower(_app.User.email) == email).first()
+    eligible = bool(user and user.is_active and _app._is_allowed_email(email))
+    # Always perform one hash comparison so the response time is the same whether
+    # or not the account exists/is eligible (mitigates user-enumeration via timing).
+    if eligible:
+        ok = _app.check_password_hash(user.password_hash, password)
+    else:
+        _wz_check(_DUMMY_HASH, password)
+        ok = False
+
+    if ok:
         _auth_clear(email)
         _app.login_user(user)
         _app._start_user_session(user)
@@ -242,14 +270,17 @@ def api_reset_password(token):
     data = request.get_json(silent=True) or request.form
     new_password = data.get("new_password") or ""
     confirm_password = data.get("confirm_password") or ""
-    if len(new_password) < 8:
-        return jsonify({"ok": False, "message": "Password must be at least 8 characters."}), 400
-    if new_password != confirm_password:
-        return jsonify({"ok": False, "message": "Passwords do not match."}), 400
+    err = _password_error(new_password, confirm_password)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
     user.password_hash = _app.generate_password_hash(new_password)
     user.reset_token = None
     user.reset_token_expiry = None
+    # Invalidate every existing session for this account — a reset is often a
+    # response to compromise, so any logged-in attacker must be kicked out too.
+    user.session_version = (user.session_version or 0) + 1
     _app.db.session.commit()
+    _app._deactivate_all_user_sessions(user.id)
     _app._record_admin_audit(user.email, "password_reset_complete", "success")
     return jsonify({"ok": True})
 
@@ -1969,8 +2000,9 @@ def api_admin_create_user():
         role = "admin" if str(data.get("is_admin") or "").lower() in {"1", "true", "yes", "on"} else "viewer"
     if not m._is_allowed_email(email):
         return jsonify({"message": "Email must use @irdai.gov.in domain."}), 400
-    if len(password) < 8:
-        return jsonify({"message": "Password must be at least 8 characters."}), 400
+    pw_err = _password_error(password, password)
+    if pw_err:
+        return jsonify({"message": pw_err}), 400
     if m.User.query.filter(m.db.func.lower(m.User.email) == email).first():
         return jsonify({"message": "User already exists."}), 409
     m.db.session.add(m.User(email=email, password_hash=m.generate_password_hash(password),
@@ -2248,10 +2280,9 @@ def api_profile_password():
     confirm_password = data.get("confirm_password") or ""
     if not m.check_password_hash(m.current_user.password_hash, current_password):
         return jsonify({"ok": False, "message": "Current password is incorrect."}), 400
-    if len(new_password) < 8:
-        return jsonify({"ok": False, "message": "New password must be at least 8 characters."}), 400
-    if new_password != confirm_password:
-        return jsonify({"ok": False, "message": "New password and confirm password do not match."}), 400
+    err = _password_error(new_password, confirm_password)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
     user = m.db.session.get(m.User, m.current_user.id)
     user.password_hash = m.generate_password_hash(new_password)
     user.session_version = (user.session_version or 0) + 1
