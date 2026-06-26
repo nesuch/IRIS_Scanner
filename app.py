@@ -52,6 +52,23 @@ app.config.update(
     MAX_CONTENT_LENGTH=int(os.getenv("IRIS_MAX_UPLOAD_MB", "64")) * 1024 * 1024,
 )
 
+# --- Password hashing --------------------------------------------------------
+# Explicit, pinned algorithm so behaviour can't silently change across Werkzeug
+# versions. We use PBKDF2-HMAC-SHA256 @ 600k iterations (OWASP-recommended work
+# factor). Deliberately NOT scrypt/argon2: those are memory-hard by design, and
+# on a small single-instance Cloud Run box 8 concurrent logins of a memory-hard
+# hash could exhaust RAM. PBKDF2 is CPU-bound with a flat, predictable memory
+# footprint — strong and cost-safe. Override via env if the instance is sized up.
+PASSWORD_HASH_METHOD = os.getenv("IRIS_PW_HASH_METHOD", "pbkdf2:sha256:600000")
+
+def hash_password(raw: str) -> str:
+    return generate_password_hash(raw, method=PASSWORD_HASH_METHOD)
+
+def password_needs_rehash(stored: str) -> bool:
+    """True if a stored hash uses a different method/work factor than the current
+    policy — lets us transparently upgrade hashes on the user's next login."""
+    return not (stored or "").startswith(PASSWORD_HASH_METHOD + "$")
+
 if AUTH_DATABASE_URL:
     if AUTH_DATABASE_URL.startswith("postgres://"):
         AUTH_DATABASE_URL = AUTH_DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -388,12 +405,12 @@ def _seed_admin_user():
     if existing:
         existing.is_admin = True
         if not existing.password_hash:
-            existing.password_hash = generate_password_hash(admin_password)
+            existing.password_hash = hash_password(admin_password)
     else:
         db.session.add(
             User(
                 email=admin_email,
-                password_hash=generate_password_hash(admin_password),
+                password_hash=hash_password(admin_password),
                 is_admin=True,
                 is_active=True,
                 created_at=datetime.utcnow(),

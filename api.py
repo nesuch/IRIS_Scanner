@@ -186,6 +186,11 @@ def api_login():
 
     if ok:
         _auth_clear(email)
+        # Transparently upgrade a legacy/weaker hash to the current policy now that
+        # we hold the plaintext (e.g. after a work-factor or algorithm change).
+        if _app.password_needs_rehash(user.password_hash):
+            user.password_hash = _app.hash_password(password)
+            _app.db.session.commit()
         _app.login_user(user)
         _app._start_user_session(user)
         _app._record_admin_audit(email, "login_attempt", "success")
@@ -273,7 +278,7 @@ def api_reset_password(token):
     err = _password_error(new_password, confirm_password)
     if err:
         return jsonify({"ok": False, "message": err}), 400
-    user.password_hash = _app.generate_password_hash(new_password)
+    user.password_hash = _app.hash_password(new_password)
     user.reset_token = None
     user.reset_token_expiry = None
     # Invalidate every existing session for this account — a reset is often a
@@ -2005,11 +2010,20 @@ def api_admin_create_user():
         return jsonify({"message": pw_err}), 400
     if m.User.query.filter(m.db.func.lower(m.User.email) == email).first():
         return jsonify({"message": "User already exists."}), 409
-    m.db.session.add(m.User(email=email, password_hash=m.generate_password_hash(password),
+    m.db.session.add(m.User(email=email, password_hash=m.hash_password(password),
                             is_active=True, is_admin=(role == "admin"), role=role))
     m.db.session.commit()
     m._record_admin_audit(email, f"user_create ({role})", "success")
     return jsonify({"ok": True, "message": "User created successfully."}), 201
+
+
+def _active_admin_count():
+    return _app.User.query.filter_by(is_admin=True, is_active=True).count()
+
+def _would_orphan_admin(user):
+    """True if removing/demoting/deactivating this user would leave zero active
+    admins — guards against accidentally locking everyone out of the admin panel."""
+    return bool(user.is_admin and user.is_active and _active_admin_count() <= 1)
 
 
 @api_bp.post("/admin/user/<int:user_id>/role")
@@ -2021,6 +2035,8 @@ def api_admin_set_role(user_id):
     if role not in _ROLE_RANK:
         return jsonify({"message": "Invalid role"}), 400
     user = m.User.query.get_or_404(user_id)
+    if role != "admin" and _would_orphan_admin(user):
+        return jsonify({"message": "Cannot demote the last active admin."}), 400
     user.role = role
     user.is_admin = (role == "admin")
     m.db.session.commit()
@@ -2034,6 +2050,8 @@ def api_admin_toggle_active(user_id):
         return jsonify({"message": "Admin access required"}), 403
     m = _app
     user = m.User.query.get_or_404(user_id)
+    if user.is_active and _would_orphan_admin(user):
+        return jsonify({"ok": False, "message": "Cannot deactivate the last active admin."}), 400
     user.is_active = not user.is_active
     m.db.session.commit()
     m._record_admin_audit(user.email, "user_activate" if user.is_active else "user_deactivate", "success")
@@ -2048,6 +2066,8 @@ def api_admin_delete_user(user_id):
     user = m.User.query.get_or_404(user_id)
     if user.id == m.current_user.id:
         return jsonify({"ok": False, "message": "Cannot delete yourself."}), 400
+    if _would_orphan_admin(user):
+        return jsonify({"ok": False, "message": "Cannot delete the last active admin."}), 400
     try:
         # Clear FK-dependent rows first so the delete succeeds on Postgres too.
         m._purge_user_dependents(user.id)
@@ -2284,7 +2304,7 @@ def api_profile_password():
     if err:
         return jsonify({"ok": False, "message": err}), 400
     user = m.db.session.get(m.User, m.current_user.id)
-    user.password_hash = m.generate_password_hash(new_password)
+    user.password_hash = m.hash_password(new_password)
     user.session_version = (user.session_version or 0) + 1
     m.db.session.commit()
     m._deactivate_all_user_sessions(user.id)

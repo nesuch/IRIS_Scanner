@@ -1,4 +1,5 @@
-flask
+flask>=3.0,<4.0
+werkzeug>=3.0,<4.0
 flask-login
 flask-sqlalchemy
 pandas
