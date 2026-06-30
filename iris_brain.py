@@ -913,6 +913,12 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
         core_hits = [s for s in core_stems if _root_present(s, text, text_join)]
         if core_stems and len(core_hits) == len(core_stems):
             score += 200            # every word the user typed appears in this clause
+            # ...and if they all appear together in ONE line/provision, prefer it
+            # strongly over clauses where the words are merely scattered about.
+            if len(core_stems) >= 2 and any(
+                    all(_root_present(s, ln, ln.replace("-", "")) for s in core_stems)
+                    for ln in text.split("\n")):
+                score += 500
         score += 10 * len(core_hits)
         # Reward the exact surface word the user typed over same-stem cousins:
         # a clause with literal "criticism" beats one that only has "critical"

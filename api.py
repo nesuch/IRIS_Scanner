@@ -1559,13 +1559,18 @@ def api_search():
     multi = " " in phrase_l
 
     def _match_kind(m):
-        """2 = contains verbatim phrase, 1 = contains all typed words, 0 = neither.
-        Hyphen-insensitive so 'de-empanelment' counts for 'deempanelment'."""
+        """3 = verbatim phrase, 2 = all typed words on one line, 1 = all typed
+        words present (scattered), 0 = neither. Hyphen-insensitive so
+        'de-empanelment' counts for 'deempanelment'."""
         t = str(m.get("raw_text", "")).lower()
         tj = t.replace("-", "")
         if multi and (phrase_l in t or phrase_join in tj):
-            return 2
+            return 3
         if len(core_roots) >= 2 and all(brain._root_present(r, t, tj) for r in core_roots):
+            # all words on one line/provision ranks above words merely scattered.
+            if any(all(brain._root_present(r, ln, ln.replace("-", "")) for r in core_roots)
+                   for ln in t.split("\n")):
+                return 2
             return 1
         return 0
 
