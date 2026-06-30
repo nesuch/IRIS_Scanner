@@ -354,7 +354,11 @@ def segment(blocks, spec):
                 title=' '.join(tparts)
             if inc: assigned.update(hdr)
             else: add_excluded(c.get('exclude_reason','out of scope'),hdr)
-            cur={'prefix':c.get('id_prefix','X{n}'),'cn':id_n,'include':inc,'exreason':c.get('exclude_reason','out of scope')}
+            # Resolve {parent} (the enclosing chapter/schedule label) in the prefix
+            # NOW so sections nested under this container inherit it. {n} is left as
+            # a placeholder — the section builder fills it with the section number.
+            cur={'prefix':c.get('id_prefix','X{n}').replace('{parent}',str(cur_chapter)),
+                 'cn':id_n,'include':inc,'exreason':c.get('exclude_reason','out of scope')}
             if inc and c.get('collect_body'):
                 # container that owns free-form body (e.g. an Annexure form): open a
                 # pend clause keyed by the container id; following lines fold into it

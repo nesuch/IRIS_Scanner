@@ -3,40 +3,48 @@
   "sheet_name": "IRDAI Actuarial Finance Investment Regulations 2024",
   "ignore_patterns": [
     "THE GAZETTE OF INDIA",
-    "^\\d+\\s+GI/\\d+",
+    "GI/\\d+",
     "^\\[ADVT",
-    "^[A-Z][A-Z .]+,\\s*Chairperson",
     "PUBLISHED BY AUTHORITY",
     "^EXTRAORDINARY$",
-    "^No\\.\\s*\\d+\\]"
+    "^No\\.\\s*\\d+\\]",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY OF INDIA",
+    "^NOTIFICATION$",
+    "^Hyderabad, the\\b",
+    "^[A-Z][A-Z .]+,\\s*Chairperson"
   ],
   "scope_start": "^CHAPTER-I\\b",
-  "chapter_match": "^SCHEDULE\\s*[-\\u2013]?\\s*(I{1,3})\\s*[-:\\u2013]",
+
+  "chapter_match": "^SCHEDULE\\s*[-\\u2013\\u2014]?\\s*(I{1,3})\\b",
+
   "containers": [
     {"head_match": "^(CHAPTER[-\\s]*[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
      "id_prefix": "AFI_REGS-CH{n}", "clause_template": "Chapter {n}: {title}:",
-     "include": true, "collect_body": true},
+     "include": true},
 
-    {"head_match": "^(SCHEDULE\\s*[-\\u2013]?\\s*IV)\\b\\s*[-:\\u2013]?\\s*(.*)$", "title_next_line": true,
-     "id_prefix": "AFI_REGS-SCH-IV", "clause_template": "Schedule IV: {title}:",
-     "include": true, "collect_body": true},
-    {"head_match": "^(SCHEDULE\\s*[-\\u2013]?\\s*V)\\b\\s*[-:\\u2013]?\\s*(.*)$", "title_next_line": true,
-     "id_prefix": "AFI_REGS-SCH-V", "clause_template": "Schedule V: {title}:",
-     "include": true, "collect_body": true},
+    {"head_match": "^(SCHEDULE\\s*[-\\u2013\\u2014]?\\s*(?:IV|V))\\b\\s*[:\\u2013\\u2014-]?\\s*(.*)$",
+     "id_prefix": "AFI_REGS-SCH-{n}", "clause_template": "Schedule {n}: {title}:",
+     "include": true},
 
-    {"head_match": "^(Part\\s+[IVX]+)\\s*[:\\u2013]\\s*(.*)$",
+    {"head_match": "^((?:PART|Part)\\s*[-\\s]*[IVX]+)(?:\\s*[:\\u2013\\u2014-]\\s*(.*))?\\s*$",
+     "title_next_line": true,
      "id_prefix": "AFI_REGS-SCH-{parent}-P{n}", "clause_template": "Part {n}: {title}:",
-     "include": true, "collect_body": true},
-    {"head_match": "^((?:PART|Part)[-\\s]+[IVX]+)\\s*$",
-     "id_prefix": "AFI_REGS-SCH-{parent}-P{n}", "clause_template": "Part {n}:",
-     "include": true, "collect_body": true},
-    {"head_match": "^(PART\\s*-\\s*A)\\b\\s*(.*)$",
-     "id_prefix": "AFI_REGS-SCH-{parent}-PA", "clause_template": "Part A: {title}:",
-     "include": true, "collect_body": true},
-    {"head_match": "^(PART\\s*-\\s*C)\\b\\s*(.*)$",
-     "id_prefix": "AFI_REGS-SCH-{parent}-PC", "clause_template": "Part C: {title}:",
-     "include": true, "collect_body": true}
+     "include": true}
   ],
-  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":"},
+
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":", "max_x0": 110},
+
+  "form_starts": [
+    "SCHEDULES?\\s+FORMING\\s+PART\\s+OF\\s+FINANCIAL\\s+STATEMENTS",
+    "^SCHEDULE\\s+\\d",
+    "^FORM[\\s-]",
+    "^PART\\s*[-\\u2013]\\s*[A-Z]\\b"
+  ],
+  "section_resume": [
+    "^(?:PART|Part)\\s*[-\\s]*[IVX]+\\b",
+    "^SCHEDULE\\s*[-\\u2013\\u2014]?\\s*[IVX]+\\b",
+    "^CHAPTER"
+  ],
+
   "tag_rule": {"max_len": 300}
 }
