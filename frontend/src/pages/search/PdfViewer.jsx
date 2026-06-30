@@ -54,10 +54,24 @@ export default function PdfViewer({ url }) {
     } catch { /* page render failure is non-fatal */ }
   }, []);
 
-  const paint = useCallback(async () => {
+  // preserve=true keeps the reader on the same page across a rebuild (zoom, or a
+  // width change when a pane opens/closes) instead of snapping back to page 1.
+  const paint = useCallback(async (preserve = false) => {
     const box = boxRef.current;
     const pdf = docRef.current;
     if (!box || !pdf) return;
+    // Capture which page (and how far into it) is at the top, before we wipe.
+    let anchorIdx = 0; let anchorFrac = 0;
+    if (preserve && box.children.length) {
+      const st = box.scrollTop;
+      const kids = box.children;
+      for (let i = 0; i < kids.length; i += 1) {
+        const el = kids[i];
+        if (el.offsetTop + el.offsetHeight > st) {
+          anchorIdx = i; anchorFrac = (st - el.offsetTop) / (el.offsetHeight || 1); break;
+        }
+      }
+    }
     if (obsRef.current) { obsRef.current.disconnect(); obsRef.current = null; }
     box.innerHTML = '';
     const first = await pdf.getPage(1);
@@ -73,12 +87,21 @@ export default function PdfViewer({ url }) {
       box.appendChild(wrap);
       placeholders.push(wrap);
     }
+    // Restore the reading position relative to the rebuilt (rescaled) pages.
+    if (preserve && placeholders[anchorIdx]) {
+      const ph = placeholders[anchorIdx];
+      box.scrollTop = ph.offsetTop + anchorFrac * ph.offsetHeight;
+    }
     obsRef.current = new IntersectionObserver((entries) => {
       entries.forEach((e) => { if (e.isIntersecting) renderInto(e.target); });
     }, { root: box, rootMargin: '700px 0px' });
     placeholders.forEach((w) => obsRef.current.observe(w));
-    if (placeholders[0]) await renderInto(placeholders[0]);
-    if (placeholders[1]) renderInto(placeholders[1]);
+    // Render the pages currently in view (not just page 1) so a preserved jump
+    // doesn't show blank placeholders.
+    const top = box.scrollTop; const h = box.clientHeight;
+    placeholders.forEach((w) => {
+      if (w.offsetTop + w.offsetHeight >= top - 200 && w.offsetTop <= top + h + 200) renderInto(w);
+    });
   }, [renderInto]);
 
   const computeFit = useCallback(async () => {
@@ -123,7 +146,7 @@ export default function PdfViewer({ url }) {
     let last = box.clientWidth;
     const ro = new ResizeObserver(() => {
       const w = box.clientWidth;
-      if (docRef.current && w > 0 && Math.abs(w - last) > 4) { last = w; computeFit().then(paint); }
+      if (docRef.current && w > 0 && Math.abs(w - last) > 4) { last = w; computeFit().then(() => paint(true)); }
     });
     ro.observe(box);
     return () => ro.disconnect();
@@ -134,7 +157,7 @@ export default function PdfViewer({ url }) {
     if (next === zoomRef.current) return;
     zoomRef.current = next;
     setZoom(next);
-    paint();
+    paint(true);
   };
 
   return (

@@ -175,6 +175,18 @@ def search_root(word, stem=None):
     cp = common_prefix(w, s or "")
     return cp if len(cp) >= 3 else (s or w)
 
+def _root_present(root, text, text_join):
+    """Does `root` prefix-match a word in the text? Checks the text AND a
+    hyphen-collapsed copy so a typed 'deempanelment' matches 'de-empanelment'
+    (and vice-versa) — hyphenation in regulatory terms shouldn't break search."""
+    pat = rf"\b{re.escape(root)}\w*"
+    return bool(re.search(pat, text)) or bool(re.search(pat, text_join))
+
+def _root_count(root, text, text_join):
+    pat = rf"\b{re.escape(root)}\w*"
+    a = re.findall(pat, text)
+    return len(a) if a else len(re.findall(pat, text_join))
+
 def get_doc_type(filename):
     fname = filename.upper()
     if "ACT" in fname: return "ACT"
@@ -888,16 +900,17 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
         if c_id in exclude_set: continue
 
         text = str(row.get("Clause_Text", "")).lower()
-        hit_stems = [s for s in search_stems if re.search(rf"\b{re.escape(s)}\w*", text)]
+        text_join = text.replace("-", "")     # hyphen-collapsed copy for matching
+        hit_stems = [s for s in search_stems if _root_present(s, text, text_join)]
         if not hit_stems:
             continue
 
         # Relevance score (dominates the regulatory-hierarchy order below):
         #   verbatim phrase >> all typed words present >> more distinct words >> density.
         score = 0
-        if phrase_l and " " in phrase_l and phrase_l in text:
+        if phrase_l and " " in phrase_l and (phrase_l in text or phrase_l.replace("-", "") in text_join):
             score += 1000
-        core_hits = [s for s in core_stems if re.search(rf"\b{re.escape(s)}\w*", text)]
+        core_hits = [s for s in core_stems if _root_present(s, text, text_join)]
         if core_stems and len(core_hits) == len(core_stems):
             score += 200            # every word the user typed appears in this clause
         score += 10 * len(core_hits)
@@ -905,8 +918,8 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
         # a clause with literal "criticism" beats one that only has "critical"
         # (prefix on the full word, so "criticism" also catches "criticisms" but
         # never "critical"). 50 dominates the density term below.
-        score += 50 * sum(1 for w in core_words if re.search(rf"\b{re.escape(w)}\w*", text))
-        score += sum(len(re.findall(rf"\b{re.escape(s)}\w*", text)) for s in core_hits)
+        score += 50 * sum(1 for w in core_words if _root_present(w, text, text_join))
+        score += sum(_root_count(s, text, text_join) for s in core_hits)
 
         matches.append({
             "source": row.get("Source_Doc", "UNKNOWN"),

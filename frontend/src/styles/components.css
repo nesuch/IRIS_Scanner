@@ -3,8 +3,13 @@
    ============================================================ */
 
 /* ---------- App shell / layout ---------- */
-.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; min-height: 100svh; transition: grid-template-columns 0.24s cubic-bezier(0.4,0,0.2,1); }
+/* The collapse changes the grid column width INSTANTLY (no transition):
+   animating grid-template-columns reflows the whole main content area every
+   frame, which janks/stutters on content-heavy pages. The smooth feel comes
+   from animating only the sidebar's own width (cheap — see .sidebar below). */
+.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; min-height: 100svh; }
 .app-shell.collapsed { grid-template-columns: var(--sidebar-w-collapsed) 1fr; }
+.sidebar { transition: width 0.2s ease, padding 0.2s ease; }
 
 /* ---------- Sidebar ---------- */
 .sidebar {

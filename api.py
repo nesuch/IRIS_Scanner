@@ -1540,23 +1540,47 @@ def api_search():
     # FIRST — above concept/tag matches — instead of being buried in the text tier.
     # Pull such clauses out of both tiers into a dedicated top "exact phrase" tier,
     # ordered by regulatory hierarchy (Act > Regulation > Circular).
+    # Best-match promotion: a clause that contains the verbatim phrase the user
+    # typed, OR all of the distinct words they typed, is more relevant than a
+    # concept/tag match on just one (often common) word — e.g. for "empanelment
+    # process" the clause with BOTH should beat clauses tagged only "process".
+    # Pull such clauses out of both tiers into a dedicated top tier.
     phrase_matches = []
     phrase_l = re.sub(r"\s+", " ", (query or "").strip().lower())
-    if " " in phrase_l:
-        def _has_phrase(m):
-            return phrase_l in str(m.get("raw_text", "")).lower()
+    phrase_join = phrase_l.replace("-", "")
+    # The distinct word-roots the user typed (skip stopwords + synthesized tags).
+    core_roots = []
+    for raw, clean in kw_tuples:
+        if " " in str(clean) or clean in brain.STOPWORDS_STRONG:
+            continue
+        r = brain.search_root(str(raw).lower(), clean)
+        if r and r not in core_roots:
+            core_roots.append(r)
+    multi = " " in phrase_l
+
+    def _match_kind(m):
+        """2 = contains verbatim phrase, 1 = contains all typed words, 0 = neither.
+        Hyphen-insensitive so 'de-empanelment' counts for 'deempanelment'."""
+        t = str(m.get("raw_text", "")).lower()
+        tj = t.replace("-", "")
+        if multi and (phrase_l in t or phrase_join in tj):
+            return 2
+        if len(core_roots) >= 2 and all(brain._root_present(r, t, tj) for r in core_roots):
+            return 1
+        return 0
+
+    if multi:
         tag_keep, content_keep = [], []
         for m in tag_matches:
-            (phrase_matches if _has_phrase(m) else tag_keep).append(m)
+            (phrase_matches if _match_kind(m) else tag_keep).append(m)
         for m in content_matches:
-            (phrase_matches if _has_phrase(m) else content_keep).append(m)
+            (phrase_matches if _match_kind(m) else content_keep).append(m)
         tag_matches, content_matches = tag_keep, content_keep
-        # Order the exact-phrase tier by document authority (the Act/Regulation
-        # that *defines* a term should outrank a Circular that merely mentions it),
-        # then by the existing hierarchy. Otherwise sort_matches falls back to
-        # alphabetical source and buries e.g. "Product Regulations" under circulars.
+        # Order: verbatim phrase first, then all-words, then by document authority
+        # (an Act/Regulation that *defines* a term outranks a Circular mentioning it).
         _TYPE_RANK = {"ACT": 0, "REGULATION": 1, "MASTER": 2, "GUIDELINE": 3, "CIRCULAR": 4}
         phrase_matches.sort(key=lambda m: (
+            -_match_kind(m),
             _TYPE_RANK.get(str(m.get("type", "")).upper(), 9),
             m.get("priority", 99), m.get("source", ""), m.get("id", "")))
 

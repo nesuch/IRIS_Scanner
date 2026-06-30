@@ -289,7 +289,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
       {hasPhrase && (
         <div className="phrase-tier">
           <div className="phrase-tier-band">
-            <i className="fas fa-bullseye" /> Exact phrase “{resp.phrase || resp.query_label}” — {(resp.phrase_matches || []).length} clause{(resp.phrase_matches || []).length === 1 ? '' : 's'}
+            <i className="fas fa-bullseye" /> Best matches for “{resp.phrase || resp.query_label}” — {(resp.phrase_matches || []).length} clause{(resp.phrase_matches || []).length === 1 ? '' : 's'}
           </div>
           {phraseGroups.map((g, gi) => {
             const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
