@@ -5,6 +5,18 @@ import { api } from '../api.js';
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
+// The Search page persists each module's conversation in sessionStorage so results
+// survive navigating to the Reader and back. That must NOT bleed across auth
+// boundaries — clear it on login/logout/expiry so a fresh session never shows the
+// previous user's (or the previous session's) query.
+function clearSearchSessions() {
+  try {
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith('iris_search_session_'))
+      .forEach((k) => sessionStorage.removeItem(k));
+  } catch { /* sessionStorage unavailable — non-fatal */ }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,19 +37,21 @@ export function AuthProvider({ children }) {
   // Any API call that gets a 401 (expired/invalid session) clears auth, which
   // sends the user to the login screen via ProtectedRoute.
   useEffect(() => {
-    const onUnauthorized = () => setUser(null);
+    const onUnauthorized = () => { clearSearchSessions(); setUser(null); };
     window.addEventListener('iris:unauthorized', onUnauthorized);
     return () => window.removeEventListener('iris:unauthorized', onUnauthorized);
   }, []);
 
   const login = useCallback(async (email, password, next) => {
     const data = await api.post('/login', { email, password, next });
+    clearSearchSessions();   // fresh session — don't inherit a stale query screen
     setUser(data.user);
     return data;
   }, []);
 
   const logout = useCallback(async () => {
     try { await api.post('/logout'); } catch { /* ignore */ }
+    clearSearchSessions();
     setUser(null);
   }, []);
 
