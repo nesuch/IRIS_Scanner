@@ -20,5 +20,6 @@
      "id_prefix": "AFI_MC-Ch{parent}-SCH{n}", "clause_template": "Schedule {n}: {title}:", "include": true, "collect_body": true}
   ],
   "section": {"match": "^(\\d+)\\.\\s+", "delimiter": ":", "max_x0": 82},
+  "attach_orphans_to_last": true,
   "tag_rule": {"max_len": 300}
 }

@@ -477,6 +477,12 @@ def segment(blocks, spec):
             pend['items'].append({'x0':b['x0'],'text':t}); pend['ln'].append(b['n']); assigned.add(b['n'])
         elif cur and not cur['include']:
             add_excluded(cur['exreason'],[b['n']])
+        elif spec.get('attach_orphans_to_last') and rows and (cur is None or cur['include']):
+            # No open section for this line (e.g. a lettered/dotted sub-provision the
+            # flat section grammar doesn't split on). Rather than lose the content,
+            # fold it into the most recently emitted clause — same principle the
+            # table-orphan rescue above uses. Opt-in per spec.
+            rows[-1]['clause']=rows[-1]['clause'].rstrip()+'\n'+t; assigned.add(b['n'])
         k+=1
     if pend: flush(pend)
     # Guarantee unique clause ids (the DB + UI key on them) for ALL specs, and
