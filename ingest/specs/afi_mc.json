@@ -8,36 +8,17 @@
     "Page\\s*\\d+\\s*of\\s*\\d+",
     "^\\s*Sd/-\\s*$"
   ],
-  "scope_start": "^Chapter\\s*1\\b",
-  "containers": [
-    {
-      "head_match": "^(Section\\s*[-–—]?\\s*[IVXLC]+)\\b\\s*[-:–]?\\s*(.*)$",
-      "id_prefix": "AFI_MC-Ch{parent}-Sec{n}",
-      "clause_template": "Section {n}: {title}:",
-      "include": true,
-      "collect_body": true
-    },
-    {
-      "head_match": "^(Annexure\\s*[-–—]?\\s*(?:[IVXLC]+|ACTL[-A-Z0-9]+|\\d+))\\b\\s*[-:–]?\\s*(.*)$",
-      "id_prefix": "AFI_MC-ANX{n}",
-      "clause_template": "Annexure {n}: {title}:",
-      "include": true,
-      "collect_body": true
-    },
-    {
-      "head_match": "^(Schedule\\s*[-–—]?\\s*[IVXLC]+)\\b\\s*[-:–]?\\s*(.*)$",
-      "id_prefix": "AFI_MC-SCH{n}",
-      "clause_template": "Schedule {n}: {title}:",
-      "include": true,
-      "collect_body": true
-    }
-  ],
-  "tag_rule": {
-    "max_len": 300
-  },
+  "scope_start": "^1\\.\\s+This Master Circular",
   "chapter_match": "^Chapter\\s*(\\d+)\\b",
-  "section": {
-    "match": "^(\\d+)\\.\\s+",
-    "delimiter": ":"
-  }
+  "default_section_prefix": "AFI_MC",
+  "containers": [
+    {"head_match": "^(Section\\s*[-\\u2013\\u2014]?\\s*[IVXLC]+)(?!\\s*of\\b)\\s*[-:\\u2013\\u2014]?\\s*(.*)$",
+     "id_prefix": "AFI_MC-Ch{parent}-Sec{n}", "clause_template": "Section {n}: {title}:", "include": true},
+    {"head_match": "^Annexure\\s*[-\\u2013\\u2014]?\\s*((?:ACTL[-A-Z0-9]+|[IVXLC]+(?:\\([a-z]\\))?|\\d+[A-Za-z]?))\\b\\s*[-:\\u2013\\u2014()a-z]*\\s*(.*)$",
+     "id_prefix": "AFI_MC-ANX-{head}", "clause_template": "Annexure {head}: {title}:", "include": true, "collect_body": true},
+    {"head_match": "^(Schedule\\s*[-\\u2013\\u2014]?\\s*[IVXLC]+)(?!\\s*of\\b)\\s*[-:\\u2013\\u2014]?\\s*(.*)$",
+     "id_prefix": "AFI_MC-Ch{parent}-SCH{n}", "clause_template": "Schedule {n}: {title}:", "include": true, "collect_body": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s+", "delimiter": ":", "max_x0": 82},
+  "tag_rule": {"max_len": 300}
 }
