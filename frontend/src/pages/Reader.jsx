@@ -74,8 +74,8 @@ function DocPicker() {
                       <span className="reader-pick-meta">
                         <span>{d.clauses} clauses</span>
                         <span className={`reader-pick-st ${repealed ? 'is-repealed' : 'is-active'}`}>{repealed ? 'Repealed' : 'Active'}</span>
-                        {d.effective_date && <span>· from {fmtDate(d.effective_date)}</span>}
                       </span>
+                      {d.effective_date && <span className="reader-pick-date">from {fmtDate(d.effective_date)}</span>}
                     </Link>
                   );
                 })}
