@@ -421,7 +421,10 @@ def api_documents():
             "effective_date": d.get("effective_date"), "repealed_on": d.get("repealed_on"),
             "repealed_by": d.get("repealed_by"),
             "clauses": int(counts.get(d["id"], 0)),
-            "download_url": ("/static/" + pdf) if pdf else None,
+            # Prefer a bundled static PDF; otherwise fall back to an uploaded PDF
+            # asset (Doc Studio "Attach/Replace PDF") so registry docs can carry a
+            # user-supplied PDF too — previously they showed "No file".
+            "download_url": ("/static/" + pdf) if pdf else _doc_pdf_url(str(d["id"])),
             "children": [],
         }
     # KB documents not in the registry (e.g. imported via Studio) with a
