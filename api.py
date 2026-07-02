@@ -382,12 +382,26 @@ def _doc_status(source):
             "repealed_on": d.get("repealed_on")}
 
 
+_DOC_TYPE_LABELS = {
+    "ACT": "Act", "REGULATION": "Regulation", "MASTER": "Master Circular",
+    "MASTER CIRCULAR": "Master Circular", "CIRCULAR": "Circular",
+    "GUIDELINE": "Guideline", "GUIDELINES": "Guideline",
+}
+
+def _norm_doc_type(t):
+    """Consistent display label for a document type, so imported docs (whose KB
+    Doc_Type is e.g. 'MASTER') read the same as registry docs ('Master Circular')."""
+    key = str(t or "").strip().upper()
+    return _DOC_TYPE_LABELS.get(key, str(t or "Document").strip() or "Document")
+
+
 @api_bp.get("/documents")
 def api_documents():
     """Document tree (Act → Regulation → Circular) + download links + status, for
     the Downloads page."""
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
+    is_admin = bool(getattr(_app.current_user, "is_admin", False))
     docs = _load_registry()
     # clause counts per document
     counts = {}
@@ -401,7 +415,7 @@ def api_documents():
     for d in docs:
         pdf = _app.resolve_pdf_path(str(d["id"]).upper())
         nodes[d["id"]] = {
-            "id": d["id"], "title": d.get("title", d["id"]), "type": d.get("type", "Document"),
+            "id": d["id"], "title": d.get("title", d["id"]), "type": _norm_doc_type(d.get("type", "Document")),
             "category": d.get("category", ""), "parent": d.get("parent"),
             "status": d.get("status", "Active"),
             "effective_date": d.get("effective_date"), "repealed_on": d.get("repealed_on"),
@@ -433,7 +447,7 @@ def api_documents():
             a = assets.get(src)
             dt, dc = meta.get(src, ("Document", ""))
             nodes[src] = {
-                "id": src, "title": src, "type": dt or "Document", "category": dc,
+                "id": src, "title": src, "type": _norm_doc_type(dt or "Document"), "category": dc,
                 "parent": (a.parent_doc if a else None),
                 "status": (a.status if a and a.status else "Active"),
                 "effective_date": (a.effective_date if a else None), "repealed_on": None,
@@ -455,7 +469,10 @@ def api_documents():
             imported.append(n)
         else:
             roots.append(n)
-    return jsonify({"tree": roots, "repealed": repealed, "imported": imported})
+    # Loose "imported/stray" docs (not slotted into the registry hierarchy) are an
+    # admin housekeeping view — regular users shouldn't see stray uploads.
+    return jsonify({"tree": roots, "repealed": repealed,
+                    "imported": imported if is_admin else []})
 
 
 def _pq_snippet(body, limit=220):

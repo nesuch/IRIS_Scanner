@@ -390,6 +390,7 @@ export default function Search({ module }) {
   const [tagClauses, setTagClauses] = useState({}); // normalised tag -> [{id, source}]
   const [selected, setSelected] = useState(() => new Set());
   const [docFilterOpen, setDocFilterOpen] = useState(false);
+  const [docQuery, setDocQuery] = useState('');   // filter the doc-picker list by name
   const [pdfPane, setPdfPane] = useState(null); // { url, source }
   const [flagClause, setFlagClause] = useState(null); // clause being flagged
   const [paneWidth, setPaneWidth] = useState(46); // % width of the PDF pane
@@ -721,6 +722,12 @@ export default function Search({ module }) {
                     <span>Search in documents</span>
                     <button type="button" className="doc-filter-close" onClick={() => setDocFilterOpen(false)} aria-label="Close">&times;</button>
                   </div>
+                  <div className="doc-filter-search">
+                    <i className="fas fa-magnifying-glass" />
+                    <input type="text" placeholder="Filter documents…" value={docQuery}
+                      onChange={(e) => setDocQuery(e.target.value)} autoFocus />
+                    {docQuery && <button type="button" className="doc-filter-search-clear" onClick={() => setDocQuery('')} aria-label="Clear">&times;</button>}
+                  </div>
                   <label className="doc-row doc-row-all">
                     <input type="checkbox" checked={allSelected}
                       ref={(el) => { if (el) el.indeterminate = !allSelected && !noneSelected; }} onChange={toggleAll} />
@@ -729,27 +736,34 @@ export default function Search({ module }) {
                   </label>
                   <div className="doc-filter-body">
                     {docGroups.length === 0 && <div className="doc-empty">No documents in this module.</div>}
-                    {docGroups.map((g) => {
-                      const sel = g.docs.filter((d) => selected.has(d)).length;
-                      const groupAll = sel === g.docs.length;
-                      const groupSome = sel > 0 && !groupAll;
-                      return (
-                        <div className="doc-group" key={g.type}>
-                          <label className="doc-row doc-group-head">
-                            <input type="checkbox" checked={groupAll}
-                              ref={(el) => { if (el) el.indeterminate = groupSome; }} onChange={() => toggleGroup(g)} />
-                            <span className="doc-group-label">{g.label}</span>
-                            <span className="doc-group-count">{sel}/{g.docs.length}</span>
-                          </label>
-                          {g.docs.map((d) => (
-                            <label className="doc-row doc-item" key={d}>
-                              <input type="checkbox" checked={selected.has(d)} onChange={() => toggleDoc(d)} />
-                              <span>{d}</span>
+                    {(() => {
+                      const q = docQuery.trim().toLowerCase();
+                      const groups = q
+                        ? docGroups.map((g) => ({ ...g, docs: g.docs.filter((d) => d.toLowerCase().includes(q)) })).filter((g) => g.docs.length)
+                        : docGroups;
+                      if (q && groups.length === 0) return <div className="doc-empty">No documents match “{docQuery}”.</div>;
+                      return groups.map((g) => {
+                        const sel = g.docs.filter((d) => selected.has(d)).length;
+                        const groupAll = sel === g.docs.length;
+                        const groupSome = sel > 0 && !groupAll;
+                        return (
+                          <div className="doc-group" key={g.type}>
+                            <label className="doc-row doc-group-head">
+                              <input type="checkbox" checked={groupAll}
+                                ref={(el) => { if (el) el.indeterminate = groupSome; }} onChange={() => toggleGroup(g)} />
+                              <span className="doc-group-label">{g.label}</span>
+                              <span className="doc-group-count">{sel}/{g.docs.length}</span>
                             </label>
-                          ))}
-                        </div>
-                      );
-                    })}
+                            {g.docs.map((d) => (
+                              <label className="doc-row doc-item" key={d}>
+                                <input type="checkbox" checked={selected.has(d)} onChange={() => toggleDoc(d)} />
+                                <span>{d}</span>
+                              </label>
+                            ))}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               )}

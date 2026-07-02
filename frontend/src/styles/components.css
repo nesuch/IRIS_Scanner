@@ -303,6 +303,8 @@ table.data tbody tr:hover { background: var(--paper); }
 /* Clause table cell borders + header styling, global so tables look like tables
    on /read too (the rule also lives in code-split search.css, not loaded there —
    without this, reader tables render as borderless floating text). */
-.clause-html table { border-collapse: collapse; }
-.clause-html table td, .clause-html table th { border: 1px solid var(--line-strong); padding: 6px 10px; vertical-align: top; text-align: left; }
+.clause-html table { border-collapse: collapse; font-size: 13px; line-height: 1.4; }
+/* Keep clause tables readable: modest padding, wrap long cell text, and cap cell
+   width so a verbose cell can't blow the row up to an unreadable size. */
+.clause-html table td, .clause-html table th { border: 1px solid var(--line-strong); padding: 4px 8px; vertical-align: top; text-align: left; max-width: 340px; overflow-wrap: anywhere; word-break: normal; }
 .clause-html table th { background: var(--paper); font-weight: 700; color: var(--navy-700, #1a237e); }

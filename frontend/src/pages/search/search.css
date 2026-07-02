@@ -155,8 +155,8 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .clause-html u { text-decoration: underline; }
 .clause-html ol, .clause-html ul { margin: 0 0 10px; padding-left: 24px; }
 .clause-html li { margin: 0 0 5px; }
-.clause-html table { border-collapse: collapse; margin: 12px 0; font-size: 13px; }
-.clause-html table td, .clause-html table th { border: 1px solid var(--line-strong); padding: 6px 10px; vertical-align: top; text-align: left; min-width: 60px; }
+.clause-html table { border-collapse: collapse; margin: 12px 0; font-size: 13px; line-height: 1.4; }
+.clause-html table td, .clause-html table th { border: 1px solid var(--line-strong); padding: 4px 8px; vertical-align: top; text-align: left; min-width: 52px; max-width: 340px; overflow-wrap: anywhere; }
 /* Only real header cells (<th>) are bold — the first row is no longer force-bolded,
    so the editor's "toggle header row" actually controls it. */
 .clause-html table th { background: var(--paper); font-weight: 700; color: var(--navy-700); }
@@ -228,6 +228,11 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .doc-filter-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .doc-filter-close { background: none; border: none; font-size: 18px; line-height: 1; color: var(--faint); cursor: pointer; }
 .doc-filter-close:hover { color: var(--bad); }
+.doc-filter-search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.doc-filter-search > i { color: var(--faint); font-size: 12px; flex: none; }
+.doc-filter-search input { flex: 1; border: none; outline: none; background: none; font-size: 13px; color: var(--ink); }
+.doc-filter-search-clear { background: none; border: none; font-size: 16px; line-height: 1; color: var(--faint); cursor: pointer; padding: 0 2px; }
+.doc-filter-search-clear:hover { color: var(--bad); }
 .doc-filter-body { overflow-y: auto; padding: 6px 0; }
 .doc-row { display: flex; align-items: center; gap: 10px; padding: 7px 14px; cursor: pointer; font-size: 13.5px; color: var(--ink-soft); }
 .doc-row input { width: 15px; height: 15px; accent-color: var(--navy-700); cursor: pointer; flex: 0 0 auto; }
