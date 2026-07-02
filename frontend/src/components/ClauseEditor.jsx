@@ -217,7 +217,9 @@ export function joinTableBelow(editor) {
     return row.type.create(row.attrs, cells);
   });
   const merged = A.node.type.create(A.node.attrs, fixed);
-  editor.view.dispatch(state.tr.replaceWith(A.pos, B.end, merged).scrollIntoView());
+  // No .scrollIntoView() — the merged table stays where it was; forcing the view
+  // to the change made the whole editor jump on every merge.
+  editor.view.dispatch(state.tr.replaceWith(A.pos, B.end, merged));
   return true;
 }
 

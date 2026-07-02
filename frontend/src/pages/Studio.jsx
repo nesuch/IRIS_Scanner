@@ -408,7 +408,10 @@ export default function Studio() {
       {historyOpen && active && <HistoryModal source={doc.source} id={active.id} onRestore={applyRestore} onClose={() => setHistoryOpen(false)} />}
       {metaOpen && (
         <DocMetaModal doc={doc} onClose={() => setMetaOpen(false)}
-          onSaved={(m) => { setMetaOpen(false); setDoc((dd) => ({ ...dd, source: m.source, type: m.type, category: m.category })); reloadDocs(); }} />
+          onSaved={(m) => {
+            setDoc((dd) => ({ ...dd, ...m }));   // merge only the provided fields
+            if (m.source !== undefined) { setMetaOpen(false); reloadDocs(); }  // full save closes; a PDF-only replace keeps the modal open
+          }} />
       )}
     </div>
   );
@@ -431,6 +434,25 @@ function DocMetaModal({ doc, onClose, onSaved }) {
   const [parents, setParents] = useState([]);
   const [cats, setCats] = useState(DEFAULT_CATEGORIES);
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [hasPdf, setHasPdf] = useState(!!doc.has_uploaded_pdf);
+
+  async function replacePdf(e) {
+    const f = e.target.files?.[0] || null;
+    e.target.value = '';                                  // allow re-selecting the same file
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith('.pdf')) { toast.error('Please choose a .pdf file'); return; }
+    setPdfBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', f); fd.append('source', doc.source);
+      const r = await api.post('/clause/doc-pdf', fd);
+      setHasPdf(true);
+      toast.success('Original PDF replaced');
+      onSaved({ pdf_url: r.pdf_url, has_uploaded_pdf: true });   // refresh the viewer (cache-busted url)
+    } catch (err) { toast.error(err.message || 'Could not upload PDF'); }
+    finally { setPdfBusy(false); }
+  }
 
   useEffect(() => {
     api.get('/departments').then((d) => setCats(d.categories || DEFAULT_CATEGORIES)).catch(() => {});
@@ -506,6 +528,13 @@ function DocMetaModal({ doc, onClose, onSaved }) {
           <label>Effective date <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(as it should display)</span></label>
           <input className="input" value={effDate} onChange={(e) => setEffDate(e.target.value)} placeholder="e.g. 14 March 2016" />
         </div>
+      </div>
+      <div className="field" style={{ marginTop: 4 }}>
+        <label>Original PDF <span style={{ color: 'var(--faint)', fontWeight: 400 }}>({hasPdf ? 'uploaded — choose a file to replace' : 'none uploaded'})</span></label>
+        <label className="btn btn-ghost btn-sm" style={{ cursor: pdfBusy ? 'default' : 'pointer', width: 'fit-content' }}>
+          {pdfBusy ? <Spinner size={13} /> : <i className="fas fa-file-arrow-up" />} {hasPdf ? 'Replace PDF' : 'Attach PDF'}
+          <input type="file" accept="application/pdf" onChange={replacePdf} disabled={pdfBusy} style={{ display: 'none' }} />
+        </label>
       </div>
     </Modal>
   );
