@@ -12,4 +12,4 @@ dbs:
     replicas:
       - type: gcs
         bucket: ${LITESTREAM_BUCKET}
-        path: iris.db
+        path: iris-restored-20260703

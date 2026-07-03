@@ -10,9 +10,14 @@ DB="${IRIS_DB_PATH:-/data/iris.db}"
 mkdir -p "$(dirname "$DB")"
 
 if [ ! -f "$DB" ]; then
-  echo "[entrypoint] No local DB at $DB — attempting restore from replica..."
-  litestream restore -if-replica-exists -o "$DB" "$DB" || true
-  if [ -f "$DB" ]; then
+  # Only seed from the baked image when there is GENUINELY no replica (first deploy
+  # / fresh path). If a replica EXISTS but the restore fails, fail closed: crash the
+  # container (set -e) instead of silently seeding the baked baseline and then
+  # replicating that over good data. (A transient restore failure once wiped prod
+  # back to the 8-doc seed — never again.)
+  if litestream generations "$DB" 2>/dev/null | tail -n +2 | grep -q .; then
+    echo "[entrypoint] Replica found — restoring (mandatory, no fallback)."
+    litestream restore -o "$DB" "$DB"
     echo "[entrypoint] Restored DB from GCS replica."
   else
     echo "[entrypoint] No replica found — seeding from image baseline."
