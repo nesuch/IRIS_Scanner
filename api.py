@@ -835,7 +835,7 @@ def _pq_chips(query):
         words.append(w)
         # Spelling correction against the PQ vocabulary (deterministic, no LLM).
         if wl not in vocab and len(wl) > 3:
-            m = difflib.get_close_matches(wl, vocab, n=1, cutoff=0.8)
+            m = difflib.get_close_matches(wl, vocab, n=1, cutoff=0.86)
             if m and m[0] != wl:
                 chips.append({"label": f'Did you mean "{m[0]}"?', "mode": "word",
                               "text": m[0], "kind": "fix"})
@@ -937,19 +937,55 @@ def api_clause_specs():
     return jsonify({"specs": ingest.list_specs()})
 
 
+# PDF extraction (pdfplumber) is memory-heavy and doesn't return its memory to the
+# OS, so it runs in a fresh short-lived SUBPROCESS whose memory is fully reclaimed on
+# exit (see ingest_worker.py). A lock serialises imports so only one ~650 MB child
+# exists at a time.
+import threading as _threading
+_INGEST_LOCK = _threading.Lock()
+_INGEST_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ingest_worker.py")
+
+
+def _run_ingest_worker(args, timeout=240):
+    """Run the PDF ingestion worker in a clean subprocess and return its JSON result.
+    Raises RuntimeError on timeout, crash, or a structured worker error."""
+    import subprocess, sys, tempfile, json
+    out = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    out.close()
+    cmd = [sys.executable, _INGEST_WORKER, *args, out.name]
+    try:
+        with _INGEST_LOCK:
+            proc = subprocess.run(cmd, capture_output=True, timeout=timeout,
+                                  cwd=os.path.dirname(_INGEST_WORKER))
+        try:
+            with open(out.name, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (ValueError, OSError):
+            tail = proc.stderr[-500:].decode("utf-8", "replace") if proc.stderr else ""
+            raise RuntimeError(f"PDF worker crashed (exit {proc.returncode}). {tail}")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("PDF processing timed out — the file may be very large.")
+    finally:
+        try: os.unlink(out.name)
+        except OSError: pass
+    if not data.get("ok"):
+        raise RuntimeError(data.get("error") or "PDF worker error")
+    return data
+
+
 @api_bp.post("/clause/detect-spec")
 def api_clause_detect_spec():
     """Admin: rank existing specs by how well they segment the uploaded PDF."""
     if not _require_role("editor"):
         return jsonify({"message": "Editor access required"}), 403
-    import ingest, tempfile
+    import tempfile
     f = request.files.get("file")
     if not f or not f.filename.lower().endswith(".pdf"):
         return jsonify({"ok": False, "message": "Upload a PDF"}), 400
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     try:
         tmp.write(f.read()); tmp.close()
-        ranked = ingest.detect_spec(tmp.name)
+        ranked = _run_ingest_worker(["detect", tmp.name])["ranked"]
     except Exception as e:
         print(f"detect-spec error: {e}")
         return jsonify({"ok": False, "message": "Could not read that PDF."}), 400
@@ -985,7 +1021,10 @@ def api_clause_import_pdf():
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     try:
         tmp.write(raw); tmp.close()
-        rows, report, spec_errors = ingest.segment_pdf(tmp.name, spec)
+        _res = _run_ingest_worker(["segment", tmp.name, spec_id])
+        rows = _res.get("rows") or []
+        report = _res.get("report") or {}
+        spec_errors = _res.get("spec_errors") or []
     except Exception as e:
         print(f"PDF import error: {e}")
         return jsonify({"ok": False, "message": "Could not segment that PDF."}), 400
@@ -996,18 +1035,27 @@ def api_clause_import_pdf():
     if not rows:
         return jsonify({"ok": False, "message": "No clauses were found — wrong spec for this document?"}), 400
 
-    # Insert the produced clauses as a new document.
+    # Insert the produced clauses as a new document. Wrapped so a DB error surfaces
+    # as a clear message (and rolls back) instead of a bare 500 "import failed".
     conn = _sql.connect(brain.DB_NAME)
-    for i, r in enumerate(rows, 1):
-        clause = str(r.get("clause", ""))
-        header = clause.split("\n", 1)[0].rstrip(":")[:120]
-        is_header = 1 if clause.strip().endswith(":") and "\n" not in clause.strip() else 0
-        conn.execute(
-            "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, "
-            "clause_text, context_header, regulatory_tags, priority, is_header, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (source, category, doc_type, str(r.get("id", "")), clause, header,
-             str(r.get("tag", "")).replace("_", " "), 99, is_header, i * 10))
-    conn.commit(); conn.close()
+    try:
+        for i, r in enumerate(rows, 1):
+            clause = str(r.get("clause", ""))
+            header = clause.split("\n", 1)[0].rstrip(":")[:120]
+            is_header = 1 if clause.strip().endswith(":") and "\n" not in clause.strip() else 0
+            conn.execute(
+                "INSERT INTO regulatory_clauses (source_doc, doc_category, doc_type, clause_id, "
+                "clause_text, context_header, regulatory_tags, priority, is_header, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (source, category, doc_type, str(r.get("id", "")), clause, header,
+                 str(r.get("tag", "")).replace("_", " "), 99, is_header, i * 10))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"PDF import DB error: {e}")
+        return jsonify({"ok": False, "message": f"Could not save clauses: {e}"}), 400
+    finally:
+        try: conn.close()
+        except Exception: pass
 
     # Attach the source PDF to the new document, and refresh search.
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", source) + ".pdf"
@@ -1470,6 +1518,81 @@ def _highlight_phrases(tuples):
     return phrases
 
 
+# Function words that must NOT be highlighted on their own — lighting up "to",
+# "be", "as", "shall" in every result is noise. Shared with the search-keyword
+# extractor (brain.FUNCTION_WORDS) so a word that can't be highlighted also can't
+# drive results (and vice-versa) — the green whole-phrase highlight still covers
+# the verbatim phrase regardless.
+_HL_STOP = brain.FUNCTION_WORDS
+
+
+def _word_highlights(query):
+    """The query's individual CONTENT words as single-word highlight phrases
+    (stopwords + tiny tokens dropped), so each meaningful word lights up on its own
+    wherever it appears — even when the user typed a multi-word tag like
+    'mental illness'. Distinct from the green whole-phrase highlight."""
+    out, seen = [], set()
+    for w in re.findall(r"[A-Za-z0-9%]+", str(query).lower()):
+        if w in _HL_STOP:
+            continue
+        if len(w) < 3 and w.isalpha():          # tiny function words ("be", "as")
+            continue
+        s = brain.search_root(w) if w.isalpha() else w
+        if s and s not in seen:
+            seen.add(s)
+            out.append([s])
+    return out
+
+
+
+
+_PHRASE_TYPE_RANK = {"ACT": 0, "REGULATION": 1, "MASTER": 2, "GUIDELINE": 3, "CIRCULAR": 4}
+
+def _phrase_sort_key(m, phrase, phrase_join):
+    """Rank exact-phrase matches so the most relevant clause leads:
+      1. the clause actually CONTAINS the verbatim phrase (the literal source) —
+         this trumps everything, so copy-pasting a sentence finds its own clause;
+      2. then a clause TAGGED with the phrase (curated as being about it);
+      3. then the phrase in the clause HEADING;
+      4. then document authority (Act > Regulation > …);
+      5. then the shorter/more-focused clause over a mention in a long schedule."""
+    def _hit(field):
+        # tags are stored underscore-joined ("Free_Look_Period") — normalize to
+        # spaces so the phrase matches; also hyphen-insensitive.
+        v = str(m.get(field, "")).lower().replace("_", " ")
+        return phrase in v or phrase_join in v.replace("-", "")
+    verbatim = 0 if _hit("raw_text") else 1
+    in_tag = 0 if _hit("tag") else 1
+    in_head = 0 if _hit("header") else 1
+    return (verbatim, in_tag, in_head,
+            _PHRASE_TYPE_RANK.get(str(m.get("type", "")).upper(), 9),
+            m.get("priority") or 99,
+            len(str(m.get("raw_text", ""))),
+            str(m.get("id", "")))
+
+
+def _spell_correct_phrase(query):
+    """Word-by-word spelling correction of a phrase against the KB vocabulary.
+    Returns the corrected phrase when something changed, else None. Conservative:
+    a word is only rewritten when it's genuinely unknown (not in the vocab AND its
+    root doesn't already prefix a known word), so valid words are never mangled."""
+    vocab = getattr(brain, "KNOWN_VOCAB", None)
+    if not vocab:
+        return None
+    out, changed = [], False
+    for w in query.split():
+        wl = w.lower()
+        if len(wl) < 3 or not wl.isalpha() or wl in vocab:
+            out.append(w); continue
+        rs = brain.get_stem(wl)
+        if len(rs) >= 3 and any(v.startswith(rs) for v in vocab):
+            out.append(w); continue                       # already findable as typed
+        mm = difflib.get_close_matches(wl, list(vocab), n=1, cutoff=0.84)
+        out.append(mm[0] if (mm and mm[0] != wl) else w)
+        changed = changed or bool(mm and mm[0] != wl)
+    return " ".join(out) if changed else None
+
+
 @api_bp.post("/search")
 def api_search():
     data = request.get_json(silent=True) or request.form
@@ -1494,10 +1617,46 @@ def api_search():
         raw_payload = query.replace("__DEEP_SCAN__:", "")
         pairs = raw_payload.split("||")
         keyword_tuples = [(p.split("|")[0], p.split("|")[1]) for p in pairs if len(p.split("|")) == 2]
+        is_raw = not keyword_tuples
+        if is_raw:
+            # Raw free-text deep scan (the "/deep <terms>" command sends plain text,
+            # not the chip's word|stem||… payload). Build (word, root) tuples from the
+            # literal words so it scans for exactly those terms.
+            _stop = getattr(brain, "STOP_WORDS", set())
+            keyword_tuples = [(w, brain.search_root(w.lower()))
+                              for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-]*", raw_payload)
+                              if len(w) > 1 and w.lower() not in _stop]
         display_kws = [t[0] for t in keyword_tuples]
         tag_matches = brain.search_tags_only(keyword_tuples, KB_DF, module=module)
-        exclude_ids = [m["id"] for m in tag_matches]
+        # The "/deep" command is a strict standalone scan (search ALL clauses); the
+        # chip variant is "additional to the tag matches already on screen".
+        exclude_ids = [] if is_raw else [m["id"] for m in tag_matches]
         matches = _scope(brain.deep_scan_brain(keyword_tuples, KB_DF, exclude_ids=exclude_ids, module=module))
+        # STRICT — a multi-word deep scan is a PHRASE, not scattered terms: the words
+        # must appear TOGETHER (adjacent), never separately across the clause. So
+        # "projected yield" won't match a clause that merely has "projected" and
+        # "yield" in different places. No fallback — no phrase, no results.
+        _dphrase = re.sub(r"\s+", " ",
+                          (raw_payload if is_raw else " ".join(display_kws)).strip().lower())
+        _deep_hl = _highlight_phrases(keyword_tuples)
+        _deep_phrase_hl = []
+        if " " in _dphrase:
+            _dj = _dphrase.replace("-", "")
+            matches = [m for m in matches
+                       if _dphrase in str(m.get("raw_text", "")).lower()
+                       or _dj in str(m.get("raw_text", "")).lower().replace("-", "")]
+            display_kws = [_dphrase]   # show the phrase, not comma-split words
+            # Highlight ONLY the consecutive phrase (not every occurrence of each
+            # word), in its own colour. Split on WHITESPACE so punctuated tokens
+            # survive intact — e.g. "40.1.4.2.2" must stay one token, or the
+            # consecutive regex can't match it. wordPattern() on the client matches
+            # digit/symbol tokens literally.
+            _deep_phrase_hl = [_dphrase.split()]
+            _deep_hl = []
+            # Rank DEDICATED clauses first — the phrase in a clause's heading (a
+            # clause ABOUT it) beats a passing mention buried in a long schedule/
+            # table; then by document authority, then shorter (more focused) first.
+            matches.sort(key=lambda m: _phrase_sort_key(m, _dphrase, _dj))
         # Record deep scans too (with a readable label + result count).
         try:
             email = _app.current_user.email if _app.current_user.is_authenticated else None
@@ -1507,10 +1666,10 @@ def api_search():
         return jsonify({
             "ok": True, "module": module, "kind": "deep_scan",
             "query_label": "Deep Scan",
-            "keywords": display_kws, "highlight": _highlight_phrases(keyword_tuples),
+            "keywords": display_kws, "highlight": _deep_hl, "highlight_phrase": _deep_phrase_hl,
             "matches": [_match_payload(m) for m in matches],
             "chips": [],
-            "note": None if matches else f"No additional matches found in {module.capitalize()} module.",
+            "note": None if matches else f"No results found for: {', '.join(display_kws)}.",
         })
 
     # --- Clause-number lookup (query starts with "/") ---
@@ -1533,6 +1692,29 @@ def api_search():
         return jsonify({"ok": True, "module": module, "kind": "greeting",
                         "query_label": query, "matches": [], "chips": [], "keywords": []})
 
+    # --- Regulatory citation / reference code (e.g. "IRDAI/Actl/IBNR/AIC/2009-10") ---
+    # A slash-joined code is ONE reference, not a bag of keywords. Tokenising it
+    # ("irdai", "aic", "10", …) explodes into unrelated tag hits, so match the literal
+    # code in the clause text instead; if it isn't present, say so (no random noise).
+    _cite = query.strip()
+    if ("/" in _cite and " " not in _cite
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/().\-]*", _cite)
+            and (any(ch.isdigit() for ch in _cite) or _cite.count("/") >= 2)):
+        matches = _scope(brain.search_citation(_cite, brain.filter_df_by_module(KB_DF, module)))
+        try:
+            email = _app.current_user.email if _app.current_user.is_authenticated else None
+            _app._record_search(email, module, query, len(matches))
+        except Exception:
+            pass
+        return jsonify({
+            "ok": True, "module": module, "kind": "tags",
+            "query_label": query, "keywords": [_cite],
+            "highlight": [], "highlight_phrase": [[_cite]], "phrase": _cite,
+            "phrase_matches": [_match_payload(m) for m in matches],
+            "matches": [], "content_matches": [],
+            "chips": [], "note": None if matches else f"No clause references “{_cite}”.",
+        })
+
     # --- Standard search ---
     kw_tuples = brain.get_clean_keywords(query)
     display_kws = [t[0] for t in kw_tuples]
@@ -1541,12 +1723,17 @@ def api_search():
                         "query_label": query, "matches": [], "chips": [], "keywords": [],
                         "note": "Query rejected. Please use regulatory terms."})
 
-    tag_matches = _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module))
+    # A common-word query can match hundreds of tagged clauses; cap the candidate
+    # pool up front so the O(n^2) run-length scoring in the promotion loop below runs
+    # over a bounded set (not ~350 clauses). Tags are pre-sorted by authority, so the
+    # top slice is the most relevant.
+    TAG_CAND_CAP = 60
+    tag_matches = _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module))[:TAG_CAND_CAP]
 
     # Windows-Explorer-style: also auto-scan the clause TEXT (no manual "deep scan"
     # step), returned as a separate, clearly-subordinate tier. Capped to keep the
     # live/as-you-type payload small and the precise tag matches on top.
-    CONTENT_CAP = 30
+    CONTENT_CAP = 20
     content_matches = []
     if module != "data":
         try:
@@ -1566,6 +1753,7 @@ def api_search():
     # process" the clause with BOTH should beat clauses tagged only "process".
     # Pull such clauses out of both tiers into a dedicated top tier.
     phrase_matches = []
+    _phrase_note = None
     phrase_l = re.sub(r"\s+", " ", (query or "").strip().lower())
     phrase_join = phrase_l.replace("-", "")
     # The distinct word-roots the user typed (skip stopwords + synthesized tags).
@@ -1576,38 +1764,106 @@ def api_search():
         r = brain.search_root(str(raw).lower(), clean)
         if r and r not in core_roots:
             core_roots.append(r)
-    multi = " " in phrase_l
+    # "Multi-token" isn't just whitespace: a slash/hyphen compound like "actl/ibnr"
+    # or "free-look" is several tokens too, and the clause that contains it verbatim
+    # must be promoted to the top tier (not left ranked by score). Treat any
+    # separator BETWEEN word characters as multi.
+    multi = " " in phrase_l or bool(re.search(r"[A-Za-z0-9][/\-][A-Za-z0-9]", phrase_l))
+    # The query's content words IN ORDER (stopwords dropped) — used to score the
+    # longest CONSECUTIVE partial-phrase run a clause contains. For a long natural-
+    # language query no clause holds every word, so a clause with a real 3-word run
+    # ("acceptance of a proposal") must outrank one matching a single common word
+    # ("before"). Adjacent query words may be separated by up to 2 filler words in
+    # the clause (articles/prepositions), so "acceptance of the proposal" matches
+    # "acceptance of a proposal".
+    _qseq = [brain.search_root(w) for w in re.findall(r"\w+", phrase_l)
+             if len(w) > 2 and w not in brain.STOPWORDS_STRONG]
 
-    def _match_kind(m):
-        """3 = verbatim phrase, 2 = all typed words on one line, 1 = all typed
-        words present (scattered), 0 = neither. Hyphen-insensitive so
-        'de-empanelment' counts for 'deempanelment'."""
+    def _run_len(t):
+        n = len(_qseq)
+        if n < 2:
+            return 0
+        best = 0
+        sep = r"\W+(?:\w+\W+){0,2}"
+        for i in range(n):
+            for j in range(n, i + 1, -1):
+                if j - i <= best:
+                    break
+                pat = sep.join(rf"\b{re.escape(r)}\w*" for r in _qseq[i:j])
+                if re.search(pat, t):
+                    best = j - i
+                    break
+        return best
+
+    _scores = {}
+
+    def _score(m):
+        """Graded relevance tuple (higher = better): verbatim phrase, all typed
+        words on one line, all typed words present, longest consecutive word-run,
+        distinct-word coverage. Hyphen-insensitive."""
+        k = id(m)
+        if k in _scores:
+            return _scores[k]
         t = str(m.get("raw_text", "")).lower()
         tj = t.replace("-", "")
-        if multi and (phrase_l in t or phrase_join in tj):
-            return 3
-        if len(core_roots) >= 2 and all(brain._root_present(r, t, tj) for r in core_roots):
-            # all words on one line/provision ranks above words merely scattered.
-            if any(all(brain._root_present(r, ln, ln.replace("-", "")) for r in core_roots)
-                   for ln in t.split("\n")):
-                return 2
-            return 1
-        return 0
+        # The exact query text appears in the clause. For a single word this is the
+        # EXACT word (e.g. "promotion" matches "promotion"/"promotional" but not the
+        # stem cousin "promote"), so exact-word clauses can be promoted above
+        # stem-family / loosely-tagged ones.
+        verbatim = 1 if (phrase_l in t or phrase_join in tj) else 0
+        cover = sum(1 for r in core_roots if brain._root_present(r, t, tj))
+        allwords = 1 if (len(core_roots) >= 2 and cover == len(core_roots)) else 0
+        same_line = 1 if (allwords and any(
+            all(brain._root_present(r, ln, ln.replace("-", "")) for r in core_roots)
+            for ln in t.split("\n"))) else 0
+        run = _run_len(t) if multi else 0
+        s = (verbatim, same_line, allwords, run, cover)
+        _scores[k] = s
+        return s
 
-    if multi:
+    # Run threshold for promotion. A 2-word run ("the authority") is fine evidence
+    # for a SHORT query but meaningless for a long one — it would promote hundreds of
+    # clauses (any common consecutive pair), exploding the rendered result set. So
+    # require the run to cover a real fraction of the query for longer queries; short
+    # queries keep the sensitive >=2 threshold (typo robustness).
+    _promote_run = 2 if len(_qseq) <= 4 else max(3, (len(_qseq) + 1) // 2)
+
+    def _promote(m):
+        # A verbatim phrase, ALL typed words, or a substantial consecutive run earns
+        # the top "best match" tier; a lone common-word (or common-pair) hit does not.
+        v, _sl, aw, run, _c = _score(m)
+        return bool(v or aw or run >= _promote_run)
+
+    # Run for multi-word phrases AND single content words: a clause containing the
+    # exact query text is a "best match" and must rank above stem-family / loosely-
+    # tagged clauses that don't contain the word at all (e.g. searching "promotion"
+    # should surface the clause whose heading is "Promotion" before clauses that only
+    # match the stem "promote" or a related tag).
+    if multi or core_roots:
         tag_keep, content_keep = [], []
         for m in tag_matches:
-            (phrase_matches if _match_kind(m) else tag_keep).append(m)
+            (phrase_matches if _promote(m) else tag_keep).append(m)
         for m in content_matches:
-            (phrase_matches if _match_kind(m) else content_keep).append(m)
+            (phrase_matches if _promote(m) else content_keep).append(m)
         tag_matches, content_matches = tag_keep, content_keep
-        # Order: verbatim phrase first, then all-words, then by document authority
-        # (an Act/Regulation that *defines* a term outranks a Circular mentioning it).
-        _TYPE_RANK = {"ACT": 0, "REGULATION": 1, "MASTER": 2, "GUIDELINE": 3, "CIRCULAR": 4}
-        phrase_matches.sort(key=lambda m: (
-            -_match_kind(m),
-            _TYPE_RANK.get(str(m.get("type", "")).upper(), 9),
-            m.get("priority", 99), m.get("source", ""), m.get("id", "")))
+        # Order the best-match (phrase) tier:
+        #   verbatim phrase > tagged with it > longest CONSECUTIVE run > in heading >
+        #   more words covered > document authority > more focused clause.
+        # The consecutive-run term makes ranking degrade gracefully to typos: one
+        # wrong letter ("accordance"->"accordam") still keeps the near-verbatim
+        # clause on top instead of scattering to unrelated single-word matches.
+        def _reg_key(m):
+            pk = _phrase_sort_key(m, phrase_l, phrase_join)  # (verbatim,tag,head,type,pri,len,id)
+            _v, _sl, _aw, run, cover = _score(m)
+            return (pk[0], pk[1], -run, pk[2], -cover, pk[3], pk[4], pk[5], pk[6])
+        phrase_matches.sort(key=_reg_key)
+
+    # Bound the rendered result set. Hundreds of full clause cards make the results
+    # view render for many seconds (huge DOM + thousands of highlight <mark>s) and jank
+    # the whole page. Keep the most relevant of each tier — the phrase tier is already
+    # sorted best-first; content is pre-capped at CONTENT_CAP.
+    phrase_matches = phrase_matches[:30]
+    tag_matches = tag_matches[:20]
 
     # Record the query for admin usage visibility (best-effort, non-blocking).
     try:
@@ -1617,8 +1873,8 @@ def api_search():
     except Exception:
         pass
 
-    note = None
-    if not phrase_matches and not tag_matches and not content_matches:
+    note = _phrase_note
+    if not note and not phrase_matches and not tag_matches and not content_matches:
         if module == "life":
             note = "Life Department: No documents currently loaded."
         elif module == "nonlife":
@@ -1632,7 +1888,18 @@ def api_search():
         "ok": True, "module": module, "kind": "tags",
         "query_label": query,
         "keywords": display_kws,
-        "highlight": _highlight_phrases(kw_tuples),
+        # Yellow per-word highlight: each meaningful query word on its own (drops
+        # stopwords + multi-word-tag grouping, so "mental" and "illness" both light
+        # up, and filler like "to"/"be"/"as" never does).
+        "highlight": _word_highlights(query),
+        # Green "verbatim" highlight: the exact phrase (multi-word) or exact word
+        # (single) as ONE unit — one highlight pattern. We deliberately do NOT emit
+        # contiguous sub-runs: a long query (e.g. a 27-word sentence) produced ~90
+        # patterns, and building/applying that regex per clause per render froze the
+        # results view. Individual query words still light up yellow via `highlight`,
+        # so a paraphrase isn't left un-highlighted — it just doesn't get the green
+        # run. Stem-family cousins (e.g. "price" for "pricing") stay yellow too.
+        "highlight_phrase": [phrase_l.split()] if phrase_l else [],
         "phrase": phrase_l if " " in phrase_l else None,
         "phrase_matches": [_match_payload(m) for m in phrase_matches],
         "matches": [_match_payload(m) for m in tag_matches],
@@ -2603,6 +2870,38 @@ def api_announcements():
                   "created_at": m._format_dt_local(a.created_at)} for a in rows]
     except Exception as e:
         print(f"announcement feed error: {e}")
+    # Admins/editors are alerted here when users submit feedback or flags, so they
+    # don't have to poll the admin panel. Synthetic ids are namespaced well above
+    # announcement ids so they never collide (the bell tracks seen ids as a set).
+    if _require_role("admin"):
+        admin_items = []
+        try:
+            fb = (m.db.session.query(m.FeedbackEntry, m.User.email)
+                  .join(m.User, m.User.id == m.FeedbackEntry.user_id)
+                  .filter(m.FeedbackEntry.status == "Open")
+                  .order_by(m.FeedbackEntry.id.desc()).limit(10).all())
+            for f, email in fb:
+                snip = " ".join((f.message or "").split())
+                if len(snip) > 90:
+                    snip = snip[:90] + "…"
+                admin_items.append({"id": 2_000_000_000 + f.id,
+                                    "title": f"New feedback · {f.category}",
+                                    "body": f"{email or 'A user'}: {snip}", "level": "info",
+                                    "created_at": m._format_dt_local(f.created_at)})
+            fl = (m.Flag.query.filter_by(status="Open")
+                  .order_by(m.Flag.id.desc()).limit(10).all())
+            for f in fl:
+                snip = " ".join((f.description or f.reason or "").split())
+                if len(snip) > 90:
+                    snip = snip[:90] + "…"
+                admin_items.append({"id": 3_000_000_000 + f.id,
+                                    "title": f"New flag · {f.reason}",
+                                    "body": f"{f.user_email or 'A user'} flagged {f.kind}: {snip}",
+                                    "level": "warning",
+                                    "created_at": m._format_dt_local(f.created_at)})
+        except Exception as e:
+            print(f"admin notif feed error: {e}")
+        items = admin_items + items
     return jsonify({"announcements": items})
 
 

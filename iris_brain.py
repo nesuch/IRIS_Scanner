@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd # type: ignore
 import os
 import re
+import functools
 import json
 from datetime import datetime
 import glob
@@ -125,6 +126,27 @@ SYNONYM_MAP = {
 
 STOP_WORDS = { "is", "am", "are", "can", "i", "get", "a", "the", "to", "for", "in", "on", "of", "about", "me", "does", "will", "should" }
 STOPWORDS_STRONG = { "all", "any", "every", "shall", "may", "must", "including", "such", "other" }
+# Function words that must never become SEARCH keywords. Left in, they match huge
+# numbers of irrelevant clauses (a tag like "Returns_to_be_Published" matches "be",
+# "given"/"as" appear in nearly every clause) — and because these words are also
+# excluded from highlighting, those results show up with nothing highlighted. This
+# is the single source of truth: get_clean_keywords drops these, and the highlighter
+# uses the same set, so every search keyword is highlightable and vice-versa.
+FUNCTION_WORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet",
+    "of", "to", "in", "on", "at", "by", "with", "from", "into", "onto", "upon",
+    "over", "under", "out", "off", "up", "down",
+    "as", "is", "am", "are", "was", "were", "be", "been", "being",
+    "do", "does", "did", "done", "have", "has", "had", "having",
+    "that", "this", "these", "those", "there", "here", "it", "its",
+    "their", "his", "her", "our", "your", "my",
+    "no", "not", "any", "all", "each", "some", "such", "other", "another", "same",
+    "shall", "may", "must", "will", "would", "can", "could", "should", "might",
+    "which", "who", "whom", "whose", "what", "when", "where", "why", "how",
+    "than", "then", "if", "unless", "until", "while", "whether", "because",
+    "although", "though", "per", "via", "he", "she", "they", "we", "you",
+    "him", "them", "us", "made", "make", "given", "give",
+})
 MIN_KEYWORD_LENGTH = 2
 
 # Unit Mapping for nicer headers
@@ -149,7 +171,10 @@ UNIFIED_DF = pd.DataFrame()
 # ==========================================
 # 2. CORE UTILS (TEXT SEARCH)
 # ==========================================
+@functools.lru_cache(maxsize=100000)
 def get_stem(word):
+    # Pure + deterministic -> safe to memoize. Stemming the same words repeatedly
+    # (per row, per request) is a hot path; caching removes ~all of that cost.
     word = word.lower()
     if USE_NLTK: return stemmer.stem(word)
     if len(word) < 4: return word
@@ -162,6 +187,7 @@ def common_prefix(a, b):
     while i < n and a[i] == b[i]: i += 1
     return a[:i]
 
+@functools.lru_cache(maxsize=100000)
 def search_root(word, stem=None):
     """Prefix safe to use for `\\broot\\w*` matching/highlighting. Porter sometimes
     restores letters so the stem is NOT a prefix of the word it came from
@@ -170,10 +196,13 @@ def search_root(word, stem=None):
     of the typed word. No-op when the stem is already a prefix (the usual case)."""
     w = str(word).lower()
     s = stem if stem is not None else get_stem(w)
-    if s and w.startswith(s):
+    # A root shorter than 3 chars is dangerously broad: "cis" (an acronym) Porter-
+    # stems to "ci", and `\bci\w*` then matches "circular", "citizen", etc. Match
+    # such short words VERBATIM instead of by a tiny prefix.
+    if s and w.startswith(s) and len(s) >= 3:
         return s                       # normal case — stem is a clean prefix
     cp = common_prefix(w, s or "")
-    return cp if len(cp) >= 3 else (s or w)
+    return cp if len(cp) >= 3 else w
 
 def _root_present(root, text, text_join):
     """Does `root` prefix-match a word in the text? Checks the text AND a
@@ -204,6 +233,44 @@ TAG_INGREDIENTS = {}
 KNOWN_VOCAB = set()
 NORMALIZED_TAG_LOOKUP = {}
 KB_CACHE_DF = None
+
+# Precomputed, search-ready text columns. Building these ONCE at load time avoids
+# lower-casing + hyphen-collapsing every clause on every search request.
+#   _CT_LC  = Clause_Text, lower-cased
+#   _CT_LCJ = _CT_LC with hyphens removed (matches "de-empanelment" <-> "deempanelment")
+#
+# INVARIANT: _CT_LC and _CT_LCJ must always mirror Clause_Text. Do NOT assign to
+# KB_CACHE_DF["Clause_Text"] directly — write it ONLY through set_clause_text(),
+# which refreshes the derived columns in the same call so they can never go stale.
+# (Bulk changes go through refresh_kb()/load_knowledge_base(), which rebuild both.)
+# Search code also falls back to computing on the fly if the columns are absent, so
+# a missing column is only slower, never wrong.
+_CT_LC, _CT_LCJ = "_ct_lc", "_ct_lcj"
+
+def _derive_search_columns(text):
+    """Canonical normalization for the search columns — the single source of truth
+    for how Clause_Text maps to its searchable forms. If the rule ever changes
+    (e.g. stripping more punctuation), change it here only."""
+    lc = (text or "").lower()
+    return lc, lc.replace("-", "")
+
+def _add_search_cols(df):
+    if df is None or getattr(df, "empty", True) or "Clause_Text" not in df.columns:
+        return df
+    derived = df["Clause_Text"].fillna("").astype(str).map(_derive_search_columns)
+    df[_CT_LC] = derived.str[0]
+    df[_CT_LCJ] = derived.str[1]
+    return df
+
+def set_clause_text(mask, text):
+    """The ONLY sanctioned way to write Clause_Text into the in-memory cache. Keeps
+    the derived search columns in lock-step with the text so they can never go
+    stale (see the INVARIANT above). `mask` is any pandas row selector."""
+    lc, lcj = _derive_search_columns(text)
+    KB_CACHE_DF.loc[mask, "Clause_Text"] = text
+    if _CT_LC in KB_CACHE_DF.columns:
+        KB_CACHE_DF.loc[mask, _CT_LC] = lc
+        KB_CACHE_DF.loc[mask, _CT_LCJ] = lcj
 
 def normalize_tag_text(text: str) -> str:
     return " ".join(re.findall(r"\w+", str(text).lower().replace("_", " "))).strip()
@@ -250,6 +317,7 @@ def load_knowledge_base(force_reload=False):
     if not ALL_UNIQUE_TAGS or force_reload:
         _rebuild_vocab(df)
 
+    _add_search_cols(df)
     KB_CACHE_DF = df
     return df
 
@@ -269,6 +337,7 @@ def refresh_kb():
     df = pd.read_sql_query("SELECT * FROM regulatory_clauses", conn)
     conn.close()
     df = df.rename(columns=_KB_RENAME)
+    _add_search_cols(df)
     KB_CACHE_DF = df
     _rebuild_vocab(df)
     return df
@@ -358,7 +427,7 @@ def update_clause_content(clause_id, source, html, text, editor=None):
             KB_CACHE_DF["clause_html"] = None
         mask = (KB_CACHE_DF["Clause_ID"].astype(str) == str(clause_id)) & (KB_CACHE_DF["Source_Doc"].astype(str) == str(source))
         KB_CACHE_DF.loc[mask, "clause_html"] = html
-        KB_CACHE_DF.loc[mask, "Clause_Text"] = text
+        set_clause_text(mask, text)   # writes Clause_Text + derived search columns atomically
     return True
 
 
@@ -725,15 +794,24 @@ def get_clean_keywords(query: str):
     soup_ingredients = set()
     
     for w in raw_words:
-        if w in STOP_WORDS: continue
+        if w in STOP_WORDS or w in FUNCTION_WORDS: continue
         valid_word = w
         corrected_word = None
 
         if w not in KNOWN_VOCAB:
-            matches = difflib.get_close_matches(w, list(KNOWN_VOCAB), n=1, cutoff=0.8)
-            if matches:
-                valid_word = matches[0]
-                corrected_word = valid_word
+            # Only spell-correct a GENUINELY unknown word. A valid word whose root
+            # already prefixes known vocabulary (e.g. "deductions" -> root "deduct",
+            # which matches "deduction") must NOT be rewritten to a lexically-near
+            # but unrelated word ("directions"). Also use a stricter cutoff (0.86):
+            # the false rewrites ("deductions"->"directions", "actual"->"actuarial")
+            # sit at 0.80, while real single-char typos score higher.
+            _rs = get_stem(w)
+            root_known = len(_rs) >= 3 and any(v.startswith(_rs) for v in KNOWN_VOCAB)
+            if not root_known:
+                matches = difflib.get_close_matches(w, list(KNOWN_VOCAB), n=1, cutoff=0.86)
+                if matches:
+                    valid_word = matches[0]
+                    corrected_word = valid_word
 
         # Always keep user-entered token so deep scan can offer exact-user intent.
         raw_stem = get_stem(w)
@@ -771,18 +849,21 @@ def search_tags_only(keyword_tuples, df, module="universal"):
 
     matches = []
     detected_tags = [t[1] for t in keyword_tuples]
-    
+    # Precompute each target's stem + single-word flag ONCE (was recomputed for
+    # every clause row); pure and identical, just hoisted out of the hot loop.
+    targets = [(target, get_stem(target), len(target.split()) == 1) for target in detected_tags]
+    # Skip clauses with no tags without materialising a row (the loop still guards).
+    scoped_df = scoped_df[scoped_df["Regulatory_Tags"].fillna("").astype(str).str.strip() != ""]
+
     for _, row in scoped_df.iterrows():
         if row.get("Is_Header"): continue
         raw_tags = str(row.get("Regulatory_Tags", "")).lower()
         if not raw_tags: continue
-        
+
         tag_list = [t.strip().replace("_", " ") for t in raw_tags.split(",")]
-        
+
         found = False
-        for target in detected_tags:
-            target_stem = get_stem(target)
-            single_target = len(target.split()) == 1
+        for target, target_stem, single_target in targets:
             for doc_tag in tag_list:
                 if doc_tag == target or normalize_tag_text(doc_tag) == normalize_tag_text(target):
                     found = True; break
@@ -803,9 +884,41 @@ def search_tags_only(keyword_tuples, df, module="universal"):
                 "priority": row.get("Priority", 99),
                 "id": str(row.get("Clause_ID", "")).strip(),
                 "header": row.get("Context_Header", ""),
+                "tag": str(row.get("Regulatory_Tags", "")),
                 "raw_text": str(row.get("Clause_Text", ""))
             })
     return sort_matches(matches)
+
+def search_citation(code, df):
+    """Literal lookup of a regulatory citation / reference code (e.g.
+    'IRDAI/Actl/IBNR/AIC/2009-10'). The code is a single reference, so match it as a
+    substring of the clause text / heading / tags (case-insensitive, and ignoring
+    incidental whitespace) instead of tokenising it into unrelated keywords. Returns
+    the same match dicts as the other searchers; empty when the code isn't present."""
+    if df is None or df.empty:
+        return []
+    needle = str(code).strip().lower()
+    needle_ns = re.sub(r"\s+", "", needle)
+    if len(needle_ns) < 3:
+        return []
+    out = []
+    for _, row in df.iterrows():
+        if row.get("Is_Header"):
+            continue
+        hay = " ".join(str(row.get(c, "")) for c in
+                       ("Clause_Text", "Context_Header", "Regulatory_Tags")).lower()
+        if needle in hay or needle_ns in re.sub(r"\s+", "", hay):
+            out.append({
+                "source": row.get("Source_Doc", "UNKNOWN"),
+                "type": row.get("Doc_Type", "UNKNOWN"),
+                "priority": row.get("Priority", 99),
+                "id": str(row.get("Clause_ID", "")).strip(),
+                "header": row.get("Context_Header", ""),
+                "tag": str(row.get("Regulatory_Tags", "")),
+                "raw_text": str(row.get("Clause_Text", "")),
+            })
+    return sort_matches(out)
+
 
 def _num_key(s):
     """Strip everything but letters/digits for space/bracket-insensitive matching:
@@ -894,6 +1007,23 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
     exclude_set: set[str] = set(exclude_ids) if exclude_ids else set()
     matches = []
 
+    # Vectorized candidate pre-filter: only clauses whose text contains at least one
+    # search stem (hyphen-insensitive, the SAME condition the loop applies) can ever
+    # score, so run the expensive per-row logic on just those instead of all ~1300
+    # clauses. Result set is IDENTICAL — the loop below still re-checks every row.
+    if not search_stems:
+        return []
+    _alt = "|".join(re.escape(s) for s in search_stems)
+    _pat = rf"\b(?:{_alt})\w*"
+    if _CT_LC in scoped_df.columns:                       # precomputed (fast path)
+        _lc, _lcj = scoped_df[_CT_LC], scoped_df[_CT_LCJ]
+        _mask = _lc.str.contains(_pat, regex=True) | _lcj.str.contains(_pat, regex=True)
+    else:                                                 # fallback: compute on the fly
+        _txt = scoped_df["Clause_Text"].fillna("").astype(str).str.lower()
+        _mask = (_txt.str.contains(_pat, regex=True)
+                 | _txt.str.replace("-", "", regex=False).str.contains(_pat, regex=True))
+    scoped_df = scoped_df[_mask]
+
     for _, row in scoped_df.iterrows():
         if row.get("Is_Header"): continue
         c_id = str(row.get("Clause_ID", "")).strip()
@@ -933,6 +1063,7 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
             "priority": row.get("Priority", 99),
             "id": c_id,
             "header": row.get("Context_Header", ""),
+            "tag": str(row.get("Regulatory_Tags", "")),
             "raw_text": str(row.get("Clause_Text", "")),
             "_score": score,
         })
