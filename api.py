@@ -862,6 +862,45 @@ def api_pq_retag(pid):
     return jsonify({"ok": True, "tags": [t.strip() for t in r.tags.split(",") if t.strip()]})
 
 
+@api_bp.post("/pq/reextract")
+def api_pq_reextract():
+    """Admin-only: re-derive body_text for every PQ from its stored original.
+
+    body_text is the column search actually scans, and it is written once at
+    upload time — so an extraction fix leaves every existing row stale. Rewrites
+    body_text only; html, tags, departments and metadata are left untouched
+    (nothing here is user-authored — api_pq_update never writes these two).
+    Idempotent, so it can be re-run after any future extraction change.
+    """
+    if not _require_role("admin"):
+        return jsonify({"message": "Admin access required"}), 403
+    out, changed = [], 0
+    for r in _app.PqDocument.query.order_by(_app.PqDocument.id).all():
+        row = {"id": r.id, "pq_no": r.pq_no, "before": len(r.body_text or "")}
+        data = storage.load_pq(r.docx_filename) if r.docx_filename else None
+        if data is None:
+            row["status"] = "original file not found"
+            out.append(row)
+            continue
+        try:
+            parsed = parse_pq(data, filename=r.docx_filename)
+        except Exception as e:
+            row["status"] = f"{type(e).__name__}: {e}"
+            out.append(row)
+            continue
+        if parsed["text"] != (r.body_text or ""):
+            r.body_text = parsed["text"]
+            changed += 1
+        row["after"], row["status"] = len(r.body_text or ""), "ok"
+        out.append(row)
+    _app.db.session.commit()
+    # Keyed on (row count, newest id) — neither moves when body_text changes,
+    # so the spell-check vocabulary has to be invalidated by hand.
+    _PQ_VOCAB_CACHE["key"] = None
+    _audit(f"Re-extracted body text for {changed} PQ(s)", "PQ re-extract")
+    return jsonify({"ok": True, "changed": changed, "results": out})
+
+
 @api_bp.get("/clause/docs")
 def api_clause_docs():
     """Admin: documents in the knowledge base, with clause + edited counts."""
