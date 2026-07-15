@@ -313,6 +313,88 @@ def _doc_pdf_url(source):
     return ("/static/" + p) if p else None
 
 
+def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
+    """Query-derived relevance scoring: returns (score, promote).
+
+    Lifted out of api_search so a second corpus (PQ replies) can rank by the same
+    rules. Deliberately shape-agnostic — it reads only m["raw_text"], never a
+    DataFrame — which is what makes it shareable at all.
+
+    run_len_cap suspends the run scan for long queries. _run_len is O(n^2) in the
+    query and scans the whole text: ~0.1ms on a 25k body for 3 words but ~27ms for
+    13, so a back-catalogue of PQ bodies would spend seconds in it. Clause callers
+    pass None (clauses average 1,894 chars and are already capped at ~80 candidates).
+    """
+    phrase_join = phrase_l.replace("-", "")
+    # The query's content words IN ORDER (stopwords dropped) — used to score the
+    # longest CONSECUTIVE partial-phrase run a clause contains. For a long natural-
+    # language query no clause holds every word, so a clause with a real 3-word run
+    # ("acceptance of a proposal") must outrank one matching a single common word
+    # ("before"). Adjacent query words may be separated by up to 2 filler words in
+    # the clause (articles/prepositions), so "acceptance of the proposal" matches
+    # "acceptance of a proposal".
+    _qseq = [brain.search_root(w) for w in re.findall(r"\w+", phrase_l)
+             if len(w) > 2 and w not in brain.STOPWORDS_STRONG]
+    _scan_runs = multi and not (run_len_cap is not None and len(_qseq) > run_len_cap)
+
+    def _run_len(t):
+        n = len(_qseq)
+        if n < 2:
+            return 0
+        best = 0
+        sep = r"\W+(?:\w+\W+){0,2}"
+        for i in range(n):
+            for j in range(n, i + 1, -1):
+                if j - i <= best:
+                    break
+                pat = sep.join(rf"\b{re.escape(r)}\w*" for r in _qseq[i:j])
+                if re.search(pat, t):
+                    best = j - i
+                    break
+        return best
+
+    _scores = {}
+
+    def _score(m):
+        """Graded relevance tuple (higher = better): verbatim phrase, all typed
+        words on one line, all typed words present, longest consecutive word-run,
+        distinct-word coverage. Hyphen-insensitive."""
+        k = id(m)
+        if k in _scores:
+            return _scores[k]
+        t = str(m.get("raw_text", "")).lower()
+        tj = t.replace("-", "")
+        # The exact query text appears in the clause. For a single word this is the
+        # EXACT word (e.g. "promotion" matches "promotion"/"promotional" but not the
+        # stem cousin "promote"), so exact-word clauses can be promoted above
+        # stem-family / loosely-tagged ones.
+        verbatim = 1 if (phrase_l in t or phrase_join in tj) else 0
+        cover = sum(1 for r in core_roots if brain._root_present(r, t, tj))
+        allwords = 1 if (len(core_roots) >= 2 and cover == len(core_roots)) else 0
+        same_line = 1 if (allwords and any(
+            all(brain._root_present(r, ln, ln.replace("-", "")) for r in core_roots)
+            for ln in t.split("\n"))) else 0
+        run = _run_len(t) if _scan_runs else 0
+        s = (verbatim, same_line, allwords, run, cover)
+        _scores[k] = s
+        return s
+
+    # Run threshold for promotion. A 2-word run ("the authority") is fine evidence
+    # for a SHORT query but meaningless for a long one — it would promote hundreds of
+    # clauses (any common consecutive pair), exploding the rendered result set. So
+    # require the run to cover a real fraction of the query for longer queries; short
+    # queries keep the sensitive >=2 threshold (typo robustness).
+    _promote_run = 2 if len(_qseq) <= 4 else max(3, (len(_qseq) + 1) // 2)
+
+    def _promote(m):
+        # A verbatim phrase, ALL typed words, or a substantial consecutive run earns
+        # the top "best match" tier; a lone common-word (or common-pair) hit does not.
+        v, _sl, aw, run, _c = _score(m)
+        return bool(v or aw or run >= _promote_run)
+
+    return _score, _promote
+
+
 def _match_payload(m):
     return {
         "source": m.get("source", "UNKNOWN"),
@@ -1846,70 +1928,7 @@ def api_search():
     # must be promoted to the top tier (not left ranked by score). Treat any
     # separator BETWEEN word characters as multi.
     multi = " " in phrase_l or bool(re.search(r"[A-Za-z0-9][/\-][A-Za-z0-9]", phrase_l))
-    # The query's content words IN ORDER (stopwords dropped) — used to score the
-    # longest CONSECUTIVE partial-phrase run a clause contains. For a long natural-
-    # language query no clause holds every word, so a clause with a real 3-word run
-    # ("acceptance of a proposal") must outrank one matching a single common word
-    # ("before"). Adjacent query words may be separated by up to 2 filler words in
-    # the clause (articles/prepositions), so "acceptance of the proposal" matches
-    # "acceptance of a proposal".
-    _qseq = [brain.search_root(w) for w in re.findall(r"\w+", phrase_l)
-             if len(w) > 2 and w not in brain.STOPWORDS_STRONG]
-
-    def _run_len(t):
-        n = len(_qseq)
-        if n < 2:
-            return 0
-        best = 0
-        sep = r"\W+(?:\w+\W+){0,2}"
-        for i in range(n):
-            for j in range(n, i + 1, -1):
-                if j - i <= best:
-                    break
-                pat = sep.join(rf"\b{re.escape(r)}\w*" for r in _qseq[i:j])
-                if re.search(pat, t):
-                    best = j - i
-                    break
-        return best
-
-    _scores = {}
-
-    def _score(m):
-        """Graded relevance tuple (higher = better): verbatim phrase, all typed
-        words on one line, all typed words present, longest consecutive word-run,
-        distinct-word coverage. Hyphen-insensitive."""
-        k = id(m)
-        if k in _scores:
-            return _scores[k]
-        t = str(m.get("raw_text", "")).lower()
-        tj = t.replace("-", "")
-        # The exact query text appears in the clause. For a single word this is the
-        # EXACT word (e.g. "promotion" matches "promotion"/"promotional" but not the
-        # stem cousin "promote"), so exact-word clauses can be promoted above
-        # stem-family / loosely-tagged ones.
-        verbatim = 1 if (phrase_l in t or phrase_join in tj) else 0
-        cover = sum(1 for r in core_roots if brain._root_present(r, t, tj))
-        allwords = 1 if (len(core_roots) >= 2 and cover == len(core_roots)) else 0
-        same_line = 1 if (allwords and any(
-            all(brain._root_present(r, ln, ln.replace("-", "")) for r in core_roots)
-            for ln in t.split("\n"))) else 0
-        run = _run_len(t) if multi else 0
-        s = (verbatim, same_line, allwords, run, cover)
-        _scores[k] = s
-        return s
-
-    # Run threshold for promotion. A 2-word run ("the authority") is fine evidence
-    # for a SHORT query but meaningless for a long one — it would promote hundreds of
-    # clauses (any common consecutive pair), exploding the rendered result set. So
-    # require the run to cover a real fraction of the query for longer queries; short
-    # queries keep the sensitive >=2 threshold (typo robustness).
-    _promote_run = 2 if len(_qseq) <= 4 else max(3, (len(_qseq) + 1) // 2)
-
-    def _promote(m):
-        # A verbatim phrase, ALL typed words, or a substantial consecutive run earns
-        # the top "best match" tier; a lone common-word (or common-pair) hit does not.
-        v, _sl, aw, run, _c = _score(m)
-        return bool(v or aw or run >= _promote_run)
+    _score, _promote = _make_scorer(phrase_l, core_roots, multi)
 
     # Run for multi-word phrases AND single content words: a clause containing the
     # exact query text is a "best match" and must rank above stem-family / loosely-
