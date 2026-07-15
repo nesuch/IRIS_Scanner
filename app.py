@@ -951,4 +951,8 @@ def spa_assets(filename):
     return send_from_directory(os.path.join(FRONTEND_DIST, "assets"), filename)
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True, port=8080)
+    # threaded=True so a long request (e.g. a 20-40s Doc Studio detect-spec / PDF
+    # import) doesn't freeze the whole local server — other requests (search, filters,
+    # clause/PDF panes) are served concurrently. Production already runs multi-threaded
+    # via gunicorn (--threads 8), so this only affects `python app.py` local runs.
+    app.run(host='0.0.0.0', debug=True, port=8080, threaded=True)

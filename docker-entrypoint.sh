@@ -10,18 +10,31 @@ DB="${IRIS_DB_PATH:-/data/iris.db}"
 mkdir -p "$(dirname "$DB")"
 
 if [ ! -f "$DB" ]; then
-  # Only seed from the baked image when there is GENUINELY no replica (first deploy
-  # / fresh path). If a replica EXISTS but the restore fails, fail closed: crash the
-  # container (set -e) instead of silently seeding the baked baseline and then
-  # replicating that over good data. (A transient restore failure once wiped prod
-  # back to the 8-doc seed — never again.)
-  if litestream generations "$DB" 2>/dev/null | tail -n +2 | grep -q .; then
-    echo "[entrypoint] Replica found — restoring (mandatory, no fallback)."
-    litestream restore -o "$DB" "$DB"
-    echo "[entrypoint] Restored DB from GCS replica."
+  # Restore from the GCS replica when one exists, else seed from the baked image.
+  #
+  # We rely on litestream's built-in `-if-replica-exists`, NOT on parsing the text
+  # output of `litestream generations` (an earlier hand-rolled `... | tail -n +2 |
+  # grep` check silently mis-reported an EXISTING single-generation replica as
+  # absent, so every cold start reseeded the baked image and discarded all
+  # replicated writes — passwords, audit logs, etc.).
+  #
+  # Semantics of `-if-replica-exists`:
+  #   * no replica          -> exit 0, no file written  -> we seed the baseline
+  #   * replica, restore ok  -> exit 0, file written     -> restored
+  #   * replica, restore FAILS -> non-zero exit          -> we fail closed (exit 1),
+  #                                                         never seed over good data
+  echo "[entrypoint] Checking for GCS replica to restore..."
+  if litestream restore -if-replica-exists -o "$DB" "$DB"; then
+    if [ -f "$DB" ]; then
+      echo "[entrypoint] Restored DB from GCS replica."
+    else
+      echo "[entrypoint] No replica found — seeding from image baseline."
+      cp /app/iris.db "$DB"
+    fi
   else
-    echo "[entrypoint] No replica found — seeding from image baseline."
-    cp /app/iris.db "$DB"
+    echo "[entrypoint] ERROR: replica exists but restore failed — refusing to seed" >&2
+    echo "[entrypoint] over it (fail closed). Crashing so the platform retries." >&2
+    exit 1
   fi
 fi
 
