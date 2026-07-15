@@ -18,10 +18,57 @@ from datetime import datetime
 
 import mammoth
 import docx as docxlib
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(HERE, "iris.db")
 STATIC_PQ_DIR = os.path.join(HERE, "static", "documents", "pqs")
+
+
+def _cell_text(cell):
+    """Text of one table cell, including any table nested inside it."""
+    parts = [p.text.strip() for p in cell.paragraphs if p.text.strip()]
+    for t in cell.tables:
+        parts.extend(_table_lines(t))
+    return " ".join(parts)
+
+
+def _table_lines(table):
+    """A table as one ' | '-joined line per row. A merged cell repeats the same
+    _Cell across the span it covers, so consecutive duplicates are collapsed."""
+    lines = []
+    for row in table.rows:
+        cells, prev = [], None
+        for cell in row.cells:
+            t = _cell_text(cell)
+            if t and t != prev:
+                cells.append(t)
+            prev = t
+        if cells:
+            lines.append(" | ".join(cells))
+    return lines
+
+
+def _docx_text(d):
+    """Plain text of a .docx in document order, tables included.
+
+    Document.paragraphs skips table cells, so a PQ's data tables (the
+    insurer-wise figures the reply defers to the note for PAD for) never
+    reached body_text and no search could reach them. Walking the body element
+    keeps the header ahead of the tables, which _meta() relies on to read the
+    first Subject:/date match.
+    """
+    out = []
+    for child in d.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            t = Paragraph(child, d).text.strip()
+            if t:
+                out.append(t)
+        elif child.tag == qn("w:tbl"):
+            out.extend(_table_lines(Table(child, d)))
+    return "\n".join(out)
 
 
 def parse_docx(src, filename=""):
@@ -34,7 +81,7 @@ def parse_docx(src, filename=""):
         if not isinstance(src, (bytes, bytearray)):
             fobj.close()
     d = docxlib.Document(io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else src)
-    text = "\n".join(p.text for p in d.paragraphs if p.text.strip())
+    text = _docx_text(d)
     pq_no, house, subject, doc_date, title = _meta(text, filename or "")
     return {"html": html, "text": text, "pq_no": pq_no, "house": house,
             "subject": subject, "doc_date": doc_date, "title": title}
