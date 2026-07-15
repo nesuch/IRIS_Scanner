@@ -142,7 +142,13 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .results-tool-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--navy-700); background: #fff; border: 1px solid var(--line-strong); border-radius: 5px; padding: 3px 9px; cursor: pointer; transition: 0.15s; }
 .results-tool-btn:hover { background: rgba(26,35,126,0.06); border-color: var(--navy-700); }
 .results-tools-zoom { margin-left: auto; }
-.clause-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Plain-text clauses (never opened in Doc Studio, so no stored HTML) must have the
+   SAME vertical rhythm as edited/HTML ones — otherwise the identical Act reads
+   tight in one document and airy in another purely because someone edited it once.
+   Mirror .clause-html p: a 9px gap per line, and the same blank-line height. */
+.clause-line { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 9px; }
+.clause-line:empty { min-height: 1.55em; margin-bottom: 0; }
+.clause-line:last-child { margin-bottom: 0; }
 .clause-head strong { color: var(--navy-700, #1a237e); }
 /* Rich edited clause body (HTML) — same treatment as the PQ renderer */
 .clause-html { font-size: calc(14px * var(--clause-zoom, 1)); line-height: 1.55; color: var(--ink); }
