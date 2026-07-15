@@ -6,7 +6,13 @@
 // by the table layout algorithm), so a scroll wrapper is the only robust fix.
 // Regulatory clause tables are never nested, so a simple tag wrap is safe.
 export function wrapClauseTables(html) {
-  if (!html || html.indexOf('<table') === -1) return html;
+  if (!html) return html;
+  // Collapse long runs of non-breaking spaces to a single normal space. PDF forms
+  // (certificates, signature blocks) pad their columns with dozens of &nbsp;, which
+  // never wrap and so stretch the clause far past its width and overflow the page.
+  // A normal space wraps, so the form reflows within the clause instead.
+  html = html.replace(/(?:&nbsp;|&#160;|&#xa0;| )(?:\s|&nbsp;|&#160;|&#xa0;| )+/gi, ' ');
+  if (html.indexOf('<table') === -1) return html;
   // Each table gets a small toolbar (with a "Copy table" button) above a
   // horizontal-scroll area. The button has no React handler — clicks are caught
   // by a delegated listener on the clause container (see extractTableForCopy).

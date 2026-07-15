@@ -252,7 +252,10 @@ table.data tbody tr:hover { background: var(--paper); }
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .app-shell, .app-shell.collapsed { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 80%; max-width: 300px; transform: translateX(-100%); transition: transform 0.24s; box-shadow: var(--sh-3); -webkit-overflow-scrolling: touch; padding-bottom: 32px; }
+  /* Promote the drawer to its own GPU layer so the big drop-shadow is rasterised
+     once and the slide is a pure compositor transform — otherwise Windows/low-GPU
+     browsers repaint the shadow every frame and the open/close visibly stutters. */
+  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 80%; max-width: 300px; transform: translateX(-100%); transition: transform 0.24s ease; box-shadow: var(--sh-3); -webkit-overflow-scrolling: touch; padding-bottom: 32px; will-change: transform; }
   .sidebar.open { transform: translateX(0); }
   /* Let the nav scroll naturally and keep Logout reachable at the end. */
   .sidebar .nav-spacer { flex: 0 0 12px; }

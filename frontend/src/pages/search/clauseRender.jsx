@@ -1,4 +1,4 @@
-import { Fragment, useRef } from 'react';
+import { Fragment, memo, useRef } from 'react';
 import { useToast } from '../../components/Toast.jsx';
 import { copyRich } from '../../copy.js';
 import { inlineTableStyles } from '../../clauseHtml.js';
@@ -98,17 +98,15 @@ function highlightInto(text, regex, keyPrefix) {
 // clauses that carry clause_html and render via dangerouslySetInnerHTML, so they
 // otherwise miss the keyword highlighting that ClauseBody applies). Walks text
 // nodes only — tags, attributes and existing <mark>s are left untouched.
-export function highlightHtml(html, keywords) {
-  const regex = buildHighlightRegex(keywords);
-  if (!regex || !html) return html;
-  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+function _highlightNodes(doc, regex, cls) {
+  if (!regex) return;
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
   const targets = [];
   let n;
   // eslint-disable-next-line no-cond-assign
   while ((n = walker.nextNode())) {
     const tag = n.parentNode?.nodeName;
-    if (tag === 'MARK' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+    if (tag === 'MARK' || tag === 'SCRIPT' || tag === 'STYLE') continue;  // don't re-mark
     regex.lastIndex = 0;
     if (regex.test(n.nodeValue)) targets.push(n);
   }
@@ -120,7 +118,7 @@ export function highlightHtml(html, keywords) {
     while ((m = regex.exec(text)) !== null) {
       if (m.index > last) frag.appendChild(doc.createTextNode(text.slice(last, m.index)));
       const mark = doc.createElement('mark');
-      mark.className = 'hl';
+      mark.className = cls;
       mark.textContent = m[0];
       frag.appendChild(mark);
       last = m.index + m[0].length;
@@ -129,13 +127,57 @@ export function highlightHtml(html, keywords) {
     if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
     node.parentNode.replaceChild(frag, node);
   });
+}
+
+// Two-pass highlight: the verbatim PHRASE first (its own colour, `hl-phrase`), then
+// the individual words (`hl`). Doing the phrase first means the words inside it are
+// already wrapped in a <mark>, so the word pass skips them — the phrase stays one
+// contiguous highlight instead of being chopped into per-word pieces.
+export function highlightHtml(html, keywords, phraseKeywords) {
+  const wordRe = buildHighlightRegex(keywords);
+  const phraseRe = buildHighlightRegex(phraseKeywords);
+  if ((!wordRe && !phraseRe) || !html) return html;
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  _highlightNodes(doc, phraseRe, 'hl hl-phrase');
+  _highlightNodes(doc, wordRe, 'hl');
   return doc.body.innerHTML;
+}
+
+// Highlight one line: the verbatim PHRASE (own colour) takes precedence, then the
+// individual words fill the gaps it doesn't already cover.
+function markLine(text, phraseRe, wordRe, keyPrefix) {
+  const ranges = [];
+  const scan = (re, cls, avoid) => {
+    if (!re) return;
+    re.lastIndex = 0; let m;
+    // eslint-disable-next-line no-cond-assign
+    while ((m = re.exec(text)) !== null) {
+      const s = m.index; const e = s + m[0].length;
+      if (!avoid || !avoid.some(([as, ae]) => s < ae && e > as)) ranges.push([s, e, cls]);
+      if (m.index === re.lastIndex) re.lastIndex++;
+    }
+  };
+  scan(phraseRe, 'hl hl-phrase', null);
+  const phraseRanges = ranges.map(([s, e]) => [s, e]);
+  scan(wordRe, 'hl', phraseRanges);
+  if (!ranges.length) return text;
+  ranges.sort((a, b) => a[0] - b[0]);
+  const out = []; let last = 0; let i = 0;
+  for (const [s, e, cls] of ranges) {
+    if (s < last) continue;                       // drop overlaps
+    if (s > last) out.push(text.slice(last, s));
+    out.push(<mark className={cls} key={`${keyPrefix}-${i++}`}>{text.slice(s, e)}</mark>);
+    last = e;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 // Render one clause body: markdown tables -> <table>, heading lines (ending
 // with ':') bold (no highlight), other lines keyword-highlighted, pre-wrap.
-export function ClauseBody({ text, keywords }) {
+export const ClauseBody = memo(function ClauseBody({ text, keywords, phraseKeywords }) {
   const regex = buildHighlightRegex(keywords);
+  const phraseRe = buildHighlightRegex(phraseKeywords);
   const lines = String(text || '').split('\n');
   const blocks = [];
   let tableRows = [];
@@ -186,15 +228,15 @@ export function ClauseBody({ text, keywords }) {
     }
     flushTable(idx);
     if (stripped.endsWith(':') && stripped.length) {
-      blocks.push(<div className="clause-line clause-head" key={idx}><strong>{highlightInto(line, regex, idx)}</strong></div>);
+      blocks.push(<div className="clause-line clause-head" key={idx}><strong>{markLine(line, phraseRe, regex, idx)}</strong></div>);
     } else {
-      blocks.push(<div className="clause-line" key={idx}>{highlightInto(line, regex, idx)}</div>);
+      blocks.push(<div className="clause-line" key={idx}>{markLine(line, phraseRe, regex, idx)}</div>);
     }
   });
   flushTable('end');
 
   return <div className="clause-body">{blocks}</div>;
-}
+});
 
 // A short preview of a long clause, centred on the first keyword match so the
 // relevant line is visible without scrolling/expanding. Built from the clause's

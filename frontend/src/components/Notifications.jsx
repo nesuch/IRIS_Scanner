@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 
-// Header notification bell — shows team announcements/communications.
-// Unread count is derived from the highest announcement id the user has seen
-// (persisted in localStorage), so it clears once the menu is opened.
-const SEEN_KEY = 'iris:lastSeenAnnouncement';
+// Header notification bell — shows team announcements/communications, plus (for
+// admins) newly-submitted feedback/flags. Unread is tracked as the SET of ids the
+// user has seen (persisted in localStorage), not a single max id, so items with
+// very different id ranges (announcements vs synthetic feedback/flag ids) all
+// clear correctly once the menu is opened.
+const SEEN_KEY = 'iris:seenNotifications';
 const DISMISSED_KEY = 'iris:dismissedAnnouncements';
 const LEVEL_ICON = { info: 'fa-circle-info', success: 'fa-circle-check', warning: 'fa-triangle-exclamation' };
 
-const loadDismissed = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]')); }
+const loadIdSet = (key) => {
+  try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); }
   catch { return new Set(); }
 };
 
 export default function Notifications() {
   const [all, setAll] = useState([]);
   const [open, setOpen] = useState(false);
-  const [lastSeen, setLastSeen] = useState(() => Number(localStorage.getItem(SEEN_KEY) || 0));
-  const [dismissed, setDismissed] = useState(loadDismissed);
+  const [seen, setSeen] = useState(() => loadIdSet(SEEN_KEY));
+  const [dismissed, setDismissed] = useState(() => loadIdSet(DISMISSED_KEY));
   const ref = useRef(null);
 
   // Visible = active announcements the user hasn't cleared locally.
@@ -47,15 +49,16 @@ export default function Notifications() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  const maxId = items.reduce((mx, a) => Math.max(mx, a.id), 0);
-  const unread = items.filter((a) => a.id > lastSeen).length;
+  const unread = items.filter((a) => !seen.has(a.id)).length;
 
   function toggle() {
     const next = !open;
     setOpen(next);
-    if (next && maxId > lastSeen) {
-      localStorage.setItem(SEEN_KEY, String(maxId));
-      setLastSeen(maxId);
+    if (next && unread > 0) {
+      const s = new Set(seen);
+      items.forEach((a) => s.add(a.id));
+      localStorage.setItem(SEEN_KEY, JSON.stringify([...s].slice(-500)));
+      setSeen(s);
     }
   }
 

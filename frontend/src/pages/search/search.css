@@ -146,6 +146,12 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .clause-head strong { color: var(--navy-700, #1a237e); }
 /* Rich edited clause body (HTML) — same treatment as the PQ renderer */
 .clause-html { font-size: calc(14px * var(--clause-zoom, 1)); line-height: 1.55; color: var(--ink); }
+/* Search/reader rendering uses ONE uniform clause size (the 14px base above, and
+   13px inside tables) no matter what font size an editor picked in Doc Studio: any
+   inline font-size saved by the editor is neutralised so it inherits the cascade.
+   The Doc Studio editor itself (.ce-content) is excluded — it must still show and
+   control real sizes while editing. Kept as calc(...) so the zoom control works. */
+.clause-html:not(.ce-content) [style*="font-size"] { font-size: inherit !important; }
 .clause-html p { margin: 0 0 9px; }
 /* Blank lines (empty paragraphs from pressing Enter on an empty line) keep a
    line of height so the gaps the editor shows also render. */
@@ -161,10 +167,12 @@ html.app-fixed .main { min-height: 0; height: 100%; }
    so the editor's "toggle header row" actually controls it. */
 .clause-html table th { background: var(--paper); font-weight: 700; color: var(--navy-700); }
 /* Admin clause tag editor */
-.clause-tags-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.clause-tags-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); max-width: 100%; min-width: 0; }
 .clause-tags-label { font-size: 11px; color: var(--muted); font-weight: 600; }
 .clause-tags-label i { margin-right: 4px; color: var(--faint); }
-.clause-tag { font-size: 11px; color: var(--navy-700, #1a237e); background: var(--paper-2, #f1f5f9); padding: 2px 9px; border-radius: var(--r-pill); }
+/* Tags can be long phrases; keep a pill inside the card by wrapping its text
+   instead of overflowing the container (esp. on narrow mobile screens). */
+.clause-tag { font-size: 11px; color: var(--navy-700, #1a237e); background: var(--paper-2, #f1f5f9); padding: 2px 9px; border-radius: var(--r-pill); max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 .clause-tag-empty { font-size: 11px; color: var(--faint); font-style: italic; }
 .clause-tag-edit { font-size: 11px; font-weight: 600; color: var(--accent); background: none; border: none; cursor: pointer; padding: 2px 4px; }
 .clause-tag-edit:hover { text-decoration: underline; }
@@ -193,6 +201,12 @@ html.app-fixed .main { min-height: 0; height: 100%; }
   padding: 0 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+/* Verbatim-phrase highlight — a distinct green so an exact-phrase find reads as one
+   unit, clearly apart from the amber individual-word matches. */
+.clause-body .hl-phrase, .clause-html .hl-phrase, mark.hl-phrase {
+  background: rgba(16,185,129,0.30);
+  border-bottom-color: #059669;
 }
 .clause-md-table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
 .clause-md-table th, .clause-md-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
@@ -255,6 +269,20 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .suggestion-item.is-active { background: rgba(13,148,136,0.1); box-shadow: inset 2px 0 0 var(--accent); }
 .badge-concept { background: rgba(13,148,136,0.12); color: var(--accent); }
 .badge-soft { background: var(--paper); color: var(--muted); border: 1px solid var(--line); }
+/* Slash-command palette rows ("/" mode menu). */
+.slash-cmd { gap: 12px; justify-content: flex-start; }
+.slash-cmd-ic { width: 26px; height: 26px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); background: var(--paper-2, #f1f5f9); color: var(--accent); font-size: 12px; }
+.slash-cmd-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.slash-cmd-label { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--navy-700, #1a237e); }
+.slash-cmd-desc { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+
+/* Active slash-command pill inside the search bar (shows the chosen mode in colour;
+   the textarea then holds only the argument). */
+.cmd-pill { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 7px; padding: 4px 6px 4px 11px; border-radius: var(--r-pill); font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; background: rgba(13,148,136,0.12); color: var(--accent); }
+.cmd-clause { background: rgba(26,35,126,0.10); color: var(--navy-700, #1a237e); }
+.cmd-pill-x { border: none; background: none; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; opacity: 0.65; padding: 0 2px; }
+.cmd-pill-x:hover { opacity: 1; }
+
 .clause-sugg { gap: 12px; }
 .clause-sugg-main { display: flex; gap: 9px; align-items: baseline; min-width: 0; }
 .clause-sugg .clause-id { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }

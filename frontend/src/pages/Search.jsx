@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -29,6 +29,32 @@ const MODULE_META = {
   nonlife: { title: 'Non-Life Department', icon: 'fa-shield-halved', scope: 'Regulatory Framework (General Insurance)' },
 };
 
+// Slash-command palette (Claude-style): typing "/" opens a menu of search modes.
+const SLASH_COMMANDS = [
+  { cmd: 'clause', label: 'Clause number', icon: 'fa-hashtag',
+    desc: 'Jump to a clause by its ID — e.g. /clause PPHI-S1-GEN-II-4' },
+  { cmd: 'deep', label: 'Deep scan', icon: 'fa-wave-square',
+    desc: 'Scan full clause text for your exact terms (no concept expansion)' },
+];
+
+// Parse a "/..." query. Returns {kind:'menu',list,word} while a command is still
+// being chosen, {kind:'cmd',cmd,arg} once a command + space is committed, or null
+// for a bare clause-id lookup (e.g. "/64", "/PPHI-S1-GEN-II-4") — back-compat.
+function parseSlash(v) {
+  const s = (v || '').trimStart();
+  if (!s.startsWith('/')) return null;
+  const sp = s.indexOf(' ');
+  if (sp === -1) {
+    const word = s.slice(1).toLowerCase();
+    const list = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(word));
+    if (word && list.length === 0) return null;   // a clause id, not a command
+    return { kind: 'menu', list, word };
+  }
+  const word = s.slice(1, sp).toLowerCase();
+  const exact = SLASH_COMMANDS.find((c) => c.cmd === word);
+  return exact ? { kind: 'cmd', cmd: exact.cmd, arg: s.slice(sp + 1) } : null;
+}
+
 // Dates as DD MMM YYYY (e.g. 29 May 2024).
 function fmtClauseDate(d) {
   if (!d) return '';
@@ -39,13 +65,21 @@ function fmtClauseDate(d) {
 
 // Clause body + admin controls (rich-edit + tags). Holds a local HTML override
 // so an edit shows immediately without re-running the search.
-function ClauseContent({ m, keywords }) {
+function ClauseContent({ m, keywords, phraseKeywords }) {
   const { user } = useAuth();
   const toast = useToast();
   const isAdmin = user?.role === 'admin' || !!user?.is_admin;
   const isEditor = isAdmin || user?.role === 'editor';
   const [html, setHtml] = useState(m.html || '');
   const [editing, setEditing] = useState(false);
+  // highlightHtml() runs a DOMParser + tree-walks and wrapClauseTables() runs regex
+  // passes — both expensive. Memoise so they run ONCE per clause, not on every
+  // re-render (each card's ResizeObserver flips `overflowing` state, which would
+  // otherwise re-run this for all ~50 cards and freeze the results view for seconds).
+  const renderedHtml = useMemo(
+    () => (html ? wrapClauseTables(highlightHtml(html, keywords, phraseKeywords)) : ''),
+    [html, keywords, phraseKeywords],
+  );
   async function onClauseAreaClick(e) {
     const t = extractTableForCopy(e.target);
     if (!t) return;
@@ -55,8 +89,8 @@ function ClauseContent({ m, keywords }) {
   return (
     <>
       {html
-        ? <div className="clause-html" onClick={onClauseAreaClick} dangerouslySetInnerHTML={{ __html: wrapClauseTables(highlightHtml(html, keywords)) }} />
-        : <ClauseBody text={m.raw_text} keywords={keywords} />}
+        ? <div className="clause-html" onClick={onClauseAreaClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+        : <ClauseBody text={m.raw_text} keywords={keywords} phraseKeywords={phraseKeywords} />}
       {isEditor && (
         <div className="clause-admin-row">
           <button className="clause-edit-btn" onClick={() => setEditing(true)}><i className="fas fa-pen-to-square" />Edit clause</button>
@@ -122,7 +156,7 @@ const TOOLBAR_MIN_CHARS = 1400;
 // height we offer Expand. Short clauses don't overflow, so they show whole with
 // no control. A global expand/collapse-all signal (globalSeq bumps each click)
 // overrides per-card state.
-function ClauseCard({ m, keywords, copy, onOpenPane, onFlag, globalExpand, globalSeq }) {
+function ClauseCard({ m, keywords, phraseKeywords, copy, onOpenPane, onFlag, globalExpand, globalSeq }) {
   const st = TYPE_STYLES[m.type] || TYPE_STYLES.UNKNOWN;
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -137,11 +171,20 @@ function ClauseCard({ m, keywords, copy, onOpenPane, onFlag, globalExpand, globa
     if (expanded) return undefined;
     const el = clampRef.current;
     if (!el) return undefined;
-    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 4);
+    // Measure overflow OFF the critical path: reading scrollHeight forces a
+    // synchronous layout, and doing it for every card as it mounts (plus a
+    // ResizeObserver per card) thrashes layout and freezes a large result list.
+    // Defer the read to an idle/animation frame (batched, after paint) and use a
+    // lightweight ResizeObserver whose callback is likewise rAF-debounced.
+    let raf = 0;
+    const check = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setOverflowing(el.scrollHeight > el.clientHeight + 4));
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [expanded, m.id, m.html]);
 
   useEffect(() => {
@@ -198,7 +241,7 @@ function ClauseCard({ m, keywords, copy, onOpenPane, onFlag, globalExpand, globa
             </button>
           </div>
         )}
-        <ClauseContent m={m} keywords={keywords} />
+        <ClauseContent m={m} keywords={keywords} phraseKeywords={phraseKeywords} />
       </div>
       {!expanded && overflowing && (
         <button className="clause-expand-btn" onClick={() => setExpanded(true)}>
@@ -214,7 +257,11 @@ function ClauseCard({ m, keywords, copy, onOpenPane, onFlag, globalExpand, globa
   );
 }
 
-function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
+// Memoised: a settled result block (with its 30–60 highlight-heavy clause cards)
+// must NOT re-render every time the user types the NEXT query in the search box.
+// Its props (the stored `resp` + the stable callbacks below) don't change while
+// typing, so React.memo skips the whole subtree — killing the per-keystroke lag.
+const ResultCards = memo(function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
   // Global expand/collapse-all: allState is the target (true/false) or null
   // (untouched — cards keep their size-based default); allSeq forces cards to
@@ -258,6 +305,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
 
   const card = (m, mi) => (
     <ClauseCard key={`${m.id}-${mi}`} m={m} keywords={resp.highlight || []}
+      phraseKeywords={resp.highlight_phrase || []}
       copy={copy} onOpenPane={onOpenPane} onFlag={onFlag}
       globalExpand={allState} globalSeq={allSeq} />
   );
@@ -347,7 +395,7 @@ function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
       )}
     </div>
   );
-}
+});
 
 // Persist each module's search conversation for the tab session so navigating
 // away (e.g. "Read in full" → Reader) and back doesn't wipe the results. Only
@@ -382,6 +430,7 @@ export default function Search({ module }) {
   const [history, setHistory] = useState(() => loadSession(module));
   const mountedModuleRef = useRef(module);   // distinguishes initial mount from a real module switch
   const [query, setQuery] = useState('');
+  const [cmd, setCmd] = useState(null);   // active slash-command ('deep' | 'clause'); query holds its argument
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [activeSugg, setActiveSugg] = useState(-1);   // keyboard-highlighted suggestion
@@ -556,10 +605,27 @@ export default function Search({ module }) {
   function onSubmit(e) {
     e.preventDefault();
     const q = query.trim();
-    if (!q) return;
     setSuggestions([]);
+    // Command mode (coloured pill): the input holds the command's argument.
+    if (cmd) {
+      if (!q) return;
+      setQuery(''); setCmd(null);
+      if (cmd === 'deep') runSearch('__DEEP_SCAN__:' + q, 'Deep Scan');
+      else if (cmd === 'clause') runSearch('/' + q.replace(/^\/+/, ''));
+      return;
+    }
+    if (!q) return;
     // Live results are already on screen — Enter just commits the block & clears.
     if (liveIdRef.current) { liveIdRef.current = null; setQuery(''); return; }
+    // Slash-command routing: /deep runs a deep scan, /clause does a clause lookup.
+    const p = parseSlash(q);
+    if (p && p.kind === 'cmd') {
+      const arg = (p.arg || '').trim();
+      if (!arg) return;
+      setQuery('');
+      if (p.cmd === 'deep') { runSearch('__DEEP_SCAN__:' + arg, 'Deep Scan'); return; }
+      if (p.cmd === 'clause') { runSearch('/' + arg.replace(/^\/+/, '')); return; }
+    }
     setQuery('');
     runSearch(q);
   }
@@ -568,30 +634,61 @@ export default function Search({ module }) {
   // chat spam). Skips clause-number mode, the data module, and very short queries.
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3 || q.startsWith('/') || module === 'data') {
+    if (q.length < 3 || q.startsWith('/') || module === 'data' || cmd) {
       if (liveIdRef.current) {   // query cleared/too short — drop the pending live block
         const id = liveIdRef.current; liveIdRef.current = null;
         setHistory((h) => h.filter((x) => x.id !== id));
       }
       return undefined;
     }
-    const t = setTimeout(() => { runSearch(q, undefined, { live: true }); }, 350);
+    const t = setTimeout(() => { runSearch(q, undefined, { live: true }); }, 500);
     return () => clearTimeout(t);
-  }, [query, module, selected]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, module, selected, cmd]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  function onChip(payload) {
-    runSearch('__DEEP_SCAN__:' + payload, 'Deep Scan');
-  }
+  // Stable callbacks (identity preserved across renders) so the memoised
+  // ResultCards blocks don't re-render while the user types the next query.
+  // runSearch is read through a ref so onChip needn't depend on it.
+  const runSearchRef = useRef(null);
+  runSearchRef.current = runSearch;
+  const onChip = useCallback((payload) => {
+    runSearchRef.current('__DEEP_SCAN__:' + payload, 'Deep Scan');
+  }, []);
+  const openPane = useCallback((m) => setPdfPane({ url: m.pdf_url, source: m.source }), []);
+  const openFlag = useCallback((m) => setFlagClause(m), []);
 
   function onInput(e) {
     const val = e.target.value;
     setQuery(val);
     setActiveSugg(-1);
-    // Clause-number mode: "/" then a number (e.g. /64VB, /4 (1) (i)).
+    // In command mode the input holds only the argument (a coloured pill shows the
+    // command). For /clause, suggest clauses as they type; /deep waits for Enter.
+    if (cmd) {
+      if (cmd === 'clause' && val.replace(/[^a-z0-9]/gi, '').length >= 1) {
+        const params = new URLSearchParams({ q: '/' + val.trim(), module });
+        if (allDocs.length && selected.size < allDocs.length) [...selected].forEach((s) => params.append('source', s));
+        api.get(`/clause-suggest?${params.toString()}`)
+          .then((d) => setSuggestions((d.suggestions || []).map((s) => ({ ...s, clause: true }))))
+          .catch(() => setSuggestions([]));
+      } else {
+        setSuggestions([]);
+      }
+      return;
+    }
+    // Slash commands: "/" opens a mode menu; "/clause <id>" and "/<id>" do a clause
+    // lookup; "/deep <terms>" waits for Enter to run a deep scan.
     if (val.trimStart().startsWith('/')) {
-      const key = val.replace(/[^a-z0-9]/gi, '');
+      const p = parseSlash(val);
+      if (p && p.kind === 'menu') {
+        setSuggestions(p.list.map((c) => ({ ...c, command: true })));
+        return;
+      }
+      if (p && p.kind === 'cmd' && p.cmd === 'deep') { setSuggestions([]); return; }
+      // clause lookup — either "/clause <id>" (strip the command) or a bare "/<id>"
+      const lookup = p && p.kind === 'cmd' && p.cmd === 'clause'
+        ? '/' + p.arg.trim() : val.trim();
+      const key = lookup.replace(/[^a-z0-9]/gi, '');
       if (key.length < 1) { setSuggestions([]); return; }
-      const params = new URLSearchParams({ q: val.trim(), module });
+      const params = new URLSearchParams({ q: lookup, module });
       if (allDocs.length && selected.size < allDocs.length) [...selected].forEach((s) => params.append('source', s));
       api.get(`/clause-suggest?${params.toString()}`)
         .then((d) => setSuggestions((d.suggestions || []).map((s) => ({ ...s, clause: true }))))
@@ -613,12 +710,22 @@ export default function Search({ module }) {
   }
 
   function selectSuggestion(value) {
+    // A slash-command chip enters command mode: a coloured pill shows the command
+    // and the input now holds just its argument.
+    if (value && typeof value === 'object' && value.command) {
+      setSuggestions([]);
+      setActiveSugg(-1);
+      setCmd(value.cmd);
+      setQuery('');
+      return;
+    }
     // Click-and-go: a clause suggestion runs its lookup; a tag suggestion completes
     // the query and searches immediately (no separate "press search" step).
     if (value && typeof value === 'object' && value.clause) {
       setSuggestions([]);
       setActiveSugg(-1);
       setQuery('');
+      setCmd(null);
       runSearch(`/${value.id}`, value.id);
       return;
     }
@@ -632,13 +739,19 @@ export default function Search({ module }) {
 
   function onKeyDown(e) {
     const open = suggestions.length > 0;
+    // Backspace on an empty argument (or Escape) exits command mode — drops the pill.
+    if (cmd && ((e.key === 'Backspace' && query === '') || (e.key === 'Escape' && !open))) {
+      e.preventDefault(); setCmd(null); setSuggestions([]); setActiveSugg(-1); return;
+    }
     if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       setActiveSugg((i) => {
         const n = suggestions.length;
-        // Hard stop at the top and bottom (no wrap-around).
-        if (e.key === 'ArrowDown') return Math.min(i + 1, n - 1);
-        return i < 0 ? 0 : Math.max(i - 1, 0);
+        // The menu opens ABOVE the input, so ArrowUp starts at the item NEAREST the
+        // search bar (bottom of the list) and moves up; ArrowDown starts at the top.
+        // Hard stop at the ends (no wrap-around).
+        if (e.key === 'ArrowUp') return i === -1 ? n - 1 : Math.max(i - 1, 0);
+        return i === -1 ? 0 : Math.min(i + 1, n - 1);
       });
       return;
     }
@@ -681,7 +794,7 @@ export default function Search({ module }) {
             <div className="chat-block iris">
               <div className="chat-label">IRIS</div>
               <div className="bubble iris-bubble">
-                {item.response ? <ResultCards resp={item.response} onChip={onChip} onOpenPane={(m) => setPdfPane({ url: m.pdf_url, source: m.source })} onFlag={(m) => setFlagClause(m)} />
+                {item.response ? <ResultCards resp={item.response} onChip={onChip} onOpenPane={openPane} onFlag={openFlag} />
                   : item.error ? <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
                   : <span className="typing"><span /><span /><span /></span>}
               </div>
@@ -707,7 +820,7 @@ export default function Search({ module }) {
       </div>
 
       <div className="input-area" ref={inputAreaRef}>
-        {empty && !query && <div className="search-tip">Type a question — or <b>/</b> then a clause number (e.g. <b>/64</b>)</div>}
+        {empty && !query && <div className="search-tip">Type a question — or press <b>/</b> for search modes (clause lookup, deep scan)</div>}
         <form className="input-inner" onSubmit={onSubmit} autoComplete="off">
           <div className="search-wrapper">
             <div className="doc-filter" ref={docFilterRef}>
@@ -771,7 +884,15 @@ export default function Search({ module }) {
             {suggestions.length > 0 && (
               <div className="suggestions-box" ref={suggBoxRef}>
                 {suggestions.map((s, i) => (
-                  s && typeof s === 'object' && s.clause ? (
+                  s && typeof s === 'object' && s.command ? (
+                    <div className={`suggestion-item slash-cmd ${activeSugg === i ? 'is-active' : ''}`} key={i} onMouseEnter={() => setActiveSugg(i)} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
+                      <i className={`fas ${s.icon} slash-cmd-ic`} />
+                      <span className="slash-cmd-main">
+                        <span className="slash-cmd-label">/{s.cmd}</span>
+                        <span className="slash-cmd-desc">{s.desc}</span>
+                      </span>
+                    </div>
+                  ) : s && typeof s === 'object' && s.clause ? (
                     <div className={`suggestion-item clause-sugg ${activeSugg === i ? 'is-active' : ''}`} key={i} onMouseEnter={() => setActiveSugg(i)} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}>
                       <span className="clause-sugg-main"><span className="clause-id">{s.id}</span> <span className="clause-snip">{s.snippet}</span></span>
                       <span className="badge badge-navy">{s.source}</span>
@@ -792,7 +913,14 @@ export default function Search({ module }) {
                 ))}
               </div>
             )}
-            <textarea className="search-input" placeholder="Ask IRIS…" value={query}
+            {cmd && (
+              <span className={`cmd-pill cmd-${cmd}`}>
+                /{cmd}
+                <button type="button" className="cmd-pill-x" onMouseDown={(e) => { e.preventDefault(); setCmd(null); setSuggestions([]); }} aria-label="Remove command">&times;</button>
+              </span>
+            )}
+            <textarea className="search-input" value={query}
+              placeholder={cmd === 'deep' ? 'Enter terms to deep-scan…' : cmd === 'clause' ? 'Enter a clause ID…' : 'Ask IRIS…'}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
             <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
               <i className="fas fa-magnifying-glass" /> <span className="btn-label">Search</span>

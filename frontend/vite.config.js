@@ -15,5 +15,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // One stylesheet instead of a CSS file per route. Per-route CSS chunks get
+    // "preloaded" by Vite's helper, and a single 429 on that preload (cold Cloud
+    // Run instance, min-instances 0) throws "Unable to preload CSS" and blanks the
+    // whole app. Bundling all CSS into one file removes that failure mode and the
+    // parallel-request burst that triggers the 429 in the first place.
+    cssCodeSplit: false,
   },
 })

@@ -10,18 +10,33 @@ import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import LogoutConfirm from './pages/LogoutConfirm.jsx';
 
+// Retry a chunk import a few times before giving up. On a cold Cloud Run instance
+// (min-instances 0) a burst of chunk requests can transiently get a 429 ("no
+// available instance yet"); without a retry, React.lazy's rejected promise
+// unmounts the whole tree → blank screen. A couple of spaced retries ride out the
+// cold start (the instance is warm within a second or two).
+function lazyRetry(factory, retries = 4, delay = 350) {
+  return lazy(() => new Promise((resolve, reject) => {
+    const attempt = (n) => factory().then(resolve).catch((err) => {
+      if (n <= 0) reject(err);
+      else setTimeout(() => attempt(n - 1), delay);
+    });
+    attempt(retries);
+  }));
+}
+
 // App pages (lazy — code-split per route)
-const Search = lazy(() => import('./pages/Search.jsx'));
-const DataExplorer = lazy(() => import('./pages/DataExplorer.jsx'));
-const Compliance = lazy(() => import('./pages/Compliance.jsx'));
-const Analytics = lazy(() => import('./pages/Analytics.jsx'));
-const Admin = lazy(() => import('./pages/Admin.jsx'));
-const Profile = lazy(() => import('./pages/Profile.jsx'));
-const Feedback = lazy(() => import('./pages/Feedback.jsx'));
-const Downloads = lazy(() => import('./pages/Downloads.jsx'));
-const Pqs = lazy(() => import('./pages/Pqs.jsx'));
-const Studio = lazy(() => import('./pages/Studio.jsx'));
-const Reader = lazy(() => import('./pages/Reader.jsx'));
+const Search = lazyRetry(() => import('./pages/Search.jsx'));
+const DataExplorer = lazyRetry(() => import('./pages/DataExplorer.jsx'));
+const Compliance = lazyRetry(() => import('./pages/Compliance.jsx'));
+const Analytics = lazyRetry(() => import('./pages/Analytics.jsx'));
+const Admin = lazyRetry(() => import('./pages/Admin.jsx'));
+const Profile = lazyRetry(() => import('./pages/Profile.jsx'));
+const Feedback = lazyRetry(() => import('./pages/Feedback.jsx'));
+const Downloads = lazyRetry(() => import('./pages/Downloads.jsx'));
+const Pqs = lazyRetry(() => import('./pages/Pqs.jsx'));
+const Studio = lazyRetry(() => import('./pages/Studio.jsx'));
+const Reader = lazyRetry(() => import('./pages/Reader.jsx'));
 
 // A department module is just Search scoped to a Doc_Category. The slug in the
 // URL (/dept/hr) is the lowercased category key the backend filters on.
