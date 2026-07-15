@@ -262,7 +262,8 @@ class PqDocument(db.Model):
     house = db.Column(db.String(24), nullable=True)         # Lok Sabha / Rajya Sabha
     title = db.Column(db.String(400), nullable=False)
     subject = db.Column(db.Text, nullable=True)
-    doc_date = db.Column(db.String(40), nullable=True)
+    doc_date = db.Column(db.String(40), nullable=True)   # as written ("14th March 2026")
+    doc_date_iso = db.Column(db.String(10), nullable=True, index=True)  # sortable twin
     tags = db.Column(db.Text, nullable=True)                # comma-separated
     departments = db.Column(db.Text, nullable=True)         # comma-separated codes: HEALTH,LIFE,NONLIFE
     html = db.Column(db.Text, nullable=False)               # mammoth-rendered body
@@ -624,6 +625,7 @@ def _ensure_database_schema():
         },
         "pq_documents": {
             "departments": "TEXT",          # comma-separated codes: HEALTH,LIFE,NONLIFE
+            "doc_date_iso": "VARCHAR(10)",  # YYYY-MM-DD; doc_date is free text and unsortable
         },
         "document_assets": {
             "parent_doc": "VARCHAR(255)",

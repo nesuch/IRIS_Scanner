@@ -82,9 +82,10 @@ def parse_docx(src, filename=""):
             fobj.close()
     d = docxlib.Document(io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else src)
     text = _docx_text(d)
-    pq_no, house, subject, doc_date, title = _meta(text, filename or "")
+    pq_no, house, subject, doc_date, doc_date_iso, title = _meta(text, filename or "")
     return {"html": html, "text": text, "pq_no": pq_no, "house": house,
-            "subject": subject, "doc_date": doc_date, "title": title}
+            "subject": subject, "doc_date": doc_date, "doc_date_iso": doc_date_iso,
+            "title": title}
 
 
 def _text_to_html(text):
@@ -118,9 +119,10 @@ def parse_pdf(src, filename=""):
             fobj.close()
     text = "\n\n".join(t.strip() for t in pages if t.strip())
     html = _text_to_html(text)
-    pq_no, house, subject, doc_date, title = _meta(text, filename or "")
+    pq_no, house, subject, doc_date, doc_date_iso, title = _meta(text, filename or "")
     return {"html": html, "text": text, "pq_no": pq_no, "house": house,
-            "subject": subject, "doc_date": doc_date, "title": title}
+            "subject": subject, "doc_date": doc_date, "doc_date_iso": doc_date_iso,
+            "title": title}
 
 
 def parse_pq(src, filename=""):
@@ -128,6 +130,41 @@ def parse_pq(src, filename=""):
     if (filename or "").lower().endswith(".pdf"):
         return parse_pdf(src, filename=filename)
     return parse_docx(src, filename=filename)
+
+
+_MONTH_NAMES = ["january", "february", "march", "april", "may", "june",
+                "july", "august", "september", "october", "november", "december"]
+
+
+def _month_num(name):
+    """Month number from a full or abbreviated name ('Sept', 'March'), else 0."""
+    n = (name or "").lower().rstrip(".")
+    if len(n) < 3:
+        return 0
+    for i, full in enumerate(_MONTH_NAMES, 1):
+        if full.startswith(n):
+            return i
+    return 0
+
+
+def _iso_date(s):
+    """'14th March 2026' -> '2026-03-14'; '' when the date can't be read.
+
+    doc_date keeps the document's own wording for display. This is the sortable
+    twin: as raw text those dates sort by leading digit, which puts '3rd July
+    2021' above '14th March 2026' and makes "the most recent PQ on this topic"
+    unanswerable. ISO text sorts chronologically under a plain ORDER BY.
+    """
+    m = re.match(r"\s*(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\.?\s+(\d{4})\s*$", s or "")
+    if not m:
+        return ""
+    mon = _month_num(m.group(2))
+    if not mon:
+        return ""
+    try:
+        return datetime(int(m.group(3)), mon, int(m.group(1))).strftime("%Y-%m-%d")
+    except ValueError:      # e.g. 31st February
+        return ""
 
 
 def _meta(text, filename):
@@ -144,7 +181,7 @@ def _meta(text, filename):
     doc_date = dm.group(1) if dm else ""
     house_label = f"{house} {starred} Q".strip()
     title = subject or f"{house_label} No. {pq_no}".strip()
-    return pq_no, house, subject, doc_date, title
+    return pq_no, house, subject, doc_date, _iso_date(doc_date), title
 
 
 def main():
@@ -155,8 +192,9 @@ def main():
 
     parsed = parse_docx(args.docx, os.path.basename(args.docx))
     html, text = parsed["html"], parsed["text"]
-    pq_no, house, subject, doc_date, title = (
-        parsed["pq_no"], parsed["house"], parsed["subject"], parsed["doc_date"], parsed["title"])
+    pq_no, house, subject, doc_date, doc_date_iso, title = (
+        parsed["pq_no"], parsed["house"], parsed["subject"], parsed["doc_date"],
+        parsed["doc_date_iso"], parsed["title"])
 
     os.makedirs(STATIC_PQ_DIR, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(args.docx))
@@ -165,13 +203,14 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""CREATE TABLE IF NOT EXISTS pq_documents (
         id INTEGER PRIMARY KEY AUTOINCREMENT, pq_no TEXT, house TEXT, title TEXT,
-        subject TEXT, doc_date TEXT, tags TEXT, html TEXT, body_text TEXT,
-        docx_filename TEXT, created_at DATETIME)""")
+        subject TEXT, doc_date TEXT, doc_date_iso TEXT, tags TEXT, html TEXT,
+        body_text TEXT, docx_filename TEXT, created_at DATETIME)""")
     conn.execute("""INSERT INTO pq_documents
-        (pq_no, house, title, subject, doc_date, tags, html, body_text, docx_filename, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (pq_no, house, title, subject, doc_date, args.tags.strip(), html, text, safe,
-         datetime.utcnow().isoformat(sep=" ", timespec="seconds")))
+        (pq_no, house, title, subject, doc_date, doc_date_iso, tags, html, body_text,
+         docx_filename, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (pq_no, house, title, subject, doc_date, doc_date_iso, args.tags.strip(), html,
+         text, safe, datetime.utcnow().isoformat(sep=" ", timespec="seconds")))
     conn.commit()
     conn.close()
     print(f"[+] Ingested PQ {pq_no or '?'} ({house}) — {title[:60]!r}")

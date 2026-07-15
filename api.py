@@ -27,7 +27,7 @@ import iris_brain as brain
 import storage
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "tools"))
-from pq_to_iris import parse_docx, parse_pq  # noqa: E402
+from pq_to_iris import parse_docx, parse_pq, _iso_date  # noqa: E402
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -525,10 +525,27 @@ def _dept_list(r):
     return _norm_departments(getattr(r, "departments", None))
 
 
+def _pq_newest_first():
+    """Every PQ, most recently answered first.
+
+    Ordering used to be by id — upload order. With a handful of PQs that looked
+    like recency; over a back-catalogue it is arbitrary, and "the most recent
+    reply on this topic" is the question the PQ view exists to answer. Sorts on
+    doc_date_iso (NULLs last, since an unparsed date is not a new one), then id
+    to break ties between replies filed the same day.
+    """
+    m = _app
+    return m.PqDocument.query.order_by(
+        (m.PqDocument.doc_date_iso.is_(None)).asc(),
+        m.PqDocument.doc_date_iso.desc(),
+        m.PqDocument.id.desc(),
+    ).all()
+
+
 def _pq_card(r):
     return {
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
-        "subject": r.subject, "date": r.doc_date,
+        "subject": r.subject, "date": r.doc_date, "date_iso": r.doc_date_iso,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
         "departments": _dept_list(r),
         "snippet": _pq_snippet(r.body_text or ""),
@@ -579,12 +596,12 @@ def api_pq_list():
         except Exception:
             pass
     elif num:
-        rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+        rows = _pq_newest_first()
         items = [_pq_card(r) for r in rows if num in re.sub(r"\D", "", r.pq_no or "")]
     elif tag:
         # Exact-tag filter (case/space-insensitive) — not a body word search.
         key = re.sub(r"\s+", "", tag.lower())
-        rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+        rows = _pq_newest_first()
         items = [_pq_card(r) for r in rows
                  if key in {re.sub(r"\s+", "", t.strip().lower()) for t in (r.tags or "").split(",") if t.strip()}]
     elif q:
@@ -596,7 +613,7 @@ def api_pq_list():
         except Exception:
             pass
     else:
-        rows = _app.PqDocument.query.order_by(_app.PqDocument.id.desc()).all()
+        rows = _pq_newest_first()
         items = [_pq_card(r) for r in rows]
     # Department facet — narrows whatever the base set is (a PQ matches if it
     # carries the requested department; multi-dept PQs match any of theirs).
@@ -674,9 +691,11 @@ def api_pq_upload():
     m = _app
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
     storage.save_pq(safe, raw)   # GCS in prod, local disk in dev
+    shown_date = date_override or parsed["doc_date"]
     row = m.PqDocument(
         pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
-        subject=parsed["subject"], doc_date=(date_override or parsed["doc_date"]), tags=tags,
+        subject=parsed["subject"], doc_date=shown_date,
+        doc_date_iso=_iso_date(shown_date) or None, tags=tags,
         departments=departments,
         html=parsed["html"], body_text=parsed["text"], docx_filename=safe,
         created_at=datetime.utcnow())
@@ -715,7 +734,8 @@ def api_pq_bulk_upload():
         storage.save_pq(safe, raw)
         row = m.PqDocument(
             pq_no=parsed["pq_no"], house=parsed["house"], title=parsed["title"],
-            subject=parsed["subject"], doc_date=parsed["doc_date"], tags="",
+            subject=parsed["subject"], doc_date=parsed["doc_date"],
+            doc_date_iso=parsed["doc_date_iso"] or None, tags="",
             html=parsed["html"], body_text=parsed["text"], docx_filename=safe,
             created_at=datetime.utcnow())
         m.db.session.add(row)
@@ -764,7 +784,8 @@ def _search_pqs(query, limit=100):
     if not terms:
         return []
     out = []
-    for r in m.PqDocument.query.order_by(m.PqDocument.id.desc()).all():
+    # Newest-first in, stable sort by score => equal scores stay newest-first.
+    for r in _pq_newest_first():
         hay = (r.tags or "").lower()
         if not hay or not all(t in hay for t in terms):
             continue
@@ -784,7 +805,8 @@ def _deep_scan_pqs(text, mode="all", limit=300):
     phrase = " ".join((text or "").lower().split())
     terms = _pq_terms(text)
     out = []
-    for r in m.PqDocument.query.order_by(m.PqDocument.id.desc()).all():
+    # Newest-first in, stable sort by score => equal scores stay newest-first.
+    for r in _pq_newest_first():
         hay = " ".join([r.title or "", r.subject or "", r.tags or "", r.body_text or ""]).lower()
         if mode == "phrase":
             if not phrase or phrase not in hay:
@@ -877,6 +899,14 @@ def api_pq_reextract():
     out, changed = [], 0
     for r in _app.PqDocument.query.order_by(_app.PqDocument.id).all():
         row = {"id": r.id, "pq_no": r.pq_no, "before": len(r.body_text or "")}
+        # Derive the sort key from the date already on the row, before anything
+        # that can bail out — it needs no source file, and a PQ whose original
+        # has gone missing must still sort by date rather than sink to the end.
+        iso = _iso_date(r.doc_date)
+        if iso and iso != r.doc_date_iso:
+            r.doc_date_iso = iso
+            row["date_iso"] = iso
+            changed += 1
         data = storage.load_pq(r.docx_filename) if r.docx_filename else None
         if data is None:
             row["status"] = "original file not found"
@@ -890,6 +920,13 @@ def api_pq_reextract():
             continue
         if parsed["text"] != (r.body_text or ""):
             r.body_text = parsed["text"]
+            changed += 1
+        # Only fall back to the document's own date when the row carries none —
+        # an admin's date_override on the row wins over what the file says.
+        if not r.doc_date_iso and parsed["doc_date_iso"]:
+            r.doc_date_iso = row["date_iso"] = parsed["doc_date_iso"]
+            if not r.doc_date:
+                r.doc_date = parsed["doc_date"]
             changed += 1
         row["after"], row["status"] = len(r.body_text or ""), "ok"
         out.append(row)
@@ -1513,6 +1550,7 @@ def api_pq_update(pid):
         r.title = data["title"].strip()[:400]
     if "date" in data:
         r.doc_date = (data.get("date") or "").strip()[:40] or None
+        r.doc_date_iso = _iso_date(r.doc_date) or None   # keep the sort key in step
     if "tags" in data:
         r.tags = (data.get("tags") or "").strip()
     if "departments" in data:
