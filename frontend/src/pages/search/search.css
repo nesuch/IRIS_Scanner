@@ -198,6 +198,15 @@ html.app-fixed .main { min-height: 0; height: 100%; }
 .pq-results .pq-date { font-size: 11px; color: var(--muted); margin-left: auto; }
 /* Matched query terms: a gentle accent tint + soft underline rather than a
    bright marker, so it reads well in body text and in bold headings alike. */
+/* Match-centred preview of a long body (PQ result cards). Sits between the title
+   and the meta row, so it reads as supporting detail, not as the clause itself. */
+.clause-snippet {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 .clause-body .hl, .clause-html .hl, mark.hl {
   background: rgba(250,204,21,0.45);
   color: inherit;

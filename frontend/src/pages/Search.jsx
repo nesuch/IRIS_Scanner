@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { copyText, copyRich } from '../copy.js';
 import { wrapClauseTables, inlineTableStyles, extractTableForCopy } from '../clauseHtml.js';
 import { TYPE_STYLES, ClauseBody, groupByType, highlightHtml } from './search/clauseRender.jsx';
+import { CLAUSE_SLASH_COMMANDS, parseSlash as parseSlashWith } from './search/slash.js';
 import PdfViewer from './search/PdfViewer.jsx';
 import FlagModal from '../components/FlagModal.jsx';
 import './search/search.css';
@@ -30,30 +31,8 @@ const MODULE_META = {
 };
 
 // Slash-command palette (Claude-style): typing "/" opens a menu of search modes.
-const SLASH_COMMANDS = [
-  { cmd: 'clause', label: 'Clause number', icon: 'fa-hashtag',
-    desc: 'Jump to a clause by its ID — e.g. /clause PPHI-S1-GEN-II-4' },
-  { cmd: 'deep', label: 'Deep scan', icon: 'fa-wave-square',
-    desc: 'Scan full clause text for your exact terms (no concept expansion)' },
-];
-
-// Parse a "/..." query. Returns {kind:'menu',list,word} while a command is still
-// being chosen, {kind:'cmd',cmd,arg} once a command + space is committed, or null
-// for a bare clause-id lookup (e.g. "/64", "/PPHI-S1-GEN-II-4") — back-compat.
-function parseSlash(v) {
-  const s = (v || '').trimStart();
-  if (!s.startsWith('/')) return null;
-  const sp = s.indexOf(' ');
-  if (sp === -1) {
-    const word = s.slice(1).toLowerCase();
-    const list = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(word));
-    if (word && list.length === 0) return null;   // a clause id, not a command
-    return { kind: 'menu', list, word };
-  }
-  const word = s.slice(1, sp).toLowerCase();
-  const exact = SLASH_COMMANDS.find((c) => c.cmd === word);
-  return exact ? { kind: 'cmd', cmd: exact.cmd, arg: s.slice(sp + 1) } : null;
-}
+const SLASH_COMMANDS = CLAUSE_SLASH_COMMANDS;
+const parseSlash = (v) => parseSlashWith(v, SLASH_COMMANDS);
 
 // Dates as DD MMM YYYY (e.g. 29 May 2024).
 function fmtClauseDate(d) {

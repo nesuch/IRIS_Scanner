@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import FlagModal from '../components/FlagModal.jsx';
 import { api } from '../api.js';
+import { ClauseSnippet } from './search/clauseRender.jsx';
+import { PQ_SLASH_COMMANDS, parseSlash } from './search/slash.js';
 import './search/search.css';   // reuse the universal-search shell (bottom bar, suggestions)
 import './pqs/pqs.css';
+
+// Result groups, in order. A reply tagged for the query is a stronger answer than
+// one that merely mentions it, so tags lead and bodies follow — never interleaved.
+const TIERS = [
+  ['tag', 'Tagged for this', 'fa-tag'],
+  ['body', 'Found in reply text', 'fa-align-left'],
+];
 
 const NO_RESULT_REASONS = [
   'Missing PQ (should be here)',
@@ -70,6 +79,9 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
   const toggleDept = (code) => setDeptFilter((cur) => cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]);
   const visible = results.filter((p) => !dismissed.has(p.id)
     && (deptFilter.length === 0 || (p.departments || []).some((c) => deptFilter.includes(c))));
+  // A tag hit is an editor's judgement that the reply IS about this; a body hit is
+  // a mention somewhere in the text. Worth telling apart, so the groups are labelled.
+  const tiered = results.some((p) => p.tier);
 
   // No matches at all — explain and offer Deep Scan (full reply bodies).
   if (results.length === 0) {
@@ -78,7 +90,7 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
         <p className="iris-msg">{resp.deep
           ? `I read every reply in full — none mention ${resp.label}.`
           : resp.browse ? 'There are no Parliamentary Questions in the database yet.'
-          : `Nothing is tagged for “${resp.label}”.`}
+          : `No reply is tagged for “${resp.label}” or mentions it.`}
           {onFlag && (
             <button className="flag-link" title="Report a missing PQ"
               onClick={() => onFlag({ _noresult: true, label: resp.label })}>
@@ -103,7 +115,7 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
           ? <><i className="fas fa-binoculars" /> Deep Scan · <strong>{resp.label}</strong></>
           : resp.browse
             ? <><i className="fas fa-layer-group" /> {resp.initialDept?.length ? <>Department · <strong>{resp.initialDept.map((c) => DEPT_LABEL[c]).join(' / ')}</strong></> : <>All Parliamentary replies</>}</>
-            : <><i className="fas fa-tag" /> Found via <strong>Tags</strong> · {resp.label}</>}
+            : <><i className="fas fa-magnifying-glass" /> Search · <strong>{resp.label}</strong></>}
       </div>
       {results.length > 0 && (
         <div className="pq-dept-bar">
@@ -120,32 +132,47 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
           {deptFilter.length > 0 && <button className="pq-dept-clear" onClick={() => setDeptFilter([])}>Clear</button>}
         </div>
       )}
-      <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{resp.deep ? ` mentioning ${resp.label} · deep scan` : resp.browse ? ' in the database' : ` tagged “${resp.label}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
+      <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{resp.deep ? ` mentioning ${resp.label} · deep scan` : resp.browse ? ' in the database' : ` for “${resp.label}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
       {visible.length === 0 ? (
         <p className="iris-msg">No {deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.</p>
       ) : (
         <div className="pq-list">
-          {visible.map((p) => (
-            <div key={p.id} className="pq-card" onClick={() => onOpen(p.id)} role="button" tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
-              <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); onHide(p.id); }}>&times;</button>
-              {onFlag && <button className="pq-card-flag" title="Flag this reply" onClick={(e) => { e.stopPropagation(); onFlag(p); }}><i className="fas fa-flag" /></button>}
-              {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}><i className="fas fa-trash" /></button>}
-              <div className="pq-card-top">
-                {p.house && <span className="pq-house">{p.house}</span>}
-                {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
-                {p.date && <span className="pq-date"><i className="far fa-calendar" /> {p.date}</span>}
-              </div>
-              <div className="pq-card-title">{p.subject || p.title}</div>
-              {((p.departments || []).length > 0 || p.tags?.length > 0) && (
-                <div className="pq-card-meta-row">
-                  {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
-                  {(p.tags || []).slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}
-                </div>
-              )}
-              <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
-            </div>
-          ))}
+          {TIERS.map(([tier, head, icon]) => {
+            const group = visible.filter((p) => (p.tier || 'tag') === tier);
+            if (group.length === 0) return null;
+            return (
+              <Fragment key={tier}>
+                {/* Label the groups only when the distinction exists — browse, tag
+                    and number results carry no tier and want no header. */}
+                {tiered && <div className="pq-tier-head"><i className={`fas ${icon}`} /> {head}</div>}
+                {group.map((p) => (
+                  <div key={p.id} className="pq-card" onClick={() => onOpen(p.id)} role="button" tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
+                    <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); onHide(p.id); }}>&times;</button>
+                    {onFlag && <button className="pq-card-flag" title="Flag this reply" onClick={(e) => { e.stopPropagation(); onFlag(p); }}><i className="fas fa-flag" /></button>}
+                    {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}><i className="fas fa-trash" /></button>}
+                    <div className="pq-card-top">
+                      {p.house && <span className="pq-house">{p.house}</span>}
+                      {p.pq_no && <span className="pq-no">Q No. {p.pq_no}</span>}
+                      {p.date && <span className="pq-date"><i className="far fa-calendar" /> {p.date}</span>}
+                    </div>
+                    <div className="pq-card-title">{p.subject || p.title}</div>
+                    {p.snippet && (
+                      <ClauseSnippet text={p.snippet} keywords={resp.highlight || []}
+                        phraseKeywords={resp.highlight_phrase || []} radius={400} />
+                    )}
+                    {((p.departments || []).length > 0 || p.tags?.length > 0) && (
+                      <div className="pq-card-meta-row">
+                        {(p.departments || []).map((c) => <span key={c} className="pq-dept-badge">{DEPT_LABEL[c]}</span>)}
+                        {(p.tags || []).slice(0, 5).map((t) => <span key={t} className="pq-tag">{t}</span>)}
+                      </div>
+                    )}
+                    <span className="pq-card-open">Read full reply <i className="fas fa-arrow-right" /></span>
+                  </div>
+                ))}
+              </Fragment>
+            );
+          })}
         </div>
       )}
       {!resp.deep && <DeepChips chips={resp.chips} onPick={onDeep} />}
@@ -172,6 +199,7 @@ export default function Pqs() {
   const chatRef = useRef(null);
   const lastUserRef = useRef(null);
   const inputAreaRef = useRef(null);
+  const inputRef = useRef(null);      // picking a slash command hands focus back
 
   const loadTags = () => api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([]));
   useEffect(() => { loadTags(); }, []);
@@ -216,7 +244,11 @@ export default function Pqs() {
     setBusy(true);
     try {
       const d = await api.get(url);
-      const response = { items: d.items || [], chips: d.chips || [], deep: !!d.deep, label, ...meta };
+      const response = {
+        items: d.items || [], chips: d.chips || [], deep: !!d.deep,
+        highlight: d.highlight || [], highlight_phrase: d.highlight_phrase || [],
+        label, ...meta,
+      };
       setHistory((h) => h.map((x) => (x.id === id ? { ...x, response } : x)));
     } catch (e) {
       setHistory((h) => h.map((x) => (x.id === id ? { ...x, error: e.message || 'Search failed' } : x)));
@@ -248,8 +280,19 @@ export default function Pqs() {
   function onSubmit(e) {
     e.preventDefault();
     const q = query.trim(); if (!q) return;
+    const p = parseSlash(q, PQ_SLASH_COMMANDS);
+    if (p && p.kind === 'menu') return;          // still choosing a command
     setQuery(''); setSuggestions([]);
-    if (q.startsWith('/')) { const d = q.replace(/\D/g, ''); if (d) runSearch(d, 'num'); }
+    if (p && p.kind === 'cmd') {
+      const arg = (p.arg || '').trim();
+      if (!arg) return;
+      if (p.cmd === 'deep') runDeepScan(arg, 'all', `“${arg}” (all words)`);
+      else if (p.cmd === 'num') runSearch(arg.replace(/^\/+/, ''), 'num');
+      return;
+    }
+    // A bare "/9000" isn't a command (no command starts with a digit) — keep the
+    // long-standing shortcut working.
+    if (q.startsWith('/')) { const d = q.slice(1).trim(); if (d) runSearch(d, 'num'); }
     else runSearch(q, 'q');
   }
   function onKeyDown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(e); } }
@@ -258,11 +301,18 @@ export default function Pqs() {
     const val = e.target.value;
     setQuery(val);
     const t = val.trim();
-    if (t.startsWith('/')) {                 // "/9000" -> suggest PQs by number
-      const digits = t.replace(/\D/g, '');
-      if (!digits) { setSuggestions([]); return; }
-      api.get(`/pq?num=${digits}`)
-        .then((d) => setSuggestions((d.items || []).slice(0, 30).map((p) => ({ ...p, _pq: true }))))
+    const p = parseSlash(t, PQ_SLASH_COMMANDS);
+    if (p && p.kind === 'menu') {             // "/" or "/de" -> offer the commands
+      setSuggestions(p.list.map((c) => ({ ...c, _cmd: true })));
+      return;
+    }
+    if (p && p.kind === 'cmd' && p.cmd !== 'num') { setSuggestions([]); return; }
+    // "/num 9000" or a bare "/9000" -> suggest PQs by number
+    if (t.startsWith('/')) {
+      const arg = (p && p.kind === 'cmd' ? p.arg : t.slice(1)).trim();
+      if (!arg) { setSuggestions([]); return; }
+      api.get(`/pq?num=${encodeURIComponent(arg)}`)
+        .then((d) => setSuggestions((d.items || []).slice(0, 30).map((x) => ({ ...x, _pq: true }))))
         .catch(() => setSuggestions([]));
       return;
     }
@@ -393,7 +443,14 @@ export default function Pqs() {
           <div className="search-wrapper">
             {suggestions.length > 0 && (
               <div className="suggestions-box">
-                {suggestions.map((s, i) => (s && s._pq ? (
+                {suggestions.map((s, i) => (s && s._cmd ? (
+                  <div className="suggestion-item slash-cmd" key={i}
+                    onMouseDown={(e) => { e.preventDefault(); setQuery(`/${s.cmd} `); setSuggestions([]); inputRef.current?.focus(); }}>
+                    <span><i className={`fas ${s.icon}`} style={{ fontSize: 11, color: 'var(--muted)', marginRight: 8 }} />
+                      <strong>/{s.cmd}</strong> <span className="clause-snip">{s.desc}</span></span>
+                    <span className="badge badge-concept">{s.label}</span>
+                  </div>
+                ) : s && s._pq ? (
                   <div className="suggestion-item clause-sugg" key={i} onMouseDown={(e) => { e.preventDefault(); setQuery(''); setSuggestions([]); open(s.id); }}>
                     <span className="clause-sugg-main"><span className="clause-id">Q{s.pq_no}</span> <span className="clause-snip">{s.subject || s.title}</span></span>
                     {s.house && <span className="badge badge-navy">{s.house}</span>}
@@ -406,7 +463,7 @@ export default function Pqs() {
                 )))}
               </div>
             )}
-            <textarea className="search-input" placeholder="Search PQs — topic, tag, or / + number…" value={query}
+            <textarea className="search-input" ref={inputRef} placeholder="Search PQs — topic, tag, or / for commands…" value={query}
               onChange={onInput} onKeyDown={onKeyDown} rows={1} autoFocus />
             <button className="btn btn-primary search-submit" type="submit" disabled={busy} aria-label="Search">
               {busy ? <Spinner size={16} color="#fff" /> : <i className="fas fa-magnifying-glass" />} <span className="btn-label">Search</span>

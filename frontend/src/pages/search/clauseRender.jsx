@@ -79,21 +79,6 @@ function buildHighlightRegex(terms) {
   return new RegExp(`(${pats.join('|')})`, 'gi');
 }
 
-function highlightInto(text, regex, keyPrefix) {
-  if (!regex) return text;
-  const out = [];
-  let last = 0; let m; let i = 0;
-  regex.lastIndex = 0;
-  while ((m = regex.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index));
-    out.push(<mark className="hl" key={`${keyPrefix}-${i++}`}>{m[0]}</mark>);
-    last = m.index + m[0].length;
-    if (m.index === regex.lastIndex) regex.lastIndex++;
-  }
-  if (last < text.length) out.push(text.slice(last));
-  return out;
-}
-
 // Highlight keyword matches inside pre-rendered clause HTML (edited / imported
 // clauses that carry clause_html and render via dangerouslySetInnerHTML, so they
 // otherwise miss the keyword highlighting that ClauseBody applies). Walks text
@@ -238,14 +223,17 @@ export const ClauseBody = memo(function ClauseBody({ text, keywords, phraseKeywo
   return <div className="clause-body">{blocks}</div>;
 });
 
-// A short preview of a long clause, centred on the first keyword match so the
-// relevant line is visible without scrolling/expanding. Built from the clause's
-// plain text (works uniformly for both render paths — HTML and markdown — and
-// never slices a <table> mid-tag). Falls back to the start of the text when no
-// keyword is present in the body (e.g. a tag-only match).
-export function ClauseSnippet({ text, keywords, radius = 170 }) {
+// A short preview of a long body, centred on the first keyword match so the
+// relevant line is visible without scrolling/expanding. Built from plain text
+// (works uniformly for both render paths — HTML and markdown — and never slices a
+// <table> mid-tag). Falls back to the start of the text when no keyword is present
+// (e.g. a tag-only match). Used for PQ result cards, whose replies run to tens of
+// thousands of characters; deliberately NOT ClauseBody, which would read a windowed
+// row of a PQ data table as markdown and render a stray <table>.
+export function ClauseSnippet({ text, keywords, phraseKeywords, radius = 170 }) {
   const raw = String(text || '').replace(/\s+/g, ' ').trim();
   const regex = buildHighlightRegex(keywords);
+  const phraseRe = buildHighlightRegex(phraseKeywords);
   let start = 0;
   if (regex) {
     regex.lastIndex = 0;
@@ -266,7 +254,7 @@ export function ClauseSnippet({ text, keywords, radius = 170 }) {
   return (
     <div className="clause-snippet">
       {start > 0 && '… '}
-      {highlightInto(slice, regex, 'snip')}
+      {markLine(slice, phraseRe, regex, 'snip')}
       {end < raw.length && ' …'}
     </div>
   );
