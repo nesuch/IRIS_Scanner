@@ -1,9 +1,10 @@
 {
   "_comment": "Registry powering the Downloads tree and the Active/Repealed clause tags. Edit freely. 'parent' is another entry's id (a circular flows from a regulation, a regulation from an act). 'status' is Active or Repealed; set repealed_on / repealed_by when a document is superseded.",
+  "_id_note": "An entry's 'id' MUST equal the document's Source_Doc in the knowledge base — that is the join key for clause counts and for slotting into this tree. If you re-import a document under a new name in Doc Studio, update the id here (and any child's 'parent') to the new name, or the old entry lingers as an empty shell at the top and the re-import drops into the 'Imported documents' catch-all instead of the hierarchy.",
   "documents": [
     {
-      "id": "Insurance Act 1938",
-      "title": "Insurance Act, 1938",
+      "id": "Insurance Act, 1938 (Amended Upto 2026)",
+      "title": "Insurance Act, 1938 (Amended Upto 2026)",
       "type": "Act",
       "category": "HEALTH",
       "parent": null,
@@ -13,8 +14,8 @@
       "repealed_by": null
     },
     {
-      "id": "IRDAI Act 1999",
-      "title": "IRDAI Act, 1999",
+      "id": "IRDAI Act 1999 (upto 2026)",
+      "title": "IRDAI Act, 1999 (upto 2026)",
       "type": "Act",
       "category": "GENERAL",
       "parent": null,
@@ -28,7 +29,7 @@
       "title": "IRDAI (Protection of Policyholders' Interests) Regulations, 2024",
       "type": "Regulation",
       "category": "HEALTH",
-      "parent": "IRDAI Act 1999",
+      "parent": "IRDAI Act 1999 (upto 2026)",
       "status": "Active",
       "effective_date": "2024-04-01",
       "repealed_on": null,
@@ -39,7 +40,7 @@
       "title": "IRDAI (Insurance Products) Regulations, 2024",
       "type": "Regulation",
       "category": "HEALTH",
-      "parent": "IRDAI Act 1999",
+      "parent": "IRDAI Act 1999 (upto 2026)",
       "status": "Active",
       "effective_date": "2024-04-01",
       "repealed_on": null,
@@ -72,7 +73,7 @@
       "title": "Reinsurance Regulations, 2018",
       "type": "Regulation",
       "category": "GENERAL",
-      "parent": "IRDAI Act 1999",
+      "parent": "IRDAI Act 1999 (upto 2026)",
       "status": "Active",
       "effective_date": "2019-01-01",
       "repealed_on": null,
