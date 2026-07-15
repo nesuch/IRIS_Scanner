@@ -560,16 +560,64 @@ def api_documents():
                     "imported": imported if is_admin else []})
 
 
-def _pq_snippet(body, limit=220):
-    """Skip the letterhead (Ref/date/address/Subject) and snippet the actual content."""
+def _pq_body_proper(body):
+    """The reply itself — letterhead (Ref/date/addressee/Subject) and the standard
+    covering intro stripped, whitespace flattened."""
     if not body:
         return ""
     m = re.search(r"Subject\s*:.*?(?:\n|$)", body, re.I) or re.search(r"Dear\s+Sir.*?(?:\n|$)", body, re.I)
     rest = body[m.end():] if m else body
     rest = re.sub(r"\s+", " ", rest).strip()
     # Drop the standard covering-letter intro ("This has reference … seriatim for the same.")
-    rest = re.sub(r"^This has reference.*?seriatim for the same\.\s*", "", rest, flags=re.I).strip()
+    return re.sub(r"^This has reference.*?seriatim for the same\.\s*", "", rest, flags=re.I).strip()
+
+
+def _pq_lede(body, limit=220):
+    """Skip the letterhead (Ref/date/address/Subject) and snippet the actual content."""
+    rest = _pq_body_proper(body)
     return rest[:limit] + ("…" if len(rest) > limit else "")
+
+
+def _pq_snippet(body, roots=None, limit=220, radius=200):
+    """A PQ preview. Browsing shows the lede; searching shows the match.
+
+    Without roots this is the lede — the opening of the reply proper. That is the
+    right preview for browse/tag/number, and the wrong one for a search: the reply
+    is thousands of characters long and the term that matched is almost never in
+    its opening. In PQ 9000 "cashless" sits at char 3,004 and the lede ends by ~508.
+
+    With roots, windows around the earliest match instead, snapping to word
+    boundaries. Falls back to the lede when no root is in the body (a tag-only hit
+    has nothing to centre on).
+
+    Both search the reply PROPER, never the letterhead: every PQ is addressed to the
+    "Insurance Section" of DFS, so a search for "insurance" would otherwise match the
+    envelope at char ~100 and every snippet would show the address block.
+    """
+    flat = _pq_body_proper(body)
+    if not flat:
+        return ""
+    lc = flat.lower()
+    at = None
+    for r in (roots or []):
+        m = re.search(rf"\b{re.escape(r)}\w*", lc)
+        if m and (at is None or m.start() < at):
+            at = m.start()
+    if at is None:
+        return flat[:limit] + ("…" if len(flat) > limit else "")
+    start, end = max(0, at - radius), min(len(flat), at + radius)
+    if start > 0:                       # snap forward to a word start
+        sp = flat.find(" ", start)
+        if sp != -1 and sp < start + 40:
+            start = sp + 1
+    if end < len(flat):                 # snap back to a word end
+        sp = flat.rfind(" ", start, end)
+        if sp > start + 40:
+            end = sp
+    # A window landing inside a data table would otherwise open/close on a bare "|",
+    # which the client's markdown-table renderer reads as a table row.
+    slice_ = flat[start:end].strip().strip("|").strip()
+    return ("… " if start > 0 else "") + slice_ + (" …" if end < len(flat) else "")
 
 
 # Controlled department vocabulary for PQs — same lines as the KB modules.
@@ -624,13 +672,13 @@ def _pq_newest_first():
     ).all()
 
 
-def _pq_card(r):
+def _pq_card(r, roots=None):
     return {
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
         "subject": r.subject, "date": r.doc_date, "date_iso": r.doc_date_iso,
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
         "departments": _dept_list(r),
-        "snippet": _pq_snippet(r.body_text or ""),
+        "snippet": _pq_snippet(r.body_text or "", roots=roots),
     }
 
 
@@ -659,12 +707,13 @@ def api_pq_list():
     """List/search Parliamentary Question replies for the dedicated PQ view."""
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
-    num = re.sub(r"\D", "", request.args.get("num") or "")
+    num = (request.args.get("num") or "").strip()
     tag = (request.args.get("tag") or "").strip()
     q = (request.args.get("q") or "").strip()
     deep = (request.args.get("deep") or "").strip()
     chips = []
     deep_flag = False
+    hl_source = ""      # the text whose terms get highlighted on the cards
     if deep:
         # Deep Scan — read every reply body and return all that contain the query.
         mode = (request.args.get("mode") or "all").strip().lower()
@@ -672,14 +721,14 @@ def api_pq_list():
             mode = "all"
         items = _deep_scan_pqs(deep, mode=mode)
         deep_flag = True
+        hl_source = deep
         try:
             email = _app.current_user.email if _app.current_user.is_authenticated else None
             _app._record_search(email, "pq", "[Deep Scan] " + deep, len(items))
         except Exception:
             pass
     elif num:
-        rows = _pq_newest_first()
-        items = [_pq_card(r) for r in rows if num in re.sub(r"\D", "", r.pq_no or "")]
+        items = _search_pq_numbers(num)
     elif tag:
         # Exact-tag filter (case/space-insensitive) — not a body word search.
         key = re.sub(r"\s+", "", tag.lower())
@@ -689,6 +738,7 @@ def api_pq_list():
     elif q:
         items = _search_pqs(q, limit=100)
         chips = _pq_chips(q)   # offer Deep-Scan suggestions alongside headline hits
+        hl_source = q
         try:
             email = _app.current_user.email if _app.current_user.is_authenticated else None
             _app._record_search(email, "pq", q, len(items))
@@ -703,7 +753,15 @@ def api_pq_list():
     if depts:
         want = set(depts)
         items = [it for it in items if want & set(it.get("departments") or [])]
-    return jsonify({"items": items, "chips": chips, "deep": deep_flag})
+    # Highlight terms, same contract as /api/search: `highlight` is per-word (amber),
+    # `highlight_phrase` is the verbatim query as one unit (green). Drawn from the
+    # PQ stoplist, so what lights up is exactly what could have matched.
+    phrase_l = " ".join(hl_source.lower().split())
+    return jsonify({
+        "items": items, "chips": chips, "deep": deep_flag,
+        "highlight": _word_highlights(hl_source, stop=_PQ_STOP) if hl_source else [],
+        "highlight_phrase": [phrase_l.split()] if (hl_source and " " in phrase_l) else [],
+    })
 
 
 @api_bp.get("/pq/<int:pid>")
@@ -842,11 +900,17 @@ def api_pq_delete(pid):
 
 
 # Short words that shouldn't drive PQ matching on their own.
-_PQ_STOP = {"the", "and", "for", "with", "that", "this", "from", "are", "was",
-            "were", "has", "have", "had", "not", "you", "your", "our", "its",
-            "into", "per", "all", "any", "can", "under", "over", "about", "shall",
-            "such", "been", "than", "then", "they", "them", "their", "would",
-            "regarding", "respect", "whether", "question", "answer", "reply"}
+# The clause stoplist plus words that carry no signal in THIS corpus specifically:
+# every reply is titled "... Starred Question ... regarding X" and answers under
+# "Reply:", so those are letterhead, not content. Kept as the single source for
+# _pq_terms / _pq_vocab / _pq_chips / PQ highlighting, so that every term that can
+# drive a match can also be highlighted, and nothing is highlighted that cannot.
+# (Universal's _HL_STOP would be wrong here — it would light up "reply" on every
+# card while "reply" drove no result.)
+_PQ_STOP = brain.FUNCTION_WORDS | {
+    "regarding", "respect", "question", "answer", "reply", "starred", "unstarred",
+    "sabha", "lok", "rajya", "seriatim", "captioned",
+}
 
 
 def _pq_terms(text):
@@ -855,26 +919,151 @@ def _pq_terms(text):
             if len(t) > 2 and t not in _PQ_STOP]
 
 
+def _pq_roots(query):
+    """Distinct word-roots the user typed — the PQ twin of api_search's core_roots.
+
+    Uses brain.search_root (Porter + the letter-restoration guard) rather than raw
+    tokens, so "penetration" finds "penetrate". Deliberately does NOT go through
+    brain.get_clean_keywords: that reads vocab globals which _rebuild_vocab builds
+    from the CLAUSE corpus and clears, so a PQ query would be spell-corrected
+    against clause vocabulary. PQ has its own vocabulary in _pq_vocab().
+    """
+    out = []
+    for t in _pq_terms(query):
+        r = brain.search_root(t) if t.isalpha() else t
+        if r and r not in out:
+            out.append(r)
+    return out
+
+
+_PQ_NORM_CACHE = {}
+
+
+def _pq_norm(r):
+    """Cached (lowercase, hyphens-stripped) body for a PQ row.
+
+    Keyed on (id, len(body_text)) so a re-extract invalidates it — deliberately not
+    _pq_vocab's (row count, newest id), which never moves when a row is edited in
+    place and so goes stale on re-tag/re-extract.
+    """
+    body = r.body_text or ""
+    key = (r.id, len(body))
+    hit = _PQ_NORM_CACHE.get(key)
+    if hit is None:
+        hit = brain._derive_search_columns(body)
+        _PQ_NORM_CACHE[key] = hit
+    return hit
+
+
 def _search_pqs(query, limit=100):
     """Headline (precise) tier — match a PQ by its TAGS only (the curated
     keywords an editor deliberately assigned). Titles, subjects and full reply
     bodies are reserved for Deep Scan, so a typed word never matches just
     because it happens to appear in a subject line. Every query term must be
     present in the tags (AND)."""
-    m = _app
-    terms = _pq_terms(query)
-    if not terms:
+    return _pq_tiered_search(query, limit=limit)
+
+
+# Candidate caps, applied BEFORE scoring. _run_len is O(n^2) in the query and scans
+# the whole text, and a PQ body is ~13x a clause: a 13-word query costs ~27ms per
+# 25k body, so an uncapped back-catalogue would spend ~8s in scoring alone.
+# Universal gets away without this because TAG_CAND_CAP/CONTENT_CAP already bound it.
+PQ_TAG_CAP, PQ_BODY_CAP = 60, 40
+# Above this many content words, skip the consecutive-run scan (see _make_scorer).
+PQ_RUN_LEN_CAP = 8
+
+
+def _pq_tiered_search(query, limit=100):
+    """PQ full-text search in two tiers: curated tags first, reply bodies second.
+
+    Tags-only search was a dead end — a typed word could not find an untagged PQ at
+    all. Bodies now match too, but as a SEPARATE tier rather than a merged list: a
+    tag is an editor's deliberate judgement about what a reply is about, and an
+    incidental mention in 25k characters of prose is not. So a body hit never
+    outranks a tag hit, and _score only ever orders WITHIN a tier.
+
+    That tier split — not word-boundary matching — is also what fixes searching
+    "Star Health" returning an unrelated PMJAY reply: "star" genuinely does stem to
+    the same root as the "Starred" in its title, so no matcher can separate them.
+    But PMJAY is tagged "PMJAY", so it cannot be a tag hit; it lands under bodies,
+    where an incidental match belongs.
+    """
+    roots = _pq_roots(query)
+    if not roots:
         return []
-    out = []
-    # Newest-first in, stable sort by score => equal scores stay newest-first.
+    phrase_l = " ".join((query or "").lower().split())
+    multi = " " in phrase_l or bool(re.search(r"[A-Za-z0-9][/\-][A-Za-z0-9]", phrase_l))
+    tag_cand, body_cand = [], []
+    # Newest-first in + stable sorts throughout => recency survives as the tiebreak
+    # within every tier, which is what "the best previous answer" actually means.
     for r in _pq_newest_first():
-        hay = (r.tags or "").lower()
-        if not hay or not all(t in hay for t in terms):
+        tags_lc, tags_lcj = brain._derive_search_columns(r.tags or "")
+        if tags_lc and all(brain._root_present(x, tags_lc, tags_lcj) for x in roots):
+            tag_cand.append((r, tags_lc, tags_lcj))
             continue
-        score = sum(hay.count(t) for t in terms)
-        out.append((score, _pq_card(r)))
-    out.sort(key=lambda x: -x[0])
-    return [p for _, p in out[:limit]]
+        body_lc, body_lcj = _pq_norm(r)
+        head_lc, head_lcj = brain._derive_search_columns(
+            " ".join([r.title or "", r.subject or ""]))
+        if all(brain._root_present(x, body_lc, body_lcj)
+               or brain._root_present(x, head_lc, head_lcj) for x in roots):
+            body_cand.append((r, body_lc, body_lcj))
+
+    def _cheap_rank(cands, cap):
+        # Pre-rank so the cap keeps the best candidates rather than the first N.
+        # Must be genuinely cheap: this runs over EVERY candidate's full body, while
+        # the real scoring only runs over the capped set. str.count is a C-level
+        # substring scan; brain._root_count would be re.findall over 25k chars per
+        # root per candidate, which profiled at 77% of total query time. Counting
+        # substrings over-counts mid-word hits ("care" in "healthcare"), which is
+        # fine for choosing WHICH candidates to score — _score then ranks them on
+        # word boundaries. Stable, so newest-first survives ties.
+        ranked = sorted(cands, key=lambda c: (
+            0 if phrase_l in c[1] else 1,
+            -sum(c[1].count(x) for x in roots),
+        ))
+        return ranked[:cap]
+
+    out = []
+    for cands, cap, tier in ((tag_cand, PQ_TAG_CAP, "tag"),
+                             (body_cand, PQ_BODY_CAP, "body")):
+        picked = _cheap_rank(cands, cap)
+        # Materialise before scoring: _make_scorer memoises on id(m), and CPython
+        # recycles the id of a dict that nothing holds a reference to.
+        scored = [{"raw_text": lc, "_row": r} for r, lc, _lcj in picked]
+        score, _promote = _make_scorer(phrase_l, roots, multi, run_len_cap=PQ_RUN_LEN_CAP)
+        scored.sort(key=lambda m: tuple(-v for v in score(m)))
+        for m in scored:
+            card = _pq_card(m["_row"], roots=roots)
+            card["tier"] = tier
+            out.append(card)
+    return out[:limit]
+
+
+def _search_pq_numbers(num, limit=100):
+    """Find PQs by number, tiered exact > prefix > loose.
+
+    Mirrors brain.search_by_clause_number (which can't be called directly — it walks
+    a clause DataFrame), reusing its _num_key so "S6487" / "6487" / "6 487" collapse
+    alike. The old path stripped non-digits off BOTH sides and did a substring test,
+    so a PQ numbered S6487 was unfindable and "/900" ranked 9000 above 900.
+    """
+    q = brain._num_key(str(num).lstrip("/"))
+    if not q:
+        return []
+    exact, prefix, loose = [], [], []
+    for r in _pq_newest_first():          # stable: newest first within each tier
+        k = brain._num_key(r.pq_no or "")
+        if not k:
+            continue
+        if k == q:
+            exact.append(r)
+        elif k.startswith(q):
+            prefix.append(r)
+        elif len(q) >= 2 and q in k:
+            loose.append(r)
+    prefix.sort(key=lambda r: len(brain._num_key(r.pq_no or "")))   # shortest = closest
+    out = exact + prefix + loose
+    return [_pq_card(r) for r in out[:limit]]
 
 
 def _deep_scan_pqs(text, mode="all", limit=300):
@@ -883,22 +1072,28 @@ def _deep_scan_pqs(text, mode="all", limit=300):
       word   -> a single term anywhere in the reply
       all    -> every significant word present (AND)
       phrase -> the exact phrase appears verbatim"""
-    m = _app
     phrase = " ".join((text or "").lower().split())
-    terms = _pq_terms(text)
+    roots = _pq_roots(text)
     out = []
     # Newest-first in, stable sort by score => equal scores stay newest-first.
     for r in _pq_newest_first():
-        hay = " ".join([r.title or "", r.subject or "", r.tags or "", r.body_text or ""]).lower()
+        body_lc, body_lcj = _pq_norm(r)
+        head_lc, head_lcj = brain._derive_search_columns(
+            " ".join([r.title or "", r.subject or "", r.tags or ""]))
         if mode == "phrase":
-            if not phrase or phrase not in hay:
+            if not phrase or (phrase not in body_lc and phrase not in head_lc):
                 continue
-            score = hay.count(phrase)
+            score = body_lc.count(phrase) + head_lc.count(phrase)
         else:  # word / all  (a single-word chip is just AND over one term)
-            if not terms or not all(t in hay for t in terms):
+            # Word-boundary matching, not substring: "care" must not match
+            # "healthcare", nor "star" match "restart".
+            if not roots or not all(
+                    brain._root_present(x, body_lc, body_lcj)
+                    or brain._root_present(x, head_lc, head_lcj) for x in roots):
                 continue
-            score = sum(hay.count(t) for t in terms)
-        out.append((score, _pq_card(r)))
+            score = sum(brain._root_count(x, body_lc, body_lcj)
+                        + brain._root_count(x, head_lc, head_lcj) for x in roots)
+        out.append((score, _pq_card(r, roots=roots)))
     out.sort(key=lambda x: -x[0])
     return [p for _, p in out[:limit]]
 
@@ -1685,14 +1880,19 @@ def _highlight_phrases(tuples):
 _HL_STOP = brain.FUNCTION_WORDS
 
 
-def _word_highlights(query):
+def _word_highlights(query, stop=None):
     """The query's individual CONTENT words as single-word highlight phrases
     (stopwords + tiny tokens dropped), so each meaningful word lights up on its own
     wherever it appears — even when the user typed a multi-word tag like
-    'mental illness'. Distinct from the green whole-phrase highlight."""
+    'mental illness'. Distinct from the green whole-phrase highlight.
+
+    `stop` lets a corpus supply its own stoplist (PQ passes _PQ_STOP), so that what
+    lights up is always exactly what could have matched in that corpus.
+    """
+    stop = _HL_STOP if stop is None else stop
     out, seen = [], set()
     for w in re.findall(r"[A-Za-z0-9%]+", str(query).lower()):
-        if w in _HL_STOP:
+        if w in stop:
             continue
         if len(w) < 3 and w.isalpha():          # tiny function words ("be", "as")
             continue
