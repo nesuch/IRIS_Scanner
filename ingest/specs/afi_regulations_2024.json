@@ -34,6 +34,7 @@
 
   "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":", "max_x0": 110},
   "attach_orphans_to_last": true,
+  "subblock_on_restart": true,
 
   "form_starts": [
     "SCHEDULES?\\s+FORMING\\s+PART\\s+OF\\s+FINANCIAL\\s+STATEMENTS",

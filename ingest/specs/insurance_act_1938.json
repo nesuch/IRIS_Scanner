@@ -1,13 +1,16 @@
 {
   "doc_id": "INS_Act",
-  "sheet_name": "INSURANCE ACT,1938",
-  "ignore_patterns": [],
-  "scope_start": "^PART\\s+I\\b",
+  "sheet_name": "Insurance Act 1938 (updated with SBSR Act 2025)",
+  "ignore_patterns": [
+    "^_{3,}$",
+    "^\\d{1,3}$"
+  ],
+  "scope_start": "^WHEREAS it is expedient",
   "containers": [
     {
       "head_match": "^(PART\\s+[IVXLC]+[A-Z]?)\\s*$",
       "title_next_line": true,
-      "id_prefix": "INS-PART{n}",
+      "id_prefix": "INS_Act-Part{n}",
       "clause_template": "{head}: {title}:",
       "include": true
     }
@@ -16,6 +19,14 @@
     "match": "^\\[?“?(\\d+[A-Z]*)\\.\\s",
     "delimiter": ".—"
   },
+  "attach_orphans_to_last": true,
+  "// schedules": "Schedules carry their own numbering (1., 2., ...) which the section matcher would mistake for Act sections, inventing bogus clauses (Part5-2..5). form_starts suspends section splitting from the first Schedule heading on, so the (largely 'Omitted') schedule text folds into the open clause as body.",
+  "form_starts": [
+    "^THE\\s+[A-Z]+\\s+SCHEDULE"
+  ],
+  "section_resume": [
+    "^PART\\s+[IVXLC]+"
+  ],
   "tag_rule": {
     "max_len": 300
   }

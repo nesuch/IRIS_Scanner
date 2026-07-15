@@ -1,7 +1,7 @@
 import json, sys, os
 from collections import Counter
 from .extract import extract
-from .preprocess import explode_layout_tables
+from .preprocess import explode_layout_tables, explode_stage_matrix
 from .segment import segment
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
@@ -69,6 +69,8 @@ def run(spec_path, pdf_path, out_path):
     for step in spec.get('preprocess', []):
         if step == 'explode_layout_tables':
             L = explode_layout_tables(L)
+        elif step == 'explode_stage_matrix':
+            L = explode_stage_matrix(L)
     rows,ins,exc,asg,spec_errors,warnings=segment(L,spec)
     rep=validate(L,D,ins,exc,asg,rows)
     rep["duplicate_ids"]=warnings

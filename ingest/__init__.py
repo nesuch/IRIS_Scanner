@@ -6,9 +6,10 @@ extract (pdfplumber) -> preprocess -> segment -> validate. Output rows are
 """
 import json
 import os
+import re
 
 from .extract import extract
-from .preprocess import explode_layout_tables
+from .preprocess import explode_layout_tables, explode_stage_matrix
 from .segment import segment
 from .build import validate
 
@@ -56,11 +57,63 @@ def _filter_ignore(blocks, dropped, spec):
     return kept, dl
 
 
+# Words that are common in the BODY of nearly every IRDAI regulation (so they're
+# useless for telling documents apart), even though they're rare across spec TITLES.
+# The title-DF filter can't catch these; this list does.
+_TITLE_COMMON = {
+    "irdai", "irda", "insurance", "insurer", "insurers", "regulatory", "development",
+    "authority", "india", "indian", "regulations", "regulation", "notification",
+    "gazette", "extraordinary", "hyderabad", "company", "companies", "operations",
+    "operation", "matters", "allied", "services", "service", "provider", "providers",
+    "information", "sharing", "regulated", "entities", "entity", "including",
+    "general", "board", "policy", "policies", "policyholder", "policyholders",
+    "business", "requirements", "provisions", "conditions", "purpose", "framework",
+    "chapter", "schedule", "section", "definitions", "applicability", "commencement",
+    "persons", "person", "certificate", "application", "shall", "these", "under",
+}
+
+
+def _spec_title_tokens(spec):
+    """>=4-char alpha words from a spec's human title (NOT the doc_id, whose code
+    fragments like 'corp'/'info'/'regs' are noise)."""
+    return set(re.findall(r"[a-z]{4,}", spec.get("sheet_name", "").lower()))
+
+
+def _title_document_freq():
+    """How many specs each title word appears in. A word in many titles (e.g.
+    'insurance', 'regulations') is generic; one in a couple ('lloyd', 'sugam') is
+    distinctive to its document — that's the signal we match against the PDF."""
+    from collections import Counter
+    cnt = Counter()
+    for s in list_specs():
+        sp = load_spec(s["id"])
+        if sp:
+            for w in _spec_title_tokens(sp):
+                cnt[w] += 1
+    return cnt
+
+
 def detect_spec(pdf_path, limit=5):
     """Best-match spec for a PDF — deterministic and fast: extract ONCE, then for
     each spec apply its ignore_patterns as a post-filter and segment. The truly
     fitting spec leaves the fewest in-scope lines unassigned (orphans)."""
     base_blocks, base_dropped = extract(pdf_path)
+    # Whole-document text (lower-cased) for a TITLE tie-breaker. Many IRDAI
+    # regulations share the exact same structure (CHAPTER I..N + numbered clauses),
+    # so structurally-identical specs segment them identically and tie on
+    # orphans/clauses. The distinctive words in a spec's title (e.g. "lloyd",
+    # "sugam", "aggregator") only appear in ITS document, so a small bonus for those
+    # breaks the tie toward the right spec without overriding a genuine structural
+    # fit (orphan/dupe penalties stay far larger).
+    # Word FREQUENCIES in the document (exact whole words, so "corp" doesn't hit
+    # "incorporated"). Frequency matters: a document's actual SUBJECT words (e.g.
+    # "aggregator" in the web-aggregator regs) appear many times, while a coincidental
+    # mention of another reg's topic appears once or twice — so we weight a spec's
+    # distinctive title words by how often they occur here, not just whether they do.
+    from collections import Counter as _Counter
+    _doc_freq = _Counter(re.findall(r"[a-z]{4,}",
+                                    " ".join((b.get("text") or "") for b in base_blocks).lower()))
+    _title_df = _title_document_freq()
     ranked = []
     for s in list_specs():
         spec = load_spec(s["id"])
@@ -71,6 +124,8 @@ def detect_spec(pdf_path, limit=5):
             for step in spec.get("preprocess", []):
                 if step == "explode_layout_tables":
                     blocks = explode_layout_tables(blocks)
+                elif step == "explode_stage_matrix":
+                    blocks = explode_stage_matrix(blocks)
             rows, inscope, excluded, assigned, spec_errors, warnings = segment(blocks, spec)
             report = validate(blocks, dropped, inscope, excluded, assigned, rows)
         except Exception:
@@ -81,7 +136,19 @@ def detect_spec(pdf_path, limit=5):
         orphans = report.get("orphan_lines", 0)
         dupes = len(warnings)
         # a good fit leaves few orphans AND few id collisions
-        score = (0 if spec_errors else 1_000_000) - orphans * 100 - dupes * 60 + min(clauses, 300)
+        score = (0 if spec_errors else 1_000_000) - orphans * 100 - dupes * 60
+        # TITLE match is the primary discriminator among structurally-clean specs.
+        # Many IRDAI regulations share the identical structure (CHAPTER I..N +
+        # numbered clauses), so a generic spec can segment the WRONG document cleanly
+        # — even over-segmenting it into MORE clauses than the right spec. So the
+        # clause bonus is capped LOW (over-segmentation can't win), and the DISTINCTIVE
+        # title words (present in few spec titles, e.g. "lloyd"/"sugam"/"aggregator")
+        # that also appear in the PDF drive the score. Weighted above the clause cap
+        # but below the per-orphan penalty, so a bad structural fit still loses.
+        distinct = [w for w in _spec_title_tokens(spec)
+                    if _title_df.get(w, 0) <= 2 and w not in _TITLE_COMMON]
+        title_score = sum(min(_doc_freq.get(w, 0), 12) for w in distinct)
+        score += title_score * 15 + min(clauses, 25)
         ranked.append({"spec_id": s["id"], "doc_id": s["doc_id"], "score": score,
                        "clauses": clauses, "orphans": orphans, "duplicates": dupes,
                        "accounted": bool(report.get("fully_accounted")), "errors": bool(spec_errors)})
@@ -96,6 +163,8 @@ def segment_pdf(pdf_path, spec):
     for step in spec.get("preprocess", []):
         if step == "explode_layout_tables":
             blocks = explode_layout_tables(blocks)
+        elif step == "explode_stage_matrix":
+            blocks = explode_stage_matrix(blocks)
     rows, inscope, excluded, assigned, spec_errors, warnings = segment(blocks, spec)
     report = validate(blocks, dropped, inscope, excluded, assigned, rows)
     report["duplicate_ids"] = warnings   # surfaced, not hidden — review signal

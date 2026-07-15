@@ -269,6 +269,27 @@ def segment(blocks, spec):
         rows.append({'id':_fmt_id(p['prefix'],n=p['num']),'clause':clause,'tag':tag,'_n':min(p['ln']) if p.get('ln') else 0})
 
     k=0
+    # sub-block-on-restart (opt-in): within one chapter, a top-level section number
+    # that does NOT advance past the previous one starts a new sub-block, so the id
+    # gets a '.N' suffix on the chapter key instead of colliding. Handles sources
+    # that reuse item numbers for distinct sub-blocks within a stage (e.g. a claim
+    # series 1-4 followed by a separate Group-Insurance series 1,2,3).
+    _sb_key=None; chap_last_num=-1; chap_subblock=1
+    def _subblock(base, num):
+        """Given a section-prefix base and the section number, append a '.N'
+        sub-block suffix when the number does NOT advance past the previous one
+        within the SAME base (a new sub-block that reuses numbers). No-op unless
+        the spec opts in. Handles both chapter- and container-scoped sections."""
+        nonlocal _sb_key, chap_last_num, chap_subblock
+        if not spec.get('subblock_on_restart'):
+            return base
+        if _sb_key != base:
+            _sb_key=base; chap_last_num=-1; chap_subblock=1
+        try: ni=int(re.match(r'\d+', str(num)).group(0))
+        except Exception: ni=chap_last_num+1
+        if ni<=chap_last_num: chap_subblock+=1
+        chap_last_num=ni
+        return base if chap_subblock==1 else f'{base}.{chap_subblock}'
     sec_path=[]   # nested-label disambiguation: list of (kind, label) for the
                   # most recent heading at each depth (letter > roman > digit)
     while k<len(inscope):
@@ -424,7 +445,7 @@ def segment(blocks, spec):
                 assigned.add(b['n']); k+=1; continue
             if pend: flush(pend)
             if cur and not spec.get('nest_sections'):
-                secpref=cur['prefix'].replace('{n}',str(cur['cn']))+'-{n}'
+                secpref=_subblock(cur['prefix'].replace('{n}',str(cur['cn'])), num)+'-{n}'
             elif spec.get('nest_sections'):
                 # Disambiguate restarting labels (A.. / I.. / 1..) by their depth.
                 # depth 0 = A-Z letter section, 1 = roman numeral, 2 = arabic number.
@@ -465,7 +486,8 @@ def segment(blocks, spec):
             else:
                 _dsp=spec.get('default_section_prefix','X')
                 if spec.get('chapter_match') and cur_chapter:
-                    secpref=f'{_dsp}-Ch{cur_chapter}-{{n}}'
+                    _clbl=spec.get('chapter_id_label','Ch')
+                    secpref=_subblock(f'{_dsp}-{_clbl}{cur_chapter}', num)+'-{n}'
                 else:
                     secpref=_dsp+'-{n}'
             pend={'prefix':secpref,'num':num,'include':cur['include'] if cur else True,

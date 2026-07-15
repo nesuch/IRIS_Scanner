@@ -1,0 +1,29 @@
+{
+  "doc_id": "FRB_REGS",
+  "sheet_name": "IRDAI Registration and Operations of Foreign Reinsurers Branches and Lloyds India Regulations 2024",
+  "ignore_patterns": [
+    "[\\u0900-\\u097F]",
+    "THE GAZETTE OF INDIA",
+    "GI/\\d+",
+    "^\\[ADVT",
+    "PUBLISHED BY AUTHORITY",
+    "^EXTRAORDINARY$",
+    "^No\\.\\s*\\d+\\]",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY OF INDIA",
+    "^NOTIFICATION$",
+    "^Hyderabad, the\\b",
+    "^[A-Z][A-Z .]+,\\s*Chairperson",
+    "^Uploaded by\\b",
+    "Controller of Publications"
+  ],
+  "scope_start": "^CHAPTER\\s*[-\\u2013]?\\s*I\\b",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s*[-\\u2013]?\\s*[IVX]+)\\b\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "FRB_REGS-CH{n}", "clause_template": "Chapter {n}: {title}:",
+     "include": true}
+  ],
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":", "max_x0": 110},
+  "attach_orphans_to_last": true,
+  "subblock_on_restart": true,
+  "tag_rule": {"max_len": 300}
+}
