@@ -200,6 +200,8 @@ export default function Pqs() {
   const lastUserRef = useRef(null);
   const inputAreaRef = useRef(null);
   const inputRef = useRef(null);      // picking a slash command hands focus back
+  const liveIdRef = useRef(null);     // id of the current as-you-type block, or null
+  const liveSeqRef = useRef(0);       // guards against out-of-order live responses
 
   const loadTags = () => api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([]));
   useEffect(() => { loadTags(); }, []);
@@ -208,7 +210,7 @@ export default function Pqs() {
     return () => document.documentElement.classList.remove('app-fixed');
   }, []);
 
-  function clearChat() { setHistory([]); setQuery(''); setSuggestions([]); setActive(null); setDismissed(new Set()); }
+  function clearChat() { liveIdRef.current = null; setHistory([]); setQuery(''); setSuggestions([]); setActive(null); setDismissed(new Set()); }
 
   // Re-clicking "Parliamentary Q&A" in the sidebar clears the conversation.
   useEffect(() => {
@@ -237,13 +239,24 @@ export default function Pqs() {
   }, [suggestions.length]);
 
   // Append a chat turn (You → IRIS) and resolve its response.
-  async function ask(url, label, meta = {}) {
-    if (busy) return;
-    const id = Math.random().toString(36).slice(2);
-    setHistory((h) => [...h, { id, query: label, response: null }]);
-    setBusy(true);
+  // live=true: as-you-type — reuse one block in place (no chat spam) and apply
+  // only the newest response. live=false: a committed search, appended as usual.
+  async function ask(url, label, meta = {}, { live = false } = {}) {
+    if (!live && busy) return;
+    let id;
+    if (live && liveIdRef.current) {
+      id = liveIdRef.current;
+      setHistory((h) => h.map((x) => (x.id === id ? { ...x, query: label, response: null, error: null } : x)));
+    } else {
+      id = Math.random().toString(36).slice(2);
+      setHistory((h) => [...h, { id, query: label, response: null }]);
+      liveIdRef.current = live ? id : null;   // a committed search ends the live session
+    }
+    const seq = live ? (liveSeqRef.current += 1) : null;
+    if (!live) setBusy(true);
     try {
       const d = await api.get(url);
+      if (live && seq !== liveSeqRef.current) return;   // a newer keystroke superseded this
       const response = {
         items: d.items || [], chips: d.chips || [], deep: !!d.deep,
         highlight: d.highlight || [], highlight_phrase: d.highlight_phrase || [],
@@ -251,18 +264,37 @@ export default function Pqs() {
       };
       setHistory((h) => h.map((x) => (x.id === id ? { ...x, response } : x)));
     } catch (e) {
+      if (live && seq !== liveSeqRef.current) return;
       setHistory((h) => h.map((x) => (x.id === id ? { ...x, error: e.message || 'Search failed' } : x)));
-      toast.error(e.message || 'Search failed');
-    } finally { setBusy(false); }
+      if (!live) toast.error(e.message || 'Search failed');
+    } finally { if (!live) setBusy(false); }
   }
 
   // mode: 'q' free text | 'tag' exact tag | 'num' PQ number
-  function runSearch(value, mode = 'q') {
+  function runSearch(value, mode = 'q', { live = false } = {}) {
     const v = value.trim(); if (!v) return;
     const key = mode === 'tag' ? 'tag' : mode === 'num' ? 'num' : 'q';
     const label = mode === 'num' ? `/${v}` : v;
-    ask(`/pq?${key}=${encodeURIComponent(v)}`, label, { qText: mode === 'q' ? v : '' });
+    ask(`/pq?${key}=${encodeURIComponent(v)}`, label, { qText: mode === 'q' ? v : '' }, { live });
   }
+
+  // As-you-type live search, mirroring the universal search: debounced, replacing
+  // one block in place. Skips slash commands (those are committed on Enter) and
+  // very short queries. This is what makes PQ search feel like the rest of IRIS —
+  // without it a typed word does nothing until you submit, which reads as "there
+  // is no full-text search" even when there is.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3 || q.startsWith('/')) {
+      if (liveIdRef.current) {   // cleared or too short — drop the pending live block
+        const id = liveIdRef.current; liveIdRef.current = null;
+        setHistory((h) => h.filter((x) => x.id !== id));
+      }
+      return undefined;
+    }
+    const t = setTimeout(() => { runSearch(q, 'q', { live: true }); }, 400);
+    return () => clearTimeout(t);
+  }, [query]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deep Scan — read every reply's full body. mode: all | phrase | word.
   function runDeepScan(text, mode = 'all', label = '') {
@@ -292,8 +324,11 @@ export default function Pqs() {
     }
     // A bare "/9000" isn't a command (no command starts with a digit) — keep the
     // long-standing shortcut working.
-    if (q.startsWith('/')) { const d = q.slice(1).trim(); if (d) runSearch(d, 'num'); }
-    else runSearch(q, 'q');
+    if (q.startsWith('/')) { const d = q.slice(1).trim(); if (d) runSearch(d, 'num'); return; }
+    // Live results for this query are already on screen — Enter just keeps them
+    // and clears the box, rather than firing the identical search again.
+    if (liveIdRef.current) { liveIdRef.current = null; return; }
+    runSearch(q, 'q');
   }
   function onKeyDown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(e); } }
 
@@ -318,13 +353,10 @@ export default function Pqs() {
     }
     const low = t.toLowerCase();
     if (low.length < 2) { setSuggestions([]); return; }
-    // Lead with full-text search. The dropdown used to offer nothing but tags, and
-    // picking one runs a tags-only search — so typing "insurance", seeing the tag
-    // "Dental Insurance" and clicking it looked exactly like "there is no full-text
-    // search", because that path never searches a reply body. Tags stay, as the
-    // narrower choice, below.
-    const tags = allTags.filter((tag) => tag.toLowerCase().includes(low)).slice(0, 20);
-    setSuggestions([{ _search: true, text: t }, ...tags]);
+    // Tags only. The full-text results for what's typed are already updating live
+    // behind this dropdown, so a "search for X" row here would offer what is
+    // already on screen; a tag is the narrower, different thing you can pick.
+    setSuggestions(allTags.filter((tag) => tag.toLowerCase().includes(low)).slice(0, 30));
   }
 
   function pickTag(tag) { setQuery(''); setSuggestions([]); runSearch(tag, 'tag'); }
@@ -449,14 +481,7 @@ export default function Pqs() {
           <div className="search-wrapper">
             {suggestions.length > 0 && (
               <div className="suggestions-box">
-                {suggestions.map((s, i) => (s && s._search ? (
-                  <div className="suggestion-item" key={i}
-                    onMouseDown={(e) => { e.preventDefault(); setQuery(''); setSuggestions([]); runSearch(s.text, 'q'); }}>
-                    <span><i className="fas fa-magnifying-glass" style={{ fontSize: 10, color: 'var(--accent)', marginRight: 7 }} />
-                      Search all replies for <strong>“{s.text}”</strong></span>
-                    <span className="badge badge-navy">Full text</span>
-                  </div>
-                ) : s && s._cmd ? (
+                {suggestions.map((s, i) => (s && s._cmd ? (
                   <div className="suggestion-item slash-cmd" key={i}
                     onMouseDown={(e) => { e.preventDefault(); setQuery(`/${s.cmd} `); setSuggestions([]); inputRef.current?.focus(); }}>
                     <span><i className={`fas ${s.icon}`} style={{ fontSize: 11, color: 'var(--muted)', marginRight: 8 }} />
