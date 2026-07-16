@@ -318,7 +318,13 @@ export default function Pqs() {
     }
     const low = t.toLowerCase();
     if (low.length < 2) { setSuggestions([]); return; }
-    setSuggestions(allTags.filter((tag) => tag.toLowerCase().includes(low)).slice(0, 30));
+    // Lead with full-text search. The dropdown used to offer nothing but tags, and
+    // picking one runs a tags-only search — so typing "insurance", seeing the tag
+    // "Dental Insurance" and clicking it looked exactly like "there is no full-text
+    // search", because that path never searches a reply body. Tags stay, as the
+    // narrower choice, below.
+    const tags = allTags.filter((tag) => tag.toLowerCase().includes(low)).slice(0, 20);
+    setSuggestions([{ _search: true, text: t }, ...tags]);
   }
 
   function pickTag(tag) { setQuery(''); setSuggestions([]); runSearch(tag, 'tag'); }
@@ -443,7 +449,14 @@ export default function Pqs() {
           <div className="search-wrapper">
             {suggestions.length > 0 && (
               <div className="suggestions-box">
-                {suggestions.map((s, i) => (s && s._cmd ? (
+                {suggestions.map((s, i) => (s && s._search ? (
+                  <div className="suggestion-item" key={i}
+                    onMouseDown={(e) => { e.preventDefault(); setQuery(''); setSuggestions([]); runSearch(s.text, 'q'); }}>
+                    <span><i className="fas fa-magnifying-glass" style={{ fontSize: 10, color: 'var(--accent)', marginRight: 7 }} />
+                      Search all replies for <strong>“{s.text}”</strong></span>
+                    <span className="badge badge-navy">Full text</span>
+                  </div>
+                ) : s && s._cmd ? (
                   <div className="suggestion-item slash-cmd" key={i}
                     onMouseDown={(e) => { e.preventDefault(); setQuery(`/${s.cmd} `); setSuggestions([]); inputRef.current?.focus(); }}>
                     <span><i className={`fas ${s.icon}`} style={{ fontSize: 11, color: 'var(--muted)', marginRight: 8 }} />
