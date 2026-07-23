@@ -2194,7 +2194,38 @@ def api_search():
     # tier renders. Collapsing them into one number is what hid the "shareholder's
     # fund" clause: it pre-ranked 49th, so a single cap of 20 discarded it before
     # promotion could ever see it.
-    CONTENT_SCAN, CONTENT_CAP = 60, 20
+    #
+    # CONTENT_SCAN scales INVERSELY with query length, because cost and usefulness
+    # run in opposite directions. A short query is unselective — half the corpus
+    # contains "premium" — so promotion reaches deep and every slot earns its place,
+    # but each candidate is cheap to test. A conversational query is selective:
+    # _promote needs ALL the roots, so almost nothing qualifies past the first
+    # handful, yet each candidate costs proportionally more to evaluate (one
+    # _root_present pass per root). Measured over 17 queries: the promotion loop
+    # spends 2-103ms at <=5 roots but 284-418ms at 8+, while the deepest rank it
+    # ever promotes at 8+ roots is 27. A flat 60 pays the expensive case in full for
+    # depth it cannot use.
+    #
+    # Keep expectations honest: this trims the PROMOTION LOOP by ~25% on long
+    # queries, but that loop is only ~5% of a universal-module request (the content
+    # scan and the pre-rank dominate at ~2s). End-to-end this is worth ~3-5% on
+    # conversational queries and exactly 0 on short ones. It is a free tidy-up, NOT
+    # a fix for long-query latency — that lives in the scan.
+    #
+    # The floor is 40, not 20 or 30, for two independent reasons:
+    #   - "premium payment options available to a policyholder under a health
+    #     insurance policy issued by a general insurer" has 11 roots but promotes as
+    #     deep as rank 27 — the one long query that behaves like a short one.
+    #   - The subordinate content tier is drawn from what SURVIVES promotion, so it
+    #     starves if the pool is too small: at 30, a 19-word universal query lost 2
+    #     of its 20 content cards (CONTENT_CAP 20 + ~12 promoted out needs >32).
+    #     Verified: 35 and 40 both reproduce the pre-change output byte-for-byte on a
+    #     42-response suite; 40 keeps headroom for queries outside it, and costs ~1%
+    #     against 35 — noise.
+    # And do NOT lower the 60: at <=5 roots it is near-free, and 25 loses results on
+    # 7 of 12 short/mid queries ("cashless claim settlement timeline" promotes all 60,
+    # i.e. it is already saturated).
+    CONTENT_SCAN, CONTENT_CAP = (60 if len(core_roots) <= 6 else 40), 20
     content_matches = []
     if module != "data":
         try:
