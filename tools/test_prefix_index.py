@@ -1,7 +1,11 @@
-import os, sys, re, time, random
-S=os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0,"/Users/sudeepchandranemalikanti/Documents/GitHub/IRIS_Scanner")
-os.environ["IRIS_DB_PATH"]=os.path.join(S,"perf.db")
+import os, sys
+if len(sys.argv) < 2 or not os.path.exists(sys.argv[1]):
+    sys.exit("usage: %s <path-to-a-COPY-of-iris.db> -- never the live one: "
+             "importing app runs schema migrations against IRIS_DB_PATH."
+             % sys.argv[0])
+os.environ["IRIS_DB_PATH"] = os.path.abspath(sys.argv[1])
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import re, time, random
 import app as _app, iris_brain as brain
 with _app.app.app_context():
     df=brain.load_knowledge_base()
