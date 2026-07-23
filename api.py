@@ -333,8 +333,14 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
     # ("before"). Adjacent query words may be separated by up to 2 filler words in
     # the clause (articles/prepositions), so "acceptance of the proposal" matches
     # "acceptance of a proposal".
+    # Content words only. FUNCTION_WORDS, not just STOPWORDS_STRONG (9 words): a
+    # preposition like "from" is not a term the user is searching for, and counting
+    # it here does double damage — it becomes a link the run has to match, while the
+    # `sep` below is already designed to STEP OVER exactly such filler. It also
+    # inflates len(_qseq), which raises the promotion bar for the whole query.
     _qseq = [brain.search_root(w) for w in re.findall(r"\w+", phrase_l)
-             if len(w) > 2 and w not in brain.STOPWORDS_STRONG]
+             if len(w) > 2 and w not in brain.STOPWORDS_STRONG
+             and w not in brain.FUNCTION_WORDS]
     _scan_runs = multi and not (run_len_cap is not None and len(_qseq) > run_len_cap)
 
     def _run_len(t):
@@ -356,9 +362,9 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
     _scores = {}
 
     def _score(m):
-        """Graded relevance tuple (higher = better): verbatim phrase, all typed
-        words on one line, all typed words present, longest consecutive word-run,
-        distinct-word coverage. Hyphen-insensitive."""
+        """Graded relevance tuple (higher = better): verbatim phrase, most typed
+        words sharing ONE sentence, all typed words present, longest consecutive
+        word-run, distinct-word coverage. Hyphen-insensitive."""
         k = id(m)
         if k in _scores:
             return _scores[k]
@@ -371,11 +377,26 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
         verbatim = 1 if (phrase_l in t or phrase_join in tj) else 0
         cover = sum(1 for r in core_roots if brain._root_present(r, t, tj))
         allwords = 1 if (len(core_roots) >= 2 and cover == len(core_roots)) else 0
-        same_line = 1 if (allwords and any(
-            all(brain._root_present(r, ln, ln.replace("-", "")) for r in core_roots)
-            for ln in t.split("\n"))) else 0
+        # Proximity: the most typed words any SINGLE sentence holds. Whole-clause
+        # coverage alone rewards length — a 2,600-char "general guidelines" clause
+        # can contain every word the user typed, scattered across two pages, and
+        # outrank the one sentence that actually answers them. This was previously a
+        # binary same_line flag that required ALL words in one line, so "3 of your 4
+        # words in one sentence" scored the same as none of them; it was also never
+        # read by any caller.
+        line_cover = 0
+        if len(core_roots) >= 2:
+            for ln in re.split(r"[\n;]+|\.\s", t):
+                if len(ln) < 3:
+                    continue
+                n = sum(1 for r in core_roots
+                        if brain._root_present(r, ln, ln.replace("-", "")))
+                if n > line_cover:
+                    line_cover = n
+                    if n == len(core_roots):
+                        break
         run = _run_len(t) if _scan_runs else 0
-        s = (verbatim, same_line, allwords, run, cover)
+        s = (verbatim, line_cover, allwords, run, cover)
         _scores[k] = s
         return s
 
@@ -2144,14 +2165,20 @@ def api_search():
         tag_matches, content_matches = tag_keep, content_keep
         # Order the best-match (phrase) tier:
         #   verbatim phrase > tagged with it > longest CONSECUTIVE run > in heading >
-        #   more words covered > document authority > more focused clause.
+        #   most words in ONE sentence > more words covered overall > document
+        #   authority > more focused clause.
         # The consecutive-run term makes ranking degrade gracefully to typos: one
         # wrong letter ("accordance"->"accordam") still keeps the near-verbatim
         # clause on top instead of scattering to unrelated single-word matches.
+        # Sentence coverage outranks whole-clause coverage because people describe
+        # what they want in their own words, and the clause that answers them says
+        # it in one place — whereas a long omnibus clause can contain every word
+        # they typed and answer none of it.
         def _reg_key(m):
             pk = _phrase_sort_key(m, phrase_l, phrase_join)  # (verbatim,tag,head,type,pri,len,id)
-            _v, _sl, _aw, run, cover = _score(m)
-            return (pk[0], pk[1], -run, pk[2], -cover, pk[3], pk[4], pk[5], pk[6])
+            _v, line_cover, _aw, run, cover = _score(m)
+            return (pk[0], pk[1], -run, pk[2], -line_cover, -cover,
+                    pk[3], pk[4], pk[5], pk[6])
         phrase_matches.sort(key=_reg_key)
 
     # Bound the rendered result set. Hundreds of full clause cards make the results
