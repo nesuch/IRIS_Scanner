@@ -1,0 +1,31 @@
+{
+  "doc_id": "RAC_AMD_2025",
+  "sheet_name": "IRDAI (Re-insurance Advisory Committee) (Amendment) Regulations, 2025",
+  "// year": "The gazette is dated 1 January 2025 and titles itself '(Amendment) Regulations, 2025' (F.No. IRDAI/Reg/3/210/2025). The '2024' some filenames carry comes from the advertisement reference [ADVT.-III/4/Exty./876/2024-25], which is a fiscal year, not the regulation's year.",
+  "ignore_patterns": [
+    "[\\u0900-\\u097F]",
+    "THE GAZETTE OF INDIA",
+    "GI/\\d+",
+    "^\\[ADVT",
+    "PUBLISHED BY AUTHORITY",
+    "^EXTRAORDINARY$",
+    "^PART\\s+III—Section\\s+4$",
+    "^No\\.\\s*\\d+\\]",
+    "^REGD\\.\\s*No\\.",
+    "^CG-TL-",
+    "^xxxGID",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY OF INDIA",
+    "^NOTIFICATION$",
+    "^Hyderabad,",
+    "^[A-Z][A-Z .]+,\\s*Chairperson",
+    "^Uploaded by\\b",
+    "Controller of Publications"
+  ],
+  "// scope": "A bilingual gazette: the Hindi text comes first and is dropped wholesale by the Devanagari ignore pattern, then the English notification repeats it. Start at the English '1. Short title' — the same convention reinsurance_regulations_2018 uses — so the masthead and the enabling preamble stay out.",
+  "scope_start": "^1\\.\\s*Short title",
+  "default_section_prefix": "RAC_AMD_2025",
+  "// section": "Operative paragraphs 1., 2., 3. sit at x0=78; the nested (1)/(2) are at 96 and (a)/(b) at 114, so max_x0 80 admits only real section starts. The inserted sub-regulation '1A.' cannot match anyway — \\d+\\. requires a digit immediately before the period.",
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":", "max_x0": 80},
+  "attach_orphans_to_last": true,
+  "tag_rule": {"max_len": 300}
+}
