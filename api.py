@@ -11,6 +11,7 @@ module object via `init_api(sys.modules[__name__])`. All shared objects (models,
 db, login helpers, private helpers) are then reached through `_app`.
 """
 import base64
+import bisect
 import difflib
 import io
 import os
@@ -359,13 +360,53 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
                     break
         return best
 
+    # Proximity scan, precompiled. The obvious implementation — for each sentence,
+    # test each root — is O(roots x sentences) regex calls per clause and profiled at
+    # 1.05M regex searches (2.7s) for a 13-word query, because re.escape and the
+    # pattern cache are re-entered on every one. This walks each root's matches over
+    # the whole clause ONCE and buckets them into sentences by offset, so the cost is
+    # O(roots) passes regardless of how long the clause is.
+    _root_res = [re.compile(rf"\b{re.escape(r)}\w*") for r in core_roots]
+    _SENT_SPLIT = re.compile(r"[\n;]+|\.\s")
+
+    def _line_cover(t):
+        """The most distinct query roots any ONE sentence of the clause holds."""
+        if len(core_roots) < 2:
+            return 0
+        starts, pos = [0], 0
+        for mm in _SENT_SPLIT.finditer(t):
+            starts.append(mm.end())
+        seen = [0] * len(starts)          # bitmask of roots seen per sentence
+        best = 0
+        for ri, rx in enumerate(_root_res):
+            bit = 1 << ri
+            for mm in rx.finditer(t):
+                i = bisect.bisect_right(starts, mm.start()) - 1
+                if i >= 0 and not (seen[i] & bit):
+                    seen[i] |= bit
+                    n = bin(seen[i]).count("1")
+                    if n > best:
+                        best = n
+                        if best == len(core_roots):
+                            return best
+        return best
+
     _scores = {}
 
     def _score(m):
         """Graded relevance tuple (higher = better): verbatim phrase, most typed
         words sharing ONE sentence, all typed words present, longest consecutive
         word-run, distinct-word coverage. Hyphen-insensitive."""
-        k = id(m)
+        # Key on the clause's own identity, NOT id(m). The pre-ranking pass scores a
+        # whole candidate pool and then keeps only its head; CPython recycles the
+        # addresses of the discarded dicts for the NEXT pool, so an id()-keyed memo
+        # silently returns another clause's score. That made results depend on what
+        # had been searched before — the same query returned a different #1 run alone
+        # versus run after other queries. Match dicts without an id (PQ synthesises
+        # bare {raw_text} ones) fall back to id(m), and those callers materialise
+        # their list first so the addresses stay live.
+        _cid = m.get("id")
+        k = (m.get("source"), _cid) if _cid else id(m)
         if k in _scores:
             return _scores[k]
         t = str(m.get("raw_text", "")).lower()
@@ -384,17 +425,7 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
         # binary same_line flag that required ALL words in one line, so "3 of your 4
         # words in one sentence" scored the same as none of them; it was also never
         # read by any caller.
-        line_cover = 0
-        if len(core_roots) >= 2:
-            for ln in re.split(r"[\n;]+|\.\s", t):
-                if len(ln) < 3:
-                    continue
-                n = sum(1 for r in core_roots
-                        if brain._root_present(r, ln, ln.replace("-", "")))
-                if n > line_cover:
-                    line_cover = n
-                    if n == len(core_roots):
-                        break
+        line_cover = _line_cover(t)
         run = _run_len(t) if _scan_runs else 0
         s = (verbatim, line_cover, allwords, run, cover)
         _scores[k] = s
@@ -407,11 +438,24 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
     # queries keep the sensitive >=2 threshold (typo robustness).
     _promote_run = 2 if len(_qseq) <= 4 else max(3, (len(_qseq) + 1) // 2)
 
+    # Promotion on sentence coverage: MOST of the query answered in one sentence is
+    # strong evidence even when a word is missing entirely. Searching "charged to
+    # shareholders account", the clause saying "charged ... from shareholder's fund"
+    # has two of the three words in one sentence but says "fund" where the user
+    # guessed "account" — so it never qualified on verbatim/allwords/run, stayed in
+    # the subordinate content tier, and was cut by its cap before anyone saw it.
+    # People rarely know a regulation's exact wording, so a near miss on one word
+    # should not be the difference between first page and invisible.
+    # Floored at 2 (one word in a sentence proves nothing) and scaled by a majority
+    # of the query, so a long natural-language query cannot promote hundreds.
+    _promote_line = max(2, (len(core_roots) + 1) // 2)
+
     def _promote(m):
-        # A verbatim phrase, ALL typed words, or a substantial consecutive run earns
-        # the top "best match" tier; a lone common-word (or common-pair) hit does not.
-        v, _sl, aw, run, _c = _score(m)
-        return bool(v or aw or run >= _promote_run)
+        # A verbatim phrase, ALL typed words, a substantial consecutive run, or most
+        # of the query inside ONE sentence earns the top "best match" tier; a lone
+        # common-word (or common-pair) hit does not.
+        v, line_cover, aw, run, _c = _score(m)
+        return bool(v or aw or run >= _promote_run or line_cover >= _promote_line)
 
     return _score, _promote
 
@@ -2103,37 +2147,6 @@ def api_search():
                         "query_label": query, "matches": [], "chips": [], "keywords": [],
                         "note": "Query rejected. Please use regulatory terms."})
 
-    # A common-word query can match hundreds of tagged clauses; cap the candidate
-    # pool up front so the O(n^2) run-length scoring in the promotion loop below runs
-    # over a bounded set (not ~350 clauses). Tags are pre-sorted by authority, so the
-    # top slice is the most relevant.
-    TAG_CAND_CAP = 60
-    tag_matches = _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module))[:TAG_CAND_CAP]
-
-    # Windows-Explorer-style: also auto-scan the clause TEXT (no manual "deep scan"
-    # step), returned as a separate, clearly-subordinate tier. Capped to keep the
-    # live/as-you-type payload small and the precise tag matches on top.
-    CONTENT_CAP = 20
-    content_matches = []
-    if module != "data":
-        try:
-            content_matches = _scope(brain.deep_scan_brain(
-                kw_tuples, KB_DF, exclude_ids=[m["id"] for m in tag_matches], module=module, phrase=query))[:CONTENT_CAP]
-        except Exception:
-            content_matches = []
-
-    # Verbatim-phrase promotion: when the user types a multi-word phrase that
-    # appears literally in a clause (e.g. "premium rate"), that clause should rank
-    # FIRST — above concept/tag matches — instead of being buried in the text tier.
-    # Pull such clauses out of both tiers into a dedicated top "exact phrase" tier,
-    # ordered by regulatory hierarchy (Act > Regulation > Circular).
-    # Best-match promotion: a clause that contains the verbatim phrase the user
-    # typed, OR all of the distinct words they typed, is more relevant than a
-    # concept/tag match on just one (often common) word — e.g. for "empanelment
-    # process" the clause with BOTH should beat clauses tagged only "process".
-    # Pull such clauses out of both tiers into a dedicated top tier.
-    phrase_matches = []
-    _phrase_note = None
     phrase_l = re.sub(r"\s+", " ", (query or "").strip().lower())
     phrase_join = phrase_l.replace("-", "")
     # The distinct word-roots the user typed (skip stopwords + synthesized tags).
@@ -2149,7 +2162,68 @@ def api_search():
     # must be promoted to the top tier (not left ranked by score). Treat any
     # separator BETWEEN word characters as multi.
     multi = " " in phrase_l or bool(re.search(r"[A-Za-z0-9][/\-][A-Za-z0-9]", phrase_l))
-    _score, _promote = _make_scorer(phrase_l, core_roots, multi)
+
+    # Rank the candidate pools by relevance BEFORE capping them. The caps below
+    # exist to bound the O(n^2) run scoring, but whatever they cut is gone for
+    # good — so cutting in the upstream scan's order silently discards the best
+    # answers. Searching "charged to shareholders account", 251 of 383 candidates
+    # matched a single word and crowded out the 115 matching two; the clause that
+    # answered the question ("charged ... from shareholder's fund", two of three
+    # words in ONE sentence) sat at #116 and never survived to be scored at all.
+    # run_len_cap=0 disables the expensive consecutive-run scan for this pass, so
+    # pre-ranking every candidate stays cheap; the survivors are scored in full
+    # (runs included) by the promotion loop below.
+    _prescore, _ = _make_scorer(phrase_l, core_roots, multi, run_len_cap=0)
+
+    def _by_relevance(matches):
+        return sorted(matches, key=lambda m: tuple(-v for v in _prescore(m)))
+
+    # A common-word query can match hundreds of tagged clauses; cap the candidate
+    # pool so the O(n^2) run-length scoring in the promotion loop runs over a
+    # bounded set (not ~350 clauses).
+    TAG_CAND_CAP = 60
+    tag_matches = _by_relevance(
+        _scope(brain.search_tags_only(kw_tuples, KB_DF, module=module)))[:TAG_CAND_CAP]
+
+    # Windows-Explorer-style: also auto-scan the clause TEXT (no manual "deep scan"
+    # step), returned as a separate, clearly-subordinate tier.
+    #
+    # Two different caps, because they answer two different questions. CONTENT_SCAN
+    # is how far down the promotion loop below may look for a clause that actually
+    # answers the query; CONTENT_CAP is how many unpromoted clauses this subordinate
+    # tier renders. Collapsing them into one number is what hid the "shareholder's
+    # fund" clause: it pre-ranked 49th, so a single cap of 20 discarded it before
+    # promotion could ever see it.
+    CONTENT_SCAN, CONTENT_CAP = 60, 20
+    content_matches = []
+    if module != "data":
+        try:
+            content_matches = _by_relevance(_scope(brain.deep_scan_brain(
+                kw_tuples, KB_DF, exclude_ids=[m["id"] for m in tag_matches],
+                module=module, phrase=query)))[:CONTENT_SCAN]
+        except Exception:
+            content_matches = []
+
+    # Verbatim-phrase promotion: when the user types a multi-word phrase that
+    # appears literally in a clause (e.g. "premium rate"), that clause should rank
+    # FIRST — above concept/tag matches — instead of being buried in the text tier.
+    # Pull such clauses out of both tiers into a dedicated top "exact phrase" tier,
+    # ordered by regulatory hierarchy (Act > Regulation > Circular).
+    # Best-match promotion: a clause that contains the verbatim phrase the user
+    # typed, OR all of the distinct words they typed, is more relevant than a
+    # concept/tag match on just one (often common) word — e.g. for "empanelment
+    # process" the clause with BOTH should beat clauses tagged only "process".
+    # Pull such clauses out of both tiers into a dedicated top tier.
+    phrase_matches = []
+    _phrase_note = None
+    # phrase_l, phrase_join, core_roots and multi are computed further up — the
+    # candidate pre-ranking needs them before the caps are applied.
+    # run_len_cap 10: the consecutive-run scan is O(n^2) in the query and now runs
+    # over a larger candidate pool, which took a 12-content-word query to 2.8s. Past
+    # ~10 content words the run adds nothing anyway — a verbatim or all-words match
+    # already decides those queries — so it is skipped there and kept for the short
+    # and mid-length queries whose typo tolerance depends on it.
+    _score, _promote = _make_scorer(phrase_l, core_roots, multi, run_len_cap=10)
 
     # Run for multi-word phrases AND single content words: a clause containing the
     # exact query text is a "best match" and must rank above stem-family / loosely-
@@ -2183,10 +2257,12 @@ def api_search():
 
     # Bound the rendered result set. Hundreds of full clause cards make the results
     # view render for many seconds (huge DOM + thousands of highlight <mark>s) and jank
-    # the whole page. Keep the most relevant of each tier — the phrase tier is already
-    # sorted best-first; content is pre-capped at CONTENT_CAP.
+    # the whole page. Keep the most relevant of each tier — all three are sorted
+    # best-first by now, and the content tier is only cut HERE, after promotion has
+    # had the chance to pull a genuine answer out of it.
     phrase_matches = phrase_matches[:30]
     tag_matches = tag_matches[:20]
+    content_matches = content_matches[:CONTENT_CAP]
 
     # Record the query for admin usage visibility (best-effort, non-blocking).
     try:
