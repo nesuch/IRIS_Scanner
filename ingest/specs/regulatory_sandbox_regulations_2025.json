@@ -1,0 +1,34 @@
+{
+  "doc_id": "SANDBOX_REGS",
+  "sheet_name": "IRDAI (Regulatory Sandbox) Regulations, 2025",
+  "ignore_patterns": [
+    "[\\u0900-\\u097F]",
+    "THE GAZETTE OF INDIA",
+    "GI/\\d+",
+    "^\\[\\s*ADVT",
+    "PUBLISHED BY AUTHORITY",
+    "^EXTRAORDINARY$",
+    "^PART\\s+III—Sec",
+    "^No\\.\\s*\\d+\\]",
+    "^REGD\\.\\s*NO\\.",
+    "^CG-TL-",
+    "^xxxGID",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY OF INDIA",
+    "^NOTIFICATION$",
+    "^Hyderabad,",
+    ",\\s*Chair(man|person)\\s*$",
+    "^Uploaded by\\b",
+    "Controller of Publications"
+  ],
+  "scope_start": "^CHAPTER\\s*[-\\u2013]?\\s*I\\b",
+  "containers": [
+    {"head_match": "^(CHAPTER\\s*[-\\u2013]?\\s*[IVX]+)\\s*(.*)$", "title_next_line": true,
+     "id_prefix": "SANDBOX_REGS-CH{n}", "clause_template": "Chapter {n}: {title}:",
+     "include": true}
+  ],
+  "// section": "Regulations 1..17 sit at x0=56.2 (single digit) and 52.9 (double digit — the wider number starts further left); sub-regulations (1)/(2) are at 65-83 and body text at 60. max_x0 58 admits only the regulation heads.",
+  "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":", "max_x0": 58},
+  "attach_orphans_to_last": true,
+  "subblock_on_restart": true,
+  "tag_rule": {"max_len": 300}
+}
