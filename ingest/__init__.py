@@ -105,8 +105,13 @@ def detect_spec(pdf_path, limit=5):
     # everyone rather than per-spec: the threshold is a property of the DOCUMENT's
     # typesetting, and giving one spec a better view of the page than its rivals
     # would let it win documents that aren't its own.
+    # Fires on a large FRACTION, not only on near-total loss. A re-OCR'd scan gets
+    # its text-layer size from the glyph heights tesseract measured, which can land
+    # just under the threshold for much of a document: the Corporate Agents scan lost
+    # 177 of ~380 English lines that way — not everything, but enough that its own
+    # spec did not place in the top three for its own document.
     _fn = sum(1 for d in base_dropped if d.get("reason") == "footnote")
-    if _fn >= max(10, len(base_blocks)):
+    if _fn >= 10 and _fn >= 0.3 * (len(base_blocks) + _fn):
         base_blocks, base_dropped = extract(pdf_path, small=0)
     # Whole-document text (lower-cased) for a TITLE tie-breaker. Many IRDAI
     # regulations share the exact same structure (CHAPTER I..N + numbered clauses),
@@ -124,8 +129,17 @@ def detect_spec(pdf_path, limit=5):
     _doc_freq = _Counter(re.findall(r"[a-z]{4,}",
                                     " ".join((b.get("text") or "") for b in base_blocks).lower()))
     _title_df = _title_document_freq()
+    # How many spec titles a word may appear in and still count as distinctive.
+    # This was a hard "<= 2", tuned when the library held 31 specs, and it broke
+    # silently as the library grew: adding the IAC (Meetings) 2000 spec put
+    # "advisory" and "committee" into a THIRD title, which zeroed the entire title
+    # bonus for the Re-insurance Advisory Committee regs on their own document and
+    # handed detection to an unrelated spec. Scaling with the library keeps "in a
+    # handful of titles" meaning the same thing as specs are added.
+    _all_specs = list_specs()
+    _df_max = max(2, round(len(_all_specs) * 0.08))
     ranked = []
-    for s in list_specs():
+    for s in _all_specs:
         spec = load_spec(s["id"])
         if not spec:
             continue
@@ -156,7 +170,7 @@ def detect_spec(pdf_path, limit=5):
         # that also appear in the PDF drive the score. Weighted above the clause cap
         # but below the per-orphan penalty, so a bad structural fit still loses.
         distinct = [w for w in _spec_title_tokens(spec)
-                    if _title_df.get(w, 0) <= 2 and w not in _TITLE_COMMON]
+                    if _title_df.get(w, 0) <= _df_max and w not in _TITLE_COMMON]
         title_score = sum(min(_doc_freq.get(w, 0), 12) for w in distinct)
         score += title_score * 15 + min(clauses, 25)
         ranked.append({"spec_id": s["id"], "doc_id": s["doc_id"], "score": score,
