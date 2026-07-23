@@ -1,0 +1,27 @@
+{
+  "doc_id": "IRDA_MEET_2000",
+  "sheet_name": "IRDA (Meetings) Regulations, 2000",
+  "// source": "Segmented from a RE-OCR of the gazette scan (ocr_regulations/IRDA_Meetings_Regulations_2000_OCR.pdf). The original PDF's embedded text is unusable — '12) Ir .it ,111y sll<:h 111cct111g. quorum 1s 1101 prese'.",
+  "// scan damage": "This scan's marginal digits are physically degraded, and no dpi/psm combination recovers them. Of the 8 regulations: 2, 3, 4, 6 and 8 keep their number; regulation 1 OCRs as 'I.' (digit read as a capital I, which the section pattern therefore accepts); regulations 5 (Emergent Meeting) and 7 (Invitees at meeting) lose their marker entirely and their TEXT folds into the preceding clause. Nothing is lost — the wording is all captured — but those two need splitting in Doc Studio to get ids of their own.",
+  "ignore_patterns": [
+    "[\\u0900-\\u097F]",
+    "THE GAZETTE OF INDIA",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY",
+    "^NOTIFICATION$",
+    "^New Delhi,",
+    "RANGACHARY",
+    ",\\s*Chair(man|person)\\s*$",
+    "^\\[?ADVT",
+    "^\\[No\\.\\s*ADVT",
+    "^Printed by",
+    "Controller of Publications",
+    "^[^A-Za-z0-9]{1,6}$",
+    "^[a-z]\\s*[^A-Za-z0-9]{1,6}$"
+  ],
+  "scope_start": "^I\\.\\s*Short title",
+  "default_section_prefix": "IRDA_MEET_2000",
+  "// section": "Accepts a leading 'I' as well as digits: regulation 1's numeral is read as a capital I by every OCR pass, and without this the whole of regulation 1 would fall before the first section and be discarded as preamble. Its clause id is therefore IRDA_MEET_2000-I, which is honest about what the source says.",
+  "section": {"match": "^([0-9]+|I)\\.\\s*(?=[A-Za-z])", "delimiter": ":", "max_x0": 85},
+  "attach_orphans_to_last": true,
+  "tag_rule": {"max_len": 300}
+}
