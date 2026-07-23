@@ -314,7 +314,8 @@ def _doc_pdf_url(source):
     return ("/static/" + p) if p else None
 
 
-def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
+def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None,
+                 root_keys=None, known_keys=None):
     """Query-derived relevance scoring: returns (score, promote).
 
     Lifted out of api_search so a second corpus (PQ replies) can rank by the same
@@ -325,6 +326,18 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
     query and scans the whole text: ~0.1ms on a 25k body for 3 words but ~27ms for
     13, so a back-catalogue of PQ bodies would spend seconds in it. Clause callers
     pass None (clauses average 1,894 chars and are already capped at ~80 candidates).
+
+    root_keys is the prefix index pre-resolved by the caller into
+    {root: set of (source, clause_id)} — the same identity the score memo keys on —
+    and known_keys is the full set of keys the index covers. Together they replace
+    the per-(root, clause) regex in `cover`, which the pre-ranking pass otherwise
+    runs over EVERY candidate.
+
+    Both are optional and per-call on purpose. PQ builds its own scorer without
+    them, because PQ rows are not clauses and would miss every set — silently
+    scoring zero coverage. known_keys makes that failure mode impossible in general:
+    any match not in the indexed universe falls back to the regex instead of being
+    treated as "absent everywhere".
     """
     phrase_join = phrase_l.replace("-", "")
     # The query's content words IN ORDER (stopwords dropped) — used to score the
@@ -393,6 +406,24 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
 
     _scores = {}
 
+    def _cover(k, t, tj):
+        """How many distinct query roots the clause holds. Served from the prefix
+        index when the caller supplied one AND this row is part of the indexed
+        corpus; otherwise the original regex, per root, so a root the index cannot
+        represent (a non-\\w compound) degrades on its own rather than poisoning the
+        whole count."""
+        if root_keys is None or known_keys is None or k not in known_keys:
+            return sum(1 for r in core_roots if brain._root_present(r, t, tj))
+        n = 0
+        for r in core_roots:
+            s = root_keys.get(r)
+            if s is None:
+                if brain._root_present(r, t, tj):
+                    n += 1
+            elif k in s:
+                n += 1
+        return n
+
     def _score(m):
         """Graded relevance tuple (higher = better): verbatim phrase, most typed
         words sharing ONE sentence, all typed words present, longest consecutive
@@ -416,7 +447,7 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None):
         # stem cousin "promote"), so exact-word clauses can be promoted above
         # stem-family / loosely-tagged ones.
         verbatim = 1 if (phrase_l in t or phrase_join in tj) else 0
-        cover = sum(1 for r in core_roots if brain._root_present(r, t, tj))
+        cover = _cover(k, t, tj)
         allwords = 1 if (len(core_roots) >= 2 and cover == len(core_roots)) else 0
         # Proximity: the most typed words any SINGLE sentence holds. Whole-clause
         # coverage alone rewards length — a 2,600-char "general guidelines" clause
@@ -2173,7 +2204,26 @@ def api_search():
     # run_len_cap=0 disables the expensive consecutive-run scan for this pass, so
     # pre-ranking every candidate stays cheap; the survivors are scored in full
     # (runs included) by the promotion loop below.
-    _prescore, _ = _make_scorer(phrase_l, core_roots, multi, run_len_cap=0)
+    # Resolve the prefix index ONCE per request, into the (source, clause_id) keys
+    # the scorer already uses to memoize. Both scorers below share it, so the cost
+    # is one pass over the postings of ~10 roots rather than a regex per
+    # (root, candidate) — and the pre-ranking pass runs over every candidate.
+    # Built with the SAME normalisation brain uses for its match dicts
+    # (Source_Doc verbatim, Clause_ID str()+strip()), or the keys would not meet.
+    _root_keys, _known_keys = None, None
+    try:
+        _lab_key = {lab: (src, str(cid).strip()) for lab, src, cid
+                    in zip(KB_DF.index, KB_DF["Source_Doc"], KB_DF["Clause_ID"])}
+        _known_keys = set(_lab_key.values())
+        _root_keys = {}
+        for r in core_roots:
+            labs = brain.clauses_with_root(r)
+            _root_keys[r] = None if labs is None else {_lab_key[l] for l in labs if l in _lab_key}
+    except Exception:
+        _root_keys, _known_keys = None, None      # any doubt -> regex path
+
+    _prescore, _ = _make_scorer(phrase_l, core_roots, multi, run_len_cap=0,
+                                root_keys=_root_keys, known_keys=_known_keys)
 
     def _by_relevance(matches):
         return sorted(matches, key=lambda m: tuple(-v for v in _prescore(m)))
@@ -2254,7 +2304,8 @@ def api_search():
     # ~10 content words the run adds nothing anyway — a verbatim or all-words match
     # already decides those queries — so it is skipped there and kept for the short
     # and mid-length queries whose typo tolerance depends on it.
-    _score, _promote = _make_scorer(phrase_l, core_roots, multi, run_len_cap=10)
+    _score, _promote = _make_scorer(phrase_l, core_roots, multi, run_len_cap=10,
+                                    root_keys=_root_keys, known_keys=_known_keys)
 
     # Run for multi-word phrases AND single content words: a clause containing the
     # exact query text is a "best match" and must rank above stem-family / loosely-

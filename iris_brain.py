@@ -430,6 +430,11 @@ def load_knowledge_base(force_reload=False):
 
     if df.empty:
         KB_CACHE_DF = df
+        # This branch bypasses _add_search_cols, so clear the index explicitly —
+        # otherwise a reload that finds an empty table would leave the postings of
+        # the PREVIOUS corpus in place, and search would answer from clauses the
+        # cache no longer holds.
+        build_prefix_index(df)
         print("[!] Knowledge Base Loaded: 0 regulatory clauses from SQL.")
         return df
     print(f"[+] Knowledge Base Loaded: {len(df)} regulatory clauses from SQL.")
@@ -1158,14 +1163,28 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
                  | _txt.str.replace("-", "", regex=False).str.contains(_pat, regex=True))
     scoped_df = scoped_df[_mask]
 
-    for _, row in scoped_df.iterrows():
+    # Whole-corpus presence for every root this loop will test, resolved ONCE from
+    # the prefix index instead of once per (root, clause). This is the hot spot:
+    # the loop below asks _root_present up to ~40 times per candidate, and there can
+    # be 664 candidates. A root whose value is None is one the index cannot answer
+    # (a non-\w compound), and it alone falls back to the regex.
+    _idx_sets = {r: clauses_with_root(r)
+                 for r in set(search_stems) | set(core_stems) | set(core_words)}
+
+    def _has(root, label, text, text_join):
+        s = _idx_sets.get(root)
+        if s is None:
+            return _root_present(root, text, text_join)
+        return label in s
+
+    for label, row in scoped_df.iterrows():
         if row.get("Is_Header"): continue
         c_id = str(row.get("Clause_ID", "")).strip()
         if c_id in exclude_set: continue
 
         text = str(row.get("Clause_Text", "")).lower()
         text_join = text.replace("-", "")     # hyphen-collapsed copy for matching
-        hit_stems = [s for s in search_stems if _root_present(s, text, text_join)]
+        hit_stems = [s for s in search_stems if _has(s, label, text, text_join)]
         if not hit_stems:
             continue
 
@@ -1174,11 +1193,14 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
         score = 0
         if phrase_l and " " in phrase_l and (phrase_l in text or phrase_l.replace("-", "") in text_join):
             score += 1000
-        core_hits = [s for s in core_stems if _root_present(s, text, text_join)]
+        core_hits = [s for s in core_stems if _has(s, label, text, text_join)]
         if core_stems and len(core_hits) == len(core_stems):
             score += 200            # every word the user typed appears in this clause
             # ...and if they all appear together in ONE line/provision, prefer it
             # strongly over clauses where the words are merely scattered about.
+            # Stays on regex: this asks about a single LINE, not the clause, and the
+            # index is clause-granular. It is also gated behind "all core stems
+            # present", which is rare, so it is not a hot path.
             if len(core_stems) >= 2 and any(
                     all(_root_present(s, ln, ln.replace("-", "")) for s in core_stems)
                     for ln in text.split("\n")):
@@ -1188,7 +1210,7 @@ def deep_scan_brain(keyword_tuples, df, exclude_ids=None, module="universal", ph
         # a clause with literal "criticism" beats one that only has "critical"
         # (prefix on the full word, so "criticism" also catches "criticisms" but
         # never "critical"). 50 dominates the density term below.
-        score += 50 * sum(1 for w in core_words if _root_present(w, text, text_join))
+        score += 50 * sum(1 for w in core_words if _has(w, label, text, text_join))
         score += sum(_root_count(s, text, text_join) for s in core_hits)
 
         matches.append({
