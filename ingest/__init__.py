@@ -98,6 +98,16 @@ def detect_spec(pdf_path, limit=5):
     each spec apply its ignore_patterns as a post-filter and segment. The truly
     fitting spec leaves the fewest in-scope lines unassigned (orphans)."""
     base_blocks, base_dropped = extract(pdf_path)
+    # A few gazettes set their whole English half below the default small-type
+    # threshold, so the shared extraction throws the entire document away as
+    # footnotes and EVERY spec scores zero clauses — nothing can be detected. Retry
+    # once with the size filter off when that happens. Deliberately re-extracted for
+    # everyone rather than per-spec: the threshold is a property of the DOCUMENT's
+    # typesetting, and giving one spec a better view of the page than its rivals
+    # would let it win documents that aren't its own.
+    _fn = sum(1 for d in base_dropped if d.get("reason") == "footnote")
+    if _fn >= max(10, len(base_blocks)):
+        base_blocks, base_dropped = extract(pdf_path, small=0)
     # Whole-document text (lower-cased) for a TITLE tie-breaker. Many IRDAI
     # regulations share the exact same structure (CHAPTER I..N + numbered clauses),
     # so structurally-identical specs segment them identically and tie on
@@ -159,7 +169,8 @@ def detect_spec(pdf_path, limit=5):
 def segment_pdf(pdf_path, spec):
     """Run the deterministic pipeline. Returns (rows, report, spec_errors) where
     each row is {id, clause, tag}."""
-    blocks, dropped = extract(pdf_path, ignore_patterns=spec.get("ignore_patterns"))
+    blocks, dropped = extract(pdf_path, ignore_patterns=spec.get("ignore_patterns"),
+                              small=spec.get("small_type"))
     for step in spec.get("preprocess", []):
         if step == "explode_layout_tables":
             blocks = explode_layout_tables(blocks)

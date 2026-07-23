@@ -28,10 +28,15 @@ _PUA=re.compile('[\ue000-\uf8ff]')
 def _norm_glyphs(s):
     return _PUA.sub(lambda m: _GLYPH_MAP.get(m.group(0), '\u2022'), s) if s else s
 
-def _line_text(chars):
+def _line_text(chars, small=None):
+    # `small` also gates this digit drop, not just the footnote-line drop: the rule
+    # exists to strip superscript footnote MARKERS, but it reads on any small digit,
+    # so a document typeset below the default loses every digit it has — clause
+    # numbers, years, section references and all.
+    small = SMALL if small is None else small
     chars=sorted(chars,key=lambda c:c['x0']); out=[]; prev=None
     for c in chars:
-        if c['size']<SMALL and c['text'].isdigit(): continue
+        if c['size']<small and c['text'].isdigit(): continue
         if prev is not None and (c['x0']-prev['x1'])>0.20*c['size']: out.append(' ')
         out.append(c['text']); prev=c
     txt=re.sub(r'\s+',' ',''.join(out)).strip()
@@ -55,11 +60,19 @@ def _gfm(table):
     body=['| '+' | '.join(esc(c) for c in r)+' |' for r in rows[1:]]
     return '\n'.join([head,sep]+body)
 
-def extract(path, ignore_patterns=None, keep_hindi=False):
+def extract(path, ignore_patterns=None, keep_hindi=False, small=None):
     # keep_hindi: opt-in for genuinely bilingual documents (e.g. a circular whose
     # clause numbers live on the Hindi line and whose English text is the
     # translation). Normally Hindi lines are dropped as noise; for these docs the
     # Hindi carries the structural anchors and must be retained.
+    #
+    # small: override the median type size below which a line is treated as a
+    # footnote. A few gazettes set the whole English half smaller than SMALL —
+    # IRDAI (Re-insurance Advisory Committee) Regs 2019 runs its English body at
+    # 9.36pt against the 9.5 default — so every line of the document would be
+    # dropped as a footnote. Per-spec, because the threshold is a property of one
+    # document's typesetting; changing the global would move 31 other specs.
+    small = SMALL if small is None else float(small)
     ig=[re.compile(p) for p in (ignore_patterns or [])]
     blocks=[]; dropped=[]; n=0
     with pdfplumber.open(path) as pdf:
@@ -87,7 +100,7 @@ def extract(path, ignore_patterns=None, keep_hindi=False):
                 else: clusters.append([ch['bottom'],[ch]])
             line_items=[]
             for bl,chs in clusters:
-                txt=_line_text(chs)
+                txt=_line_text(chs, small)
                 if not txt: continue
                 medsz=median([c['size'] for c in chs]); x0=min(c['x0'] for c in chs)
                 if not keep_hindi and _hindi_ratio(txt)>0.5: dropped.append({'page':pi,'text':txt,'reason':'hindi'}); continue
@@ -99,7 +112,7 @@ def extract(path, ignore_patterns=None, keep_hindi=False):
                 # Part/Chapter/Schedule TITLES, not footnotes.
                 _alpha=[c for c in txt if c.isalpha()]
                 _is_caps_title = _alpha and ''.join(_alpha).isupper() and not any(c.isdigit() for c in txt)
-                if medsz<SMALL and not _is_caps_title:
+                if medsz<small and not _is_caps_title:
                     dropped.append({'page':pi,'text':txt,'reason':'footnote'}); continue
                 # footnote that reflows onto a full-size line is caught by pattern:
                 if FOOTNOTE_PAT.match(txt) and medsz<10.5: dropped.append({'page':pi,'text':txt,'reason':'footnote'}); continue

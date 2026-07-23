@@ -21,8 +21,8 @@
     "^Uploaded by\\b",
     "Controller of Publications"
   ],
-  "// scope": "A bilingual gazette: the Hindi text comes first and is dropped wholesale by the Devanagari ignore pattern, then the English notification repeats it. Start at the English '1. Short title' — the same convention reinsurance_regulations_2018 uses — so the masthead and the enabling preamble stay out.",
-  "scope_start": "^1\\.\\s*Short title",
+  "// scope": "A bilingual gazette: the Hindi text comes first and is dropped wholesale by the Devanagari ignore pattern, then the English notification repeats it. Start at the English '1. Short title' — the same convention reinsurance_regulations_2018 uses — so the masthead and the enabling preamble stay out. The comma is load-bearing: this amendment heads 'Short title, and commencement:' while its 2019 base regulation heads 'Short title and commencement'. The two documents are otherwise structurally identical, so a looser anchor makes this spec segment the BASE document just as cleanly and tie with it in detection — stamping RAC_AMD_2025 ids onto 2019 clauses.",
+  "scope_start": "^1\\.\\s*Short title, and commencement",
   "default_section_prefix": "RAC_AMD_2025",
   "// section": "Operative paragraphs 1., 2., 3. sit at x0=78; the nested (1)/(2) are at 96 and (a)/(b) at 114, so max_x0 80 admits only real section starts. The inserted sub-regulation '1A.' cannot match anyway — \\d+\\. requires a digit immediately before the period.",
   "section": {"match": "^(\\d+)\\.\\s", "delimiter": ":", "max_x0": 80},

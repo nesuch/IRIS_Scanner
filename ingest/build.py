@@ -65,7 +65,8 @@ def to_xlsx(rows, sheet, path):
 
 def run(spec_path, pdf_path, out_path):
     spec=json.load(open(spec_path))
-    L,D=extract(pdf_path, ignore_patterns=spec.get('ignore_patterns'))
+    L,D=extract(pdf_path, ignore_patterns=spec.get('ignore_patterns'),
+                small=spec.get('small_type'))
     for step in spec.get('preprocess', []):
         if step == 'explode_layout_tables':
             L = explode_layout_tables(L)
