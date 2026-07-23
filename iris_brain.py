@@ -204,17 +204,31 @@ def search_root(word, stem=None):
     cp = common_prefix(w, s or "")
     return cp if len(cp) >= 3 else w
 
+@functools.lru_cache(maxsize=4096)
+def _root_re(root):
+    """Compiled `\\broot\\w*` matcher, memoized on the root.
+
+    These two functions are the hottest code in the whole search path: profiled on
+    a 19-word universal query, _root_present alone accounts for 37,730 calls and
+    re.Pattern.search is 62% of the request. Building the pattern STRING on every
+    call meant re.escape ran 60,005 times and re's internal cache was re-entered
+    93,204 times per request, purely to rediscover the same handful of patterns.
+    The root vocabulary per query is tiny (a dozen), so caching the compiled object
+    removes all of that. Bounded at 4096 because roots come from user queries.
+    """
+    return re.compile(rf"\b{re.escape(root)}\w*")
+
 def _root_present(root, text, text_join):
     """Does `root` prefix-match a word in the text? Checks the text AND a
     hyphen-collapsed copy so a typed 'deempanelment' matches 'de-empanelment'
     (and vice-versa) — hyphenation in regulatory terms shouldn't break search."""
-    pat = rf"\b{re.escape(root)}\w*"
-    return bool(re.search(pat, text)) or bool(re.search(pat, text_join))
+    rx = _root_re(root)
+    return bool(rx.search(text)) or bool(rx.search(text_join))
 
 def _root_count(root, text, text_join):
-    pat = rf"\b{re.escape(root)}\w*"
-    a = re.findall(pat, text)
-    return len(a) if a else len(re.findall(pat, text_join))
+    rx = _root_re(root)
+    a = rx.findall(text)
+    return len(a) if a else len(rx.findall(text_join))
 
 def get_doc_type(filename):
     fname = filename.upper()
