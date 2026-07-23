@@ -22,7 +22,7 @@ import time
 from datetime import datetime, timedelta
 
 import pandas as pd
-from flask import Blueprint, request, jsonify, session, send_file, Response
+from flask import Blueprint, request, jsonify, session, send_file, Response, g
 
 import iris_brain as brain
 import storage
@@ -303,15 +303,62 @@ def api_reset_password_valid(token):
 # ----------------------------------------------------------------------------
 # SEARCH  (mirrors handle_search; returns structured data instead of HTML)
 # ----------------------------------------------------------------------------
+def _asset_map():
+    """All DocumentAssets keyed by source_doc, loaded ONCE per request.
+
+    _doc_pdf_url and _doc_bundle are called per clause, and a search renders up to
+    70 of them — that was 70 (now 140) single-row queries to answer a question
+    about at most a handful of distinct documents. flask.g scopes the cache to the
+    request, so an upload in the same process is still seen by the next one.
+    """
+    m = getattr(g, "_iris_assets", None)
+    if m is None:
+        try:
+            m = {str(a.source_doc): a for a in _app.DocumentAsset.query.all()}
+        except Exception:
+            m = {}
+        g._iris_assets = m
+    return m
+
+
 def _doc_pdf_url(source):
     """Prefer an admin-attached PDF for this document; else the bundled static PDF.
     Includes a version param so a replaced PDF busts the viewer/HTTP cache."""
-    asset = _app.DocumentAsset.query.filter_by(source_doc=str(source)).first()
+    asset = _asset_map().get(str(source))
     if asset and asset.pdf_filename:
         v = int(asset.uploaded_at.timestamp()) if asset.uploaded_at else 0
         return f"/api/doc-pdf/{asset.id}/download?v={v}"
     p = _app.resolve_pdf_path(str(source).strip().upper())
     return ("/static/" + p) if p else None
+
+
+# Extension -> content type for supplementary bundles. Anything unlisted streams
+# as octet-stream, which browsers download rather than try to render.
+_BUNDLE_TYPES = {
+    ".zip": "application/zip",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".csv": "text/csv",
+}
+
+
+def _doc_bundle(source):
+    """{url, name} for a document's supplementary bundle, else None.
+
+    Separate from _doc_pdf_url because the two are consumed differently: the PDF
+    feeds an inline viewer, the bundle is download-only. Every clause of a
+    document with a bundle offers it, so an officer reading one clause can pull
+    the annexure forms without navigating anywhere.
+    """
+    a = _asset_map().get(str(source))
+    if not a or not a.bundle_filename:
+        return None
+    ts = a.bundle_uploaded_at or a.uploaded_at
+    v = int(ts.timestamp()) if ts else 0
+    return {"url": f"/api/doc-bundle/{a.id}/download?v={v}", "name": a.bundle_filename}
 
 
 def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None,
@@ -532,6 +579,9 @@ def _match_payload(m):
         "header": m.get("header", ""),
         "raw_text": str(m.get("raw_text", "")),
         "pdf_url": _doc_pdf_url(m.get("source", "")),
+        # Present on EVERY clause of a document that has one, so the annexures are
+        # reachable from whichever clause the search happened to land on.
+        "bundle": _doc_bundle(m.get("source", "")),
         "tags": brain.clause_tags(m.get("id", ""), m.get("source", "")),
         "html": brain.clause_html(m.get("id", ""), m.get("source", "")),
         **_doc_status(m.get("source", "")),
@@ -1367,6 +1417,7 @@ def api_clause_docs():
             "clauses": int(len(g)),
             "edited": edited,
             "pdf_url": _doc_pdf_url(str(src)),
+            "bundle": _doc_bundle(str(src)),
             "has_uploaded_pdf": bool(asset and asset.pdf_filename),
         })
     docs.sort(key=lambda d: d["source"].lower())
@@ -1659,6 +1710,7 @@ def api_clause_readable():
             "effective_date": (asset.effective_date if asset else None),
             "clauses": int(len(g)),
             "pdf_url": _doc_pdf_url(str(src)),
+            "bundle": _doc_bundle(str(src)),
         })
     docs.sort(key=lambda d: d["source"].lower())
     return jsonify({"docs": docs})
@@ -1694,6 +1746,7 @@ def api_clause_doc_read():
         "status": (asset.status if asset and asset.status else "Active"),
         "effective_date": (asset.effective_date if asset else None),
         "pdf_url": _doc_pdf_url(source),
+        "bundle": _doc_bundle(source),
         "clauses": out,
     })
 
@@ -1733,6 +1786,7 @@ def api_doc_delete():
     if asset:
         try:
             storage.delete_doc_pdf(asset.pdf_filename)
+            storage.delete_doc_bundle(asset.bundle_filename)
         except Exception as e:
             print(f"doc pdf delete: {e}")
         _app.db.session.delete(asset)
@@ -1763,6 +1817,70 @@ def api_doc_pdf_upload():
     m.db.session.commit()
     _audit(f"Attached source PDF to '{source}'", "Document PDF")
     return jsonify({"ok": True, "pdf_url": f"/api/doc-pdf/{asset.id}/download?v={int(asset.uploaded_at.timestamp())}"})
+
+
+@api_bp.post("/clause/doc-bundle")
+def api_doc_bundle_upload():
+    """Editor: attach/replace the supplementary bundle for a document (the
+    annexure ZIP, a form workbook, etc.). Kept apart from the source PDF, which
+    the viewer renders inline."""
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
+    source = (request.form.get("source") or "").strip()
+    f = request.files.get("file")
+    ext = os.path.splitext((f.filename if f else "") or "")[1].lower()
+    if not source or not f or ext not in _BUNDLE_TYPES:
+        return jsonify({"ok": False, "message":
+                        "Provide a document and a %s file." % ", ".join(sorted(_BUNDLE_TYPES))}), 400
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", source) + "_annexures" + ext
+    m = _app
+    asset = m.DocumentAsset.query.filter_by(source_doc=source).first()
+    if asset is None:
+        asset = m.DocumentAsset(source_doc=source)
+        m.db.session.add(asset)
+    # Replacing with a DIFFERENT extension would otherwise orphan the old blob.
+    old = asset.bundle_filename
+    storage.save_doc_bundle(safe, f.read(), _BUNDLE_TYPES[ext])
+    if old and old != safe:
+        storage.delete_doc_bundle(old)
+    asset.bundle_filename = safe
+    asset.bundle_uploaded_at = datetime.utcnow()
+    m.db.session.commit()
+    g._iris_assets = None            # this request just changed it
+    _audit(f"Attached annexure bundle to '{source}'", "Document bundle")
+    return jsonify({"ok": True, "bundle": _doc_bundle(source)})
+
+
+@api_bp.delete("/clause/doc-bundle")
+def api_doc_bundle_delete():
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
+    source = (request.args.get("source") or "").strip()
+    asset = _app.DocumentAsset.query.filter_by(source_doc=source).first()
+    if asset and asset.bundle_filename:
+        storage.delete_doc_bundle(asset.bundle_filename)
+        asset.bundle_filename = None
+        asset.bundle_uploaded_at = None
+        _app.db.session.commit()
+        _audit(f"Removed annexure bundle from '{source}'", "Document bundle")
+    return jsonify({"ok": True})
+
+
+@api_bp.get("/doc-bundle/<int:aid>/download")
+def api_doc_bundle_serve(aid):
+    """Stream a document's annexure bundle as a download (never inline)."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    a = _app.DocumentAsset.query.get_or_404(aid)
+    if not a.bundle_filename:
+        return jsonify({"ok": False, "message": "No bundle attached."}), 404
+    data = storage.load_doc_bundle(a.bundle_filename)
+    if data is None:
+        return jsonify({"ok": False, "message": "Bundle not found."}), 404
+    ext = os.path.splitext(a.bundle_filename)[1].lower()
+    return send_file(io.BytesIO(data),
+                     mimetype=_BUNDLE_TYPES.get(ext, "application/octet-stream"),
+                     as_attachment=True, download_name=a.bundle_filename)
 
 
 @api_bp.get("/doc-pdf/<int:aid>/download")

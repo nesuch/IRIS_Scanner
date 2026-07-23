@@ -89,3 +89,34 @@ def _load(prefix, local_dir, filename):
         with open(path, "rb") as fh:
             return fh.read()
     return None
+
+
+def save_doc_bundle(filename, data, content_type="application/octet-stream"):
+    """Persist a supplementary bundle (annexure zip, form docx/xlsx) for a document."""
+    if _BUCKET:
+        _bucket().blob(f"docbundle/{filename}").upload_from_string(data, content_type=content_type)
+    else:
+        os.makedirs(LOCAL_DOC_DIR, exist_ok=True)
+        with open(os.path.join(LOCAL_DOC_DIR, filename), "wb") as fh:
+            fh.write(data)
+    return filename
+
+
+def load_doc_bundle(filename):
+    return _load("docbundle", LOCAL_DOC_DIR, filename)
+
+
+def delete_doc_bundle(filename):
+    if not filename:
+        return
+    if _BUCKET:
+        try:
+            _bucket().blob(f"docbundle/{filename}").delete()
+        except Exception as e:
+            print(f"GCS delete error: {e}")
+    path = os.path.join(LOCAL_DOC_DIR, os.path.basename(filename))
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass

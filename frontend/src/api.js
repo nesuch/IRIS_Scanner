@@ -55,6 +55,7 @@ async function request(method, path, body, opts = {}) {
 export const api = {
   get: (p, opts) => request('GET', p, undefined, opts),
   post: (p, body, opts) => request('POST', p, body, opts),
+  del: (p, opts) => request('DELETE', p, undefined, opts),
   // Trigger a file download from a POST endpoint (xlsx export).
   async download(p, body, filename) {
     const res = await fetch('/api' + p, {

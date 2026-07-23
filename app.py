@@ -292,6 +292,13 @@ class DocumentAsset(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     source_doc = db.Column(db.String(255), nullable=False, unique=True, index=True)
     pdf_filename = db.Column(db.String(300), nullable=True)
+    # A supplementary bundle (zip/docx/xlsx/...) shipped alongside the document —
+    # e.g. the Cyber Security Guidelines 2026 annexures, which IRDAI itself
+    # distributes as a ZIP. Kept SEPARATE from pdf_filename on purpose:
+    # pdf_filename feeds an inline PDF viewer, and a zip in that slot would break
+    # it. This one is download-only.
+    bundle_filename = db.Column(db.String(300), nullable=True)
+    bundle_uploaded_at = db.Column(db.DateTime, nullable=True)
     uploaded_by = db.Column(db.String(255), nullable=True)
     uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     # Doc-level metadata for imported (non-registry) documents: where they sit in
@@ -628,6 +635,8 @@ def _ensure_database_schema():
             "doc_date_iso": "VARCHAR(10)",  # YYYY-MM-DD; doc_date is free text and unsortable
         },
         "document_assets": {
+            "bundle_filename": "VARCHAR(300)",   # annexure/supplement bundle (zip, docx, ...)
+            "bundle_uploaded_at": "DATETIME",
             "parent_doc": "VARCHAR(255)",
             "status": "VARCHAR(16)",
             "effective_date": "VARCHAR(40)",

@@ -436,6 +436,41 @@ function DocMetaModal({ doc, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [hasPdf, setHasPdf] = useState(!!doc.has_uploaded_pdf);
+  const [bundleBusy, setBundleBusy] = useState(false);
+  const [bundle, setBundle] = useState(doc.bundle || null);
+
+  // Supplementary annexure bundle — separate from the source PDF because that one
+  // is rendered inline by the viewer and a zip in that slot would break it.
+  const BUNDLE_EXT = ['.zip', '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv'];
+
+  async function replaceBundle(e) {
+    const f = e.target.files?.[0] || null;
+    e.target.value = '';
+    if (!f) return;
+    const name = f.name.toLowerCase();
+    if (!BUNDLE_EXT.some((x) => name.endsWith(x))) {
+      toast.error(`Choose a ${BUNDLE_EXT.join(', ')} file`); return;
+    }
+    setBundleBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', f); fd.append('source', doc.source);
+      const r = await api.post('/clause/doc-bundle', fd);
+      setBundle(r.bundle || null);
+      toast.success('Annexure bundle attached');
+      onSaved({ bundle: r.bundle || null });
+    } catch (err) { toast.error(err.message || 'Could not upload the bundle'); }
+    finally { setBundleBusy(false); }
+  }
+
+  async function removeBundle() {
+    setBundleBusy(true);
+    try {
+      await api.del(`/clause/doc-bundle?source=${encodeURIComponent(doc.source)}`);
+      setBundle(null); toast.success('Annexure bundle removed'); onSaved({ bundle: null });
+    } catch (err) { toast.error(err.message || 'Could not remove the bundle'); }
+    finally { setBundleBusy(false); }
+  }
 
   async function replacePdf(e) {
     const f = e.target.files?.[0] || null;
@@ -535,6 +570,21 @@ function DocMetaModal({ doc, onClose, onSaved }) {
           {pdfBusy ? <Spinner size={13} /> : <i className="fas fa-file-arrow-up" />} {hasPdf ? 'Replace PDF' : 'Attach PDF'}
           <input type="file" accept="application/pdf" onChange={replacePdf} disabled={pdfBusy} style={{ display: 'none' }} />
         </label>
+      </div>
+      <div className="field" style={{ marginTop: 4 }}>
+        <label>Annexures <span style={{ color: 'var(--faint)', fontWeight: 400 }}>
+          ({bundle ? bundle.name : 'none'} — offered as a download on every clause of this document)</span></label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label className="btn btn-ghost btn-sm" style={{ cursor: bundleBusy ? 'default' : 'pointer', width: 'fit-content' }}>
+            {bundleBusy ? <Spinner size={13} /> : <i className="fas fa-file-zipper" />} {bundle ? 'Replace bundle' : 'Attach bundle'}
+            <input type="file" accept=".zip,.pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={replaceBundle} disabled={bundleBusy} style={{ display: 'none' }} />
+          </label>
+          {bundle && (
+            <button className="btn btn-ghost btn-sm" onClick={removeBundle} disabled={bundleBusy}>
+              <i className="fas fa-trash" /> Remove
+            </button>
+          )}
+        </div>
       </div>
     </Modal>
   );

@@ -204,6 +204,7 @@ function DocReader({ source, target }) {
         <Link className="btn btn-ghost btn-sm" to="/read"><i className="fas fa-folder-open" /> All documents</Link>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowToc((s) => !s)}><i className={`fas ${showToc ? 'fa-list-ul' : 'fa-list'}`} /> {showToc ? 'Hide index' : 'Index'}</button>
         {data.pdf_url && <button className="btn btn-ghost btn-sm" onClick={() => setShowPdf((s) => !s)}><i className={`fas ${showPdf ? 'fa-eye-slash' : 'fa-file-pdf'}`} /> {showPdf ? 'Hide PDF' : 'Original PDF'}</button>}
+        {data.bundle && <a className="btn btn-ghost btn-sm" href={data.bundle.url} download title={`Download the annexures for this document (${data.bundle.name})`}><i className="fas fa-file-zipper" /> Annexures</a>}
       </PageHeader>
 
       <div className="reader-statusbar">

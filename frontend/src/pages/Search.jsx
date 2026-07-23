@@ -206,6 +206,15 @@ function ClauseCard({ m, keywords, phraseKeywords, copy, onOpenPane, onFlag, glo
           {m.pdf_url && (
             <a className="pdf-btn" href={m.pdf_url} target="_blank" rel="noreferrer"><i className="fas fa-file-pdf" /> PDF</a>
           )}
+          {/* Annexure bundle (e.g. the Cyber Security Guidelines 2026 forms, which
+              IRDAI ships as a ZIP). Offered on EVERY clause of the document, so it
+              is reachable from whichever clause the search landed on. */}
+          {m.bundle && (
+            <a className="pdf-btn" href={m.bundle.url} download
+               title={`Download the annexures for this document (${m.bundle.name})`}>
+              <i className="fas fa-file-zipper" /> Annexures
+            </a>
+          )}
           <button className="copy-btn" title="Copy clause" onClick={() => copy(m.html, m.raw_text)}><i className="far fa-copy" /></button>
           <button className="flag-btn" title="Flag this clause" onClick={() => onFlag(m)}><i className="fas fa-flag" /></button>
         </span>
