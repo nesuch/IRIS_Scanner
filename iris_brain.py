@@ -3,6 +3,7 @@ import pandas as pd # type: ignore
 import os
 import re
 import functools
+import bisect
 import json
 from datetime import datetime
 import glob
@@ -274,17 +275,136 @@ def _add_search_cols(df):
     derived = df["Clause_Text"].fillna("").astype(str).map(_derive_search_columns)
     df[_CT_LC] = derived.str[0]
     df[_CT_LCJ] = derived.str[1]
+    # The index is derived from these columns, so it is rebuilt in the same call
+    # that rebuilds them — the two can never drift. Both KB load paths
+    # (load_knowledge_base, refresh_kb) route through here.
+    build_prefix_index(df)
     return df
+
+# ---------------------------------------------------------------------------
+# Prefix index over the clause corpus.
+#
+# `\broot\w*` asks exactly one question: "does some word here START with root?"
+# The regex answers it by rescanning ~1,875 chars of clause text, once per root,
+# per clause, on every request — profiled at 37,730 _root_present calls and 62%
+# of a 19-word universal query. That is a prefix LOOKUP being computed as a scan.
+#
+# So invert it once at load: a sorted vocabulary + postings (which clauses hold
+# each word). bisect to the prefix range, union the postings, and the answer for
+# ALL clauses arrives in one lookup per root. Measured on the real KB: 195.1ms of
+# regex for 11 roots becomes 0.08ms, with byte-identical result sets.
+#
+# Both text forms feed ONE index. _root_present is `raw OR hyphen-collapsed`, so
+# indexing the tokens of both and taking the union reproduces it exactly — no
+# second structure needed. (_root_count is NOT a union — it counts in the raw text
+# and only falls back to the collapsed form when that is zero — so it deliberately
+# stays on the regex path.)
+#
+# Postings hold DataFrame index LABELS, not row positions: module scoping filters
+# the frame with a boolean mask, which preserves labels but renumbers positions.
+_IDX_TOKEN = re.compile(r"\w+")
+_IDX_MAP = None      # word -> set of index labels
+_IDX_WORDS = ()      # sorted tuple of _IDX_MAP keys, the bisect target
+
+
+def _index_tokens(lc, lcj):
+    """Every \\w+ token of one clause, from both search forms."""
+    toks = set(_IDX_TOKEN.findall(lc))
+    if "-" in lc:
+        toks |= set(_IDX_TOKEN.findall(lcj))
+    return toks
+
+
+def build_prefix_index(df):
+    """(Re)build the whole index from a frame. ~100ms for 1,299 clauses / ~10MB."""
+    global _IDX_MAP, _IDX_WORDS
+    if df is None or getattr(df, "empty", True) or _CT_LC not in getattr(df, "columns", ()):
+        _IDX_MAP, _IDX_WORDS = None, ()
+        return
+    m = {}
+    for label, lc, lcj in zip(df.index, df[_CT_LC].fillna("").astype(str),
+                              df[_CT_LCJ].fillna("").astype(str)):
+        for w in _index_tokens(lc, lcj):
+            s = m.get(w)
+            if s is None:
+                m[w] = {label}
+            else:
+                s.add(label)
+    _IDX_MAP = m
+    _IDX_WORDS = tuple(sorted(m))
+
+
+def _idx_update(label, old_tokens, new_tokens):
+    """Incremental edit for one clause. Keeps _IDX_WORDS sorted via insort rather
+    than re-sorting 9k words per keystroke; edits are rare, lookups are not."""
+    global _IDX_WORDS
+    if _IDX_MAP is None:
+        return
+    for w in old_tokens - new_tokens:
+        s = _IDX_MAP.get(w)
+        if s is not None:
+            s.discard(label)
+            if not s:
+                del _IDX_MAP[w]
+                i = bisect.bisect_left(_IDX_WORDS, w)
+                if i < len(_IDX_WORDS) and _IDX_WORDS[i] == w:
+                    _IDX_WORDS = _IDX_WORDS[:i] + _IDX_WORDS[i + 1:]
+    for w in new_tokens - old_tokens:
+        s = _IDX_MAP.get(w)
+        if s is None:
+            _IDX_MAP[w] = {label}
+            i = bisect.bisect_left(_IDX_WORDS, w)
+            _IDX_WORDS = _IDX_WORDS[:i] + (w,) + _IDX_WORDS[i:]
+        else:
+            s.add(label)
+
+
+def clauses_with_root(root):
+    """Index labels of every clause where `root` prefix-matches a word — the whole
+    corpus answer that _root_present gives one clause at a time.
+
+    Returns None when the index cannot answer, and the caller MUST fall back to the
+    regex path. That happens when the index isn't built, or when the root is not a
+    pure \\w+ token: a compound like "actl/ibnr" contains a separator, so `\\b...\\w*`
+    no longer means "a word starts with this" and the equivalence breaks.
+    """
+    if _IDX_MAP is None or not root:
+        return None
+    r = str(root).lower()
+    if not _IDX_TOKEN.fullmatch(r):
+        return None
+    i = bisect.bisect_left(_IDX_WORDS, r)
+    out = set()
+    words = _IDX_WORDS
+    n = len(words)
+    while i < n and words[i].startswith(r):
+        out |= _IDX_MAP[words[i]]
+        i += 1
+    return out
+
 
 def set_clause_text(mask, text):
     """The ONLY sanctioned way to write Clause_Text into the in-memory cache. Keeps
-    the derived search columns in lock-step with the text so they can never go
-    stale (see the INVARIANT above). `mask` is any pandas row selector."""
+    the derived search columns AND the prefix index in lock-step with the text so
+    they can never go stale (see the INVARIANT above). `mask` is any pandas row
+    selector."""
     lc, lcj = _derive_search_columns(text)
+    # Read the OLD tokens before overwriting, so the index can drop them. Doing this
+    # from the frame means we never need a second label->words map to mirror.
+    stale = []
+    if _IDX_MAP is not None and _CT_LC in KB_CACHE_DF.columns:
+        old = KB_CACHE_DF.loc[mask, [_CT_LC, _CT_LCJ]]
+        for label, o_lc, o_lcj in zip(old.index, old[_CT_LC].fillna("").astype(str),
+                                      old[_CT_LCJ].fillna("").astype(str)):
+            stale.append((label, _index_tokens(o_lc, o_lcj)))
     KB_CACHE_DF.loc[mask, "Clause_Text"] = text
     if _CT_LC in KB_CACHE_DF.columns:
         KB_CACHE_DF.loc[mask, _CT_LC] = lc
         KB_CACHE_DF.loc[mask, _CT_LCJ] = lcj
+    if stale:
+        fresh = _index_tokens(lc, lcj)
+        for label, old_tokens in stale:
+            _idx_update(label, old_tokens, fresh)
 
 def normalize_tag_text(text: str) -> str:
     return " ".join(re.findall(r"\w+", str(text).lower().replace("_", " "))).strip()
