@@ -315,7 +315,7 @@ def _doc_pdf_url(source):
 
 
 def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None,
-                 root_keys=None, known_keys=None):
+                 root_keys=None, known_keys=None, root_masks=None):
     """Query-derived relevance scoring: returns (score, promote).
 
     Lifted out of api_search so a second corpus (PQ replies) can rank by the same
@@ -380,7 +380,7 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None,
     # the whole clause ONCE and buckets them into sentences by offset, so the cost is
     # O(roots) passes regardless of how long the clause is.
     _root_res = [re.compile(rf"\b{re.escape(r)}\w*") for r in core_roots]
-    _SENT_SPLIT = re.compile(r"[\n;]+|\.\s")
+    _SENT_SPLIT = brain.SENT_SPLIT   # shared with the index, which bakes it in at load
 
     def _line_cover(t):
         """The most distinct query roots any ONE sentence of the clause holds."""
@@ -402,6 +402,38 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None,
                         best = n
                         if best == len(core_roots):
                             return best
+        return best
+
+    def _line_cover_idx(k):
+        """Proximity from the prefix index: each root carries a bitmask of the
+        sentences it occurs in, so the answer is the highest number of roots sharing
+        any single bit. Returns None when the index cannot answer for this row (or
+        for any one root), and the caller falls back to the scan above."""
+        if root_masks is None or known_keys is None or k not in known_keys:
+            return None
+        if len(core_roots) < 2:
+            return 0
+        ms = []
+        for r in core_roots:
+            d = root_masks.get(r)
+            if d is None:
+                return None
+            ms.append(d.get(k, 0))
+        bits = 0
+        for m in ms:
+            bits |= m
+        best = 0
+        while bits:
+            b = bits & -bits          # lowest set bit == one sentence
+            n = 0
+            for m in ms:
+                if m & b:
+                    n += 1
+            if n > best:
+                best = n
+                if best == len(core_roots):
+                    return best
+            bits ^= b
         return best
 
     _scores = {}
@@ -456,7 +488,8 @@ def _make_scorer(phrase_l, core_roots, multi, run_len_cap=None,
         # binary same_line flag that required ALL words in one line, so "3 of your 4
         # words in one sentence" scored the same as none of them; it was also never
         # read by any caller.
-        line_cover = _line_cover(t)
+        _lc_idx = _line_cover_idx(k)
+        line_cover = _line_cover(t) if _lc_idx is None else _lc_idx
         run = _run_len(t) if _scan_runs else 0
         s = (verbatim, line_cover, allwords, run, cover)
         _scores[k] = s
@@ -2210,20 +2243,24 @@ def api_search():
     # (root, candidate) — and the pre-ranking pass runs over every candidate.
     # Built with the SAME normalisation brain uses for its match dicts
     # (Source_Doc verbatim, Clause_ID str()+strip()), or the keys would not meet.
-    _root_keys, _known_keys = None, None
+    _root_keys, _known_keys, _root_masks = None, None, None
     try:
         _lab_key = {lab: (src, str(cid).strip()) for lab, src, cid
                     in zip(KB_DF.index, KB_DF["Source_Doc"], KB_DF["Clause_ID"])}
         _known_keys = set(_lab_key.values())
-        _root_keys = {}
+        _root_keys, _root_masks = {}, {}
         for r in core_roots:
             labs = brain.clauses_with_root(r)
             _root_keys[r] = None if labs is None else {_lab_key[l] for l in labs if l in _lab_key}
+            _sm = brain.sentence_masks(r)
+            _root_masks[r] = None if _sm is None else {
+                _lab_key[l]: b for l, b in _sm.items() if l in _lab_key}
     except Exception:
-        _root_keys, _known_keys = None, None      # any doubt -> regex path
+        _root_keys, _known_keys, _root_masks = None, None, None   # any doubt -> regex
 
     _prescore, _ = _make_scorer(phrase_l, core_roots, multi, run_len_cap=0,
-                                root_keys=_root_keys, known_keys=_known_keys)
+                                root_keys=_root_keys, known_keys=_known_keys,
+                                root_masks=_root_masks)
 
     def _by_relevance(matches):
         return sorted(matches, key=lambda m: tuple(-v for v in _prescore(m)))
@@ -2305,7 +2342,8 @@ def api_search():
     # already decides those queries — so it is skipped there and kept for the short
     # and mid-length queries whose typo tolerance depends on it.
     _score, _promote = _make_scorer(phrase_l, core_roots, multi, run_len_cap=10,
-                                    root_keys=_root_keys, known_keys=_known_keys)
+                                    root_keys=_root_keys, known_keys=_known_keys,
+                                    root_masks=_root_masks)
 
     # Run for multi-word phrases AND single content words: a clause containing the
     # exact query text is a "best match" and must rank above stem-family / loosely-

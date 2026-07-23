@@ -302,17 +302,45 @@ def _add_search_cols(df):
 #
 # Postings hold DataFrame index LABELS, not row positions: module scoping filters
 # the frame with a boolean mask, which preserves labels but renumbers positions.
+#
+# Each posting also carries WHERE in the clause the word occurs, as a bitmask of
+# sentence numbers. That serves the proximity score (_line_cover: "the most query
+# roots any ONE sentence holds"), which is otherwise a finditer per root over the
+# full clause text and, once presence was indexed, became the single largest cost
+# in the request at 31%.
+#
+# The sentence bits come from the RAW lower-cased text only, never the
+# hyphen-collapsed form, because _line_cover matches against the raw text. Tokens
+# that exist only after collapsing hyphens ("deempanelment" from "de-empanelment")
+# are therefore stored with an EMPTY mask: present for the presence query, and
+# contributing no sentence to the proximity query — which is exactly what the
+# regex does.
 _IDX_TOKEN = re.compile(r"\w+")
-_IDX_MAP = None      # word -> set of index labels
+# Canonical sentence splitter. api._line_cover imports THIS rather than keeping its
+# own copy: the index bakes the segmentation in at load time, so two definitions
+# drifting apart would silently corrupt every proximity score.
+SENT_SPLIT = re.compile(r"[\n;]+|\.\s")
+_IDX_MAP = None      # word -> {index label: sentence bitmask}
 _IDX_WORDS = ()      # sorted tuple of _IDX_MAP keys, the bisect target
 
 
-def _index_tokens(lc, lcj):
-    """Every \\w+ token of one clause, from both search forms."""
-    toks = set(_IDX_TOKEN.findall(lc))
+def _clause_tokens(lc, lcj):
+    """{word: sentence bitmask} for one clause, over both search forms."""
+    starts = [0]
+    for mm in SENT_SPLIT.finditer(lc):
+        starts.append(mm.end())
+    out = {}
+    for mm in _IDX_TOKEN.finditer(lc):
+        i = bisect.bisect_right(starts, mm.start()) - 1
+        if i < 0:
+            continue
+        w = mm.group(0)
+        out[w] = out.get(w, 0) | (1 << i)
     if "-" in lc:
-        toks |= set(_IDX_TOKEN.findall(lcj))
-    return toks
+        for w in _IDX_TOKEN.findall(lcj):
+            if w not in out:
+                out[w] = 0
+    return out
 
 
 def build_prefix_index(df):
@@ -324,39 +352,41 @@ def build_prefix_index(df):
     m = {}
     for label, lc, lcj in zip(df.index, df[_CT_LC].fillna("").astype(str),
                               df[_CT_LCJ].fillna("").astype(str)):
-        for w in _index_tokens(lc, lcj):
-            s = m.get(w)
-            if s is None:
-                m[w] = {label}
+        for w, bits in _clause_tokens(lc, lcj).items():
+            d = m.get(w)
+            if d is None:
+                m[w] = {label: bits}
             else:
-                s.add(label)
+                d[label] = bits
     _IDX_MAP = m
     _IDX_WORDS = tuple(sorted(m))
 
 
 def _idx_update(label, old_tokens, new_tokens):
-    """Incremental edit for one clause. Keeps _IDX_WORDS sorted via insort rather
-    than re-sorting 9k words per keystroke; edits are rare, lookups are not."""
+    """Incremental edit for one clause. Keeps _IDX_WORDS sorted by splicing rather
+    than re-sorting 9k words per edit; edits are rare, lookups are not."""
     global _IDX_WORDS
     if _IDX_MAP is None:
         return
-    for w in old_tokens - new_tokens:
-        s = _IDX_MAP.get(w)
-        if s is not None:
-            s.discard(label)
-            if not s:
+    for w in old_tokens.keys() - new_tokens.keys():
+        d = _IDX_MAP.get(w)
+        if d is not None:
+            d.pop(label, None)
+            if not d:
                 del _IDX_MAP[w]
                 i = bisect.bisect_left(_IDX_WORDS, w)
                 if i < len(_IDX_WORDS) and _IDX_WORDS[i] == w:
                     _IDX_WORDS = _IDX_WORDS[:i] + _IDX_WORDS[i + 1:]
-    for w in new_tokens - old_tokens:
-        s = _IDX_MAP.get(w)
-        if s is None:
-            _IDX_MAP[w] = {label}
+    # Every surviving word is re-stamped, not just the new ones: an edit moves text
+    # around, so a word the clause already had can land in a different sentence.
+    for w, bits in new_tokens.items():
+        d = _IDX_MAP.get(w)
+        if d is None:
+            _IDX_MAP[w] = {label: bits}
             i = bisect.bisect_left(_IDX_WORDS, w)
             _IDX_WORDS = _IDX_WORDS[:i] + (w,) + _IDX_WORDS[i:]
         else:
-            s.add(label)
+            d[label] = bits
 
 
 def clauses_with_root(root):
@@ -378,7 +408,33 @@ def clauses_with_root(root):
     words = _IDX_WORDS
     n = len(words)
     while i < n and words[i].startswith(r):
-        out |= _IDX_MAP[words[i]]
+        out |= _IDX_MAP[words[i]].keys()
+        i += 1
+    return out
+
+
+def sentence_masks(root):
+    """{index label: sentence bitmask} for every clause where `root` prefix-matches,
+    merged across the words it matches. Bit s set means "a word starting with root
+    occurs in sentence s". None on the same conditions as clauses_with_root.
+
+    This is the whole-corpus form of _line_cover's inner loop: with one of these per
+    query root, the proximity score for a clause is a popcount over the ANDed bits
+    instead of a finditer per root over the full text.
+    """
+    if _IDX_MAP is None or not root:
+        return None
+    r = str(root).lower()
+    if not _IDX_TOKEN.fullmatch(r):
+        return None
+    i = bisect.bisect_left(_IDX_WORDS, r)
+    words = _IDX_WORDS
+    n = len(words)
+    out = {}
+    while i < n and words[i].startswith(r):
+        for label, bits in _IDX_MAP[words[i]].items():
+            if bits:
+                out[label] = out.get(label, 0) | bits
         i += 1
     return out
 
@@ -396,13 +452,13 @@ def set_clause_text(mask, text):
         old = KB_CACHE_DF.loc[mask, [_CT_LC, _CT_LCJ]]
         for label, o_lc, o_lcj in zip(old.index, old[_CT_LC].fillna("").astype(str),
                                       old[_CT_LCJ].fillna("").astype(str)):
-            stale.append((label, _index_tokens(o_lc, o_lcj)))
+            stale.append((label, _clause_tokens(o_lc, o_lcj)))
     KB_CACHE_DF.loc[mask, "Clause_Text"] = text
     if _CT_LC in KB_CACHE_DF.columns:
         KB_CACHE_DF.loc[mask, _CT_LC] = lc
         KB_CACHE_DF.loc[mask, _CT_LCJ] = lcj
     if stale:
-        fresh = _index_tokens(lc, lcj)
+        fresh = _clause_tokens(lc, lcj)
         for label, old_tokens in stale:
             _idx_update(label, old_tokens, fresh)
 
