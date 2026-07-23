@@ -1,0 +1,29 @@
+{
+  "doc_id": "IAC_MEET_2000",
+  "sheet_name": "IRDA (The Insurance Advisory Committee) (Meetings) Regulations, 2000",
+  "// source": "Segmented from a RE-OCR of the gazette scan (ocr_regulations/IRDA_IAC_Meetings_Regulations_2000_OCR.pdf), not the original PDF — that one's embedded text is unusable ('1. Short title, ntent and commencement', 'These regulalt0ns may be called'). Tesseract at 300dpi --psm 6 recovers the wording and, critically, the clause NUMBERS.",
+  "// noise": "The last four ignore patterns are OCR speckle from the scan: stray marks that survive as 1-6 character lines, and the garbled Hindi running heads ('Curt are 4] SRG FUT: STATA', 'Ie Fagus ZL') that no Devanagari range can catch because the OCR emitted them as Latin.",
+  "ignore_patterns": [
+    "[\\u0900-\\u097F]",
+    "THE GAZETTE OF INDIA",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY",
+    "^NOTIFICATION$",
+    "^New Delhi,",
+    "RANGACHARY",
+    ",\\s*Chair(man|person)\\s*$",
+    "^\\[No\\.\\s*ADVT",
+    "^Printed by",
+    "Controller of Publications",
+    "^[^A-Za-z0-9]{1,6}$",
+    "^[a-z]\\s*[^A-Za-z0-9]{1,6}$",
+    "^Curt are\\b",
+    "^Ie Fagus\\b"
+  ],
+  "scope_start": "^1\\.\\s*Short title",
+  "default_section_prefix": "IAC_MEET_2000",
+  "// section": "Regulation heads drift x0 54-72 because the scan is skewed page to page, so max_x0 is loose at 75; the sub-items are '(1)'/'(a)' which cannot match a bare-number pattern anyway.",
+  "section": {"match": "^(\\d+)\\.\\s*(?=[A-Za-z])", "delimiter": ":", "max_x0": 75},
+  "// regulation 4": "Regulation 4 (Quorum) has no clause of its own: its number is physically destroyed in the scan and OCRs as 'y +. Quorum.-' at every dpi/psm setting tried. Its text is present and folds into regulation 3. Split it in Doc Studio after import if it needs its own id.",
+  "attach_orphans_to_last": true,
+  "tag_rule": {"max_len": 300}
+}
