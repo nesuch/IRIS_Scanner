@@ -1,0 +1,29 @@
+{
+  "doc_id": "CORP_AGENT_REGS",
+  "sheet_name": "IRDAI (Registration of Corporate Agents) Regulations, 2015",
+  "// source": "Segmented from a RE-OCR of the gazette scan (ocr_regulations/IRDAI_Registration_of_Corporate_Agents_2015_OCR.pdf). The original PDF is an image scan whose embedded text is unusable — 1,102 distinct font sizes and 430 lines of OCR junk. The re-OCR measures 8% junk-prefixed lines and 3% scrambled, against 6%/0% for the cleanest document in this set.",
+  "ignore_patterns": [
+    "[\\u0900-\\u097F]",
+    "THE GAZETTE OF INDIA",
+    "INSURANCE REGULATORY AND DEVELOPMENT AUTHORITY",
+    "^NOTIFICATION$",
+    "^Hyderabad,",
+    "^New Delhi,",
+    ",\\s*Chair(man|person)\\s*$",
+    "^\\[?\\s*ADVT",
+    "^Printed by",
+    "Controller of Publications",
+    "^[^A-Za-z0-9]{1,6}$",
+    "^[a-z]\\s*[^A-Za-z0-9]{1,6}$"
+  ],
+  "// small_type": "Tesseract sizes the text layer from the glyph heights it measured, and on this scan that lands at 9pt for 177 of the ~380 English lines — under the 9.5 default, so nearly half the document (including the 'Short Title' line the scope starts at) was dropped as footnotes and segmentation ran on the Hindi pages instead. 8.5 keeps the 9/10/11pt body and still drops the 5pt speckle.",
+  "small_type": 8.5,
+  "scope_start": "^1\\.\\s*Short Title and Commencement",
+  "default_section_prefix": "CORP_AGENT_REGS",
+  "// section": "Regulation heads drift x0 42-86 because the scan is skewed page to page, so max_x0 is loose at 90. Optional space after the number with a letter lookahead, the form used across this spec set.",
+  "section": {"match": "^(\\d+)\\.\\s*(?=[A-Za-z])", "delimiter": ":", "max_x0": 90},
+  "// form_starts": "Regulations run 1..33; from SCHEDULE I on, pages 59-87 are schedules and application forms whose items restart at '1.' at the same x0 and would otherwise re-segment as regulations.",
+  "form_starts": ["^SCHEDULE\\s+I\\s*\\|?\\s*$"],
+  "attach_orphans_to_last": true,
+  "tag_rule": {"max_len": 300}
+}
