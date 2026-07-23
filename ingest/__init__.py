@@ -9,7 +9,7 @@ import os
 import re
 
 from .extract import extract
-from .preprocess import explode_layout_tables, explode_stage_matrix
+from .preprocess import explode_layout_tables, explode_stage_matrix, explode_policy_headers
 from .segment import segment
 from .build import validate
 
@@ -150,6 +150,8 @@ def detect_spec(pdf_path, limit=5):
                     blocks = explode_layout_tables(blocks)
                 elif step == "explode_stage_matrix":
                     blocks = explode_stage_matrix(blocks)
+                elif step == "explode_policy_headers":
+                    blocks = explode_policy_headers(blocks)
             rows, inscope, excluded, assigned, spec_errors, warnings = segment(blocks, spec)
             report = validate(blocks, dropped, inscope, excluded, assigned, rows)
         except Exception:
@@ -190,6 +192,8 @@ def segment_pdf(pdf_path, spec):
             blocks = explode_layout_tables(blocks)
         elif step == "explode_stage_matrix":
             blocks = explode_stage_matrix(blocks)
+        elif step == "explode_policy_headers":
+            blocks = explode_policy_headers(blocks)
     rows, inscope, excluded, assigned, spec_errors, warnings = segment(blocks, spec)
     report = validate(blocks, dropped, inscope, excluded, assigned, rows)
     report["duplicate_ids"] = warnings   # surfaced, not hidden — review signal

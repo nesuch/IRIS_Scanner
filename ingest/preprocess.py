@@ -293,3 +293,93 @@ def explode_layout_tables(blocks):
     for i, blk in enumerate(out):
         blk['n'] = i + 1
     return out
+
+
+# ---------------------------------------------------------------------------
+# Policy-domain headers (IRDAI Information & Cyber Security Guidelines, 2026).
+#
+# Chapter 2 of that document — 24 policy domains over pages 27-170, i.e. 82% of
+# it — has NO heading lines at all. Each domain is introduced by a small table:
+#
+#     | Policy No.:   | 2.2                  |
+#     | Policy Name:  | 2.2. Asset Management |
+#
+# so the only line the segmenter can see in the whole chapter is "2.0 Security
+# Domain Policies". Without this pass the entire chapter collapses into ONE
+# clause holding 120 tables, which is useless to search against.
+#
+# This re-emits each such header table as a single synthetic heading line
+# ("2.2. Asset Management") that an ordinary section pattern can match, and
+# drops the header table itself (its content is entirely reproduced in the line).
+# The CONTENT tables that follow are left untouched, so the body keeps its
+# markdown. Opt-in per spec via: "preprocess": ["explode_policy_headers"]
+_POLICY_NO_RX = re.compile(r'policy\s*no', re.I)
+# The number cell is reliable across every variant seen (2.1, 2.7, 2.8, 2.24);
+# it is the NAME cell that is unreliable, so the number is what we key on.
+_POLICY_NUM_RX = re.compile(r'\d+\s*\.\s*\d+')
+# The 2026 PDF's text layer breaks a word after its first letter in one heading
+# ("2 .8 B ring your own device"). Rejoin a stray single letter onto the
+# lowercase run that follows it, excluding "a"/"i", which are real words.
+_STRAY_LETTER_RX = re.compile(r'\b(?![AaIi]\b)([A-Za-z])\s+(?=[a-z])')
+
+
+# A row that is part of the header label block, not policy content. The label is
+# sometimes split over two rows ("Policy" / "Name:") and the value duplicated
+# across columns.
+_POLICY_LABEL_RX = re.compile(r'^(policy\s*no\.?:?|policy\s*name:?|policy|name:?)?$', re.I)
+
+
+def _policy_header_line(rows):
+    """(number, name, header_only) for a 'Policy No.' header table, else None.
+
+    header_only is False when the table ALSO carries policy content rows. In the
+    2026 PDF the 2.9 header and its Purpose/Scope/Policy rows land in one table,
+    so replacing that table wholesale would silently delete the content — the
+    caller keeps the table in that case and only ADDS the heading line.
+    """
+    if not rows or not rows[0] or not _POLICY_NO_RX.search(rows[0][0]):
+        return None
+    num = None
+    name_cells = []
+    header_only = True
+    for r in rows:
+        first = (r[0] if r else '').strip()
+        rest = [c for c in r[1:] if c.strip()]
+        if not _POLICY_LABEL_RX.match(first):
+            header_only = False          # a content row (col-0 is "1", "2", ...)
+            continue
+        if _POLICY_NO_RX.search(first):
+            m = _POLICY_NUM_RX.search(' '.join(rest) or first)
+            if m:
+                num = re.sub(r'\s+', '', m.group(0))
+            continue
+        for c in rest:
+            if c not in name_cells:
+                name_cells.append(c)
+    if not num:
+        return None
+    name = ' '.join(name_cells).strip()
+    name = re.sub(r'^\d+\s*\.\s*\d+\.?\s*', '', name)      # drop the repeated number
+    name = _STRAY_LETTER_RX.sub(r'\1', name)
+    name = re.sub(r'\s+', ' ', name).strip(' .:')
+    return num, name, header_only
+
+
+def explode_policy_headers(blocks):
+    out = []
+    for b in blocks:
+        if b.get('kind') != 'table':
+            out.append(b)
+            continue
+        parsed = _policy_header_line(_parse_gfm(b.get('md') or ''))
+        if not parsed:
+            out.append(b)
+            continue
+        num, name, header_only = parsed
+        out.append({'kind': 'line', 'n': b['n'], 'page': b['page'], 'x0': b['x0'],
+                    'text': f'{num}. {name}' if name else f'{num}.', 'size': 12.0})
+        if not header_only:
+            out.append(b)                # content rides along in this table - keep it
+    for i, blk in enumerate(out):
+        blk['n'] = i + 1
+    return out

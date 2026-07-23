@@ -1,0 +1,30 @@
+{
+  "doc_id": "CYBER_GDL_2026",
+  "sheet_name": "IRDAI Information and Cyber Security Guidelines, 2026",
+  "// source": "guidelines/cyber2026/'IRDAI Information & Cyber Security Guidelines 2026.pdf' (VER 2.0, April 2026), 175 pages. NOT the file the guidelines register links as pdf_url_1 — that is only the 2-page covering circular (ref IRDAI/GA&HR/CIR/MISC/51/4/2026, 06 Apr 2026), which says the guidelines are 'attached as Annexure - B'. Annexure B is a ZIP on the document-detail page holding this PDF plus Annexures I-VI. Born-digital (Word 2016), clean text layer.",
+  "// structure": "Two chapters. Chapter 1 (pp 5-26) is ordinary prose with heading lines 1.1-1.10. Chapter 2 (pp 27-170) is 24 policy domains and is almost entirely TABLES — pages 29-36 carry exactly one block each. Its domains have no heading LINE at all; each is introduced by a 'Policy No. / Policy Name' table, so the only line the segmenter can see across 82% of the document is '2.0 Security Domain Policies'. explode_policy_headers re-emits those header tables as heading lines; without it the whole chapter collapses into one clause holding 120 tables.",
+  "preprocess": ["explode_policy_headers"],
+  "ignore_patterns": [
+    "^\\s*(1\\.0|2\\.0)\\s+(General Guidelines|GENERAL GUIDELINES|Security Domain Policies|SECURITY DOMAIN POLICIES)\\s*$",
+    "^Page\\s+\\d+\\s+of\\s+\\d+$",
+    "^VER\\s*[–-]\\s*\\d"
+  ],
+  "// scope_start": "Pages 1-4 are the cover, a two-page table of contents whose entries ('1.1. Purpose .......') look exactly like headings, and a distribution list. '1.1. Purpose' is the first real provision; the TOC copy of that line carries dot leaders and so cannot match an anchored, end-terminated pattern.",
+  "scope_start": "^1\\.1\\.\\s*Purpose\\s*$",
+  "default_section_prefix": "CYBER_GDL_2026",
+  "// section": "Restricted to 1.x and 2.x deliberately. A bare '^\\\\d+\\\\.\\\\d+' matches 38 lines, 24 of which are table-row fragments from the control tables ('3.6 RACI Matrix Responsible Accountable Consulted Informed', '3.2 Cloud 1. Public Cloud-'), because those rows begin with their own in-table numbering. There is no chapter 3, so anchoring the first digit to [12] removes every false positive and leaves exactly the 34 real headings. [1-9] excludes the '1.0'/'2.0' chapter dividers, which appear TWICE each (a caps title page and a title-case repeat) and would collide on id.",
+  "section": {"match": "^([12]\\.[1-9]\\d*)\\.?\\s+(?=[A-Za-z])", "delimiter": ":", "max_x0": 80},
+  "// heading_on_own_line": "Headings carry no delimiter ('2.11. Network Security'), so without this the segmenter joins following lines hunting for one and drags body text into the tag.",
+  "heading_on_own_line": true,
+  "// containers": "Annexure A (p171), the Annexure B RACI matrix (p172) and the Glossary (p174) close the document and carry no section numbering of their own.",
+  "containers": [
+    {"head_match": "^(Annexure)\\s+A\\s*$", "id_prefix": "CYBER_GDL_2026-ANX-A",
+     "clause_template": "Annexure A:", "collect_body": true, "include": true},
+    {"head_match": "^(Annexure)\\s+B\\s*[-–]\\s*RACI Matrix.*$", "id_prefix": "CYBER_GDL_2026-ANX-B",
+     "clause_template": "Annexure B — RACI Matrix:", "collect_body": true, "include": true},
+    {"head_match": "^(Glossary)\\s*$", "id_prefix": "CYBER_GDL_2026-GLOSSARY",
+     "clause_template": "Glossary:", "collect_body": true, "include": true}
+  ],
+  "attach_orphans_to_last": true,
+  "tag_rule": {"max_len": 300}
+}
