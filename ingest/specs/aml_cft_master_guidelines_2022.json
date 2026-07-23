@@ -1,0 +1,27 @@
+{
+  "doc_id": "AML_CFT_MG",
+  "sheet_name": "Master Guidelines on Anti-Money Laundering / Counter Financing of Terrorism (AML/CFT), 2022",
+  "// source": "guidelines/IRDAI_Master_Guidelines_AML_CFT_2022.pdf, ref IRDAI/IID/GDL/MISC/160/8/2022 dated 1 August 2022, in force from 1 November 2022. Born-digital, clean text layer — no OCR needed.",
+  "ignore_patterns": [
+    "^Master Guidelines on AML/CFT\\s+Page\\s+\\d+",
+    "^Ref:\\s*IRDAI/IID/GDL/MISC/160/8/2022",
+    "^\\* The above circulars have been repealed"
+  ],
+  "// scope_start": "Pages 1-2 are the covering circular to insurers and its own numbered paragraphs (2., 3., 4.) would otherwise segment as guideline sections. The guidelines proper begin on page 3 at '1. Introduction'; the covering letter has no '1.' of its own, so this anchor is unambiguous.",
+  "scope_start": "^1\\.\\s*Introduction",
+  "default_section_prefix": "AML_CFT_MG",
+  "// section": "Two-level numbering. Section heads ('8. Know Your Customer (KYC) Norms') sit at x0 72.0; their sub-items ('8.1.7.7.') start at x0 86.2 and deeper. max_x0 80 is what separates them — the number pattern alone cannot, since '8.' is a prefix of '8.1.'. Letter lookahead keeps a bare figure from opening a section.",
+  "section": {"match": "^(\\d+)\\.\\s+(?=[A-Za-z])", "delimiter": ":", "max_x0": 80},
+  "// heading_on_own_line": "Headings here carry no delimiter ('8. Know Your Customer (KYC) Norms', not '8. KYC:—'). Without this flag the segmenter keeps joining following lines while it hunts for one, so the first sentence of the body ends up inside the heading and therefore inside the tag ('Introduction_1_1_in_Terms_of_the_Provisions_of_Prevention_of_Money_Lau').",
+  "heading_on_own_line": true,
+  "// containers": "Annexure I (p24, annual compliance certificate), II (p25, the V-CIP/VBIP process), III (p28, the Section 51A UAPA procedure) and the Appendix (p32, the repealed-circular table) carry right-aligned headings at x0 471-485, far outside the section max_x0, so the section pattern cannot see them. Without containers they all fell into section 22 as attached orphans — a single 16,344-char clause headed 'Notwithstanding anything contained in these guidelines', which is where a search for the VBIP process would have had to land. They are substantive and cross-referenced by name from sections 5, 8 and 16, so each gets an id of its own.",
+  "// collect_body": "Required here. A bare container only sets an id prefix for sections NESTED under it, and these annexures contain no numbered section at the section x0 — so without collect_body they emitted nothing and their text fell through to attach_orphans_to_last exactly as before. collect_body makes the container own the free-form body that follows it.",
+  "containers": [
+    {"head_match": "^Annexure\\s+([IVX]+)\\s*$", "id_prefix": "AML_CFT_MG-ANX-{head}",
+     "clause_template": "Annexure {head}:", "collect_body": true, "include": true},
+    {"head_match": "^(Appendix)\\s*$", "id_prefix": "AML_CFT_MG-APP",
+     "clause_template": "Appendix — list of circulars repealed:", "collect_body": true, "include": true}
+  ],
+  "attach_orphans_to_last": true,
+  "tag_rule": {"max_len": 300}
+}
