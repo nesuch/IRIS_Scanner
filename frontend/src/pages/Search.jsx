@@ -249,7 +249,15 @@ function ClauseCard({ m, keywords, phraseKeywords, copy, onOpenPane, onFlag, glo
 // must NOT re-render every time the user types the NEXT query in the search box.
 // Its props (the stored `resp` + the stable callbacks below) don't change while
 // typing, so React.memo skips the whole subtree — killing the per-keystroke lag.
-const ResultCards = memo(function ResultCards({ resp, onChip, onOpenPane, onFlag }) {
+// While the user is still typing, the block is a live PREVIEW: cap how many cards
+// it renders. A full result set is ~70 cards / ~5,900 DOM nodes / ~700 highlight
+// <mark>s, and building that subtree is ~100ms+ of synchronous main-thread work.
+// Now that search returns in ~100-500ms, that render fires in every typing pause
+// and blocks the next keystroke. Rendering a handful instead keeps the preview
+// cheap; the full set renders once, on Enter, when the block stops being a preview.
+const PREVIEW_CAP = { phrase: 6, tag: 3, content: 3 };
+
+const ResultCards = memo(function ResultCards({ resp, preview, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
   // Global expand/collapse-all: allState is the target (true/false) or null
   // (untouched — cards keep their size-based default); allSeq forces cards to
@@ -284,12 +292,17 @@ const ResultCards = memo(function ResultCards({ resp, onChip, onOpenPane, onFlag
     return <p className="iris-msg">{resp.note} {flagNoResult}</p>;
   }
 
-  const phraseGroups = groupByType(resp.phrase_matches || []);
-  const hasPhrase = (resp.phrase_matches || []).length > 0;
-  const groups = groupByType(resp.matches || []);
-  const hasMatches = (resp.matches || []).length > 0;
-  const contentGroups = groupByType(resp.content_matches || []);
-  const hasContent = (resp.content_matches || []).length > 0;
+  // Cap each tier while this is a live preview; render everything once committed.
+  const _cap = (arr, n) => (preview ? (arr || []).slice(0, n) : (arr || []));
+  const phraseMatches = _cap(resp.phrase_matches, PREVIEW_CAP.phrase);
+  const tagMatches = _cap(resp.matches, PREVIEW_CAP.tag);
+  const contentMatches = _cap(resp.content_matches, PREVIEW_CAP.content);
+  const phraseGroups = groupByType(phraseMatches);
+  const hasPhrase = phraseMatches.length > 0;
+  const groups = groupByType(tagMatches);
+  const hasMatches = tagMatches.length > 0;
+  const contentGroups = groupByType(contentMatches);
+  const hasContent = contentMatches.length > 0;
 
   const card = (m, mi) => (
     <ClauseCard key={`${m.id}-${mi}`} m={m} keywords={resp.highlight || []}
@@ -300,7 +313,7 @@ const ResultCards = memo(function ResultCards({ resp, onChip, onOpenPane, onFlag
 
   // Only worth offering expand/collapse-all when something is likely collapsible
   // (coarse char check; each card still decides for itself by measured height).
-  const hasCollapsible = [...(resp.phrase_matches || []), ...(resp.matches || []), ...(resp.content_matches || [])]
+  const hasCollapsible = [...phraseMatches, ...tagMatches, ...contentMatches]
     .some((m) => String(m.raw_text || '').length > TOOLBAR_MIN_CHARS);
 
   return (
@@ -325,7 +338,7 @@ const ResultCards = memo(function ResultCards({ resp, onChip, onOpenPane, onFlag
       {hasPhrase && (
         <div className="phrase-tier">
           <div className="phrase-tier-band">
-            <i className="fas fa-bullseye" /> Best matches for “{resp.phrase || resp.query_label}” — {(resp.phrase_matches || []).length} clause{(resp.phrase_matches || []).length === 1 ? '' : 's'}
+            <i className="fas fa-bullseye" /> Best matches for “{resp.phrase || resp.query_label}” — {phraseMatches.length} clause{phraseMatches.length === 1 ? '' : 's'}
           </div>
           {phraseGroups.map((g, gi) => {
             const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
@@ -356,7 +369,7 @@ const ResultCards = memo(function ResultCards({ resp, onChip, onOpenPane, onFlag
       {hasContent && (
         <div className="content-tier">
           <div className="content-tier-band">
-            <i className="fas fa-align-left" /> Also found in the text of {(resp.content_matches || []).length} clause{(resp.content_matches || []).length === 1 ? '' : 's'}
+            <i className="fas fa-align-left" /> Also found in the text of {contentMatches.length} clause{contentMatches.length === 1 ? '' : 's'}
             {hasMatches && <span className="content-tier-sub"> (beyond the tagged matches above)</span>}
           </div>
           {contentGroups.map((g, gi) => {
@@ -587,8 +600,10 @@ export default function Search({ module }) {
       // this render as interruptible, so the urgent input update preempts it and the
       // letter shows immediately; the cards paint a frame later. Only the live path
       // needs this — a committed (Enter) search has nothing racing it.
+      // A live block is a capped PREVIEW (preview:true) so its render stays cheap
+      // while typing; a committed search renders in full (preview:false).
       const applyResp = () =>
-        setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, response: resp } : x)));
+        setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, response: resp, preview: live } : x)));
       if (live) startTransition(applyResp);
       else applyResp();
     } catch (err) {
@@ -614,7 +629,14 @@ export default function Search({ module }) {
     }
     if (!q) return;
     // Live results are already on screen — Enter just commits the block & clears.
-    if (liveIdRef.current) { liveIdRef.current = null; setQuery(''); return; }
+    if (liveIdRef.current) {
+      // Commit the live preview: keep its results, but drop the preview cap so the
+      // full set renders now that the user has settled on this query.
+      const liveId = liveIdRef.current; liveIdRef.current = null;
+      setHistory((h) => h.map((x) => (x.id === liveId ? { ...x, preview: false } : x)));
+      setQuery('');
+      return;
+    }
     // Slash-command routing: /deep runs a deep scan, /clause does a clause lookup.
     const p = parseSlash(q);
     if (p && p.kind === 'cmd') {
@@ -792,7 +814,7 @@ export default function Search({ module }) {
             <div className="chat-block iris">
               <div className="chat-label">IRIS</div>
               <div className="bubble iris-bubble">
-                {item.response ? <ResultCards resp={item.response} onChip={onChip} onOpenPane={openPane} onFlag={openFlag} />
+                {item.response ? <ResultCards resp={item.response} preview={item.preview} onChip={onChip} onOpenPane={openPane} onFlag={openFlag} />
                   : item.error ? <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
                   : <span className="typing"><span /><span /><span /></span>}
               </div>
