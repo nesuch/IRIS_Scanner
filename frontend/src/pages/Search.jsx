@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -580,7 +580,17 @@ export default function Search({ module }) {
       if (docGroups.length && selected.size < total) body.sources = [...selected]; // subset only; all => omit
       const resp = await api.post('/search', body);
       if (live && seq !== liveSeqRef.current) return;   // a newer keystroke superseded this
-      setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, response: resp } : x)));
+      // Committing a live response renders 30-70 clause cards at once. This runs in
+      // a fetch .then() (not a React event), so React 18 flushes it SYNCHRONOUSLY
+      // and blocks the main thread for the whole commit — which is why a key pressed
+      // just as results land takes a beat to appear in the box. startTransition marks
+      // this render as interruptible, so the urgent input update preempts it and the
+      // letter shows immediately; the cards paint a frame later. Only the live path
+      // needs this — a committed (Enter) search has nothing racing it.
+      const applyResp = () =>
+        setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, response: resp } : x)));
+      if (live) startTransition(applyResp);
+      else applyResp();
     } catch (err) {
       if (live && seq !== liveSeqRef.current) return;
       setHistory((h) => h.map((x) => (x.id === entryId ? { ...x, error: err.message } : x)));
