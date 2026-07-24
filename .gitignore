@@ -194,3 +194,6 @@ iris.db-shm
 iris_backup_*.db
 seed_archive/
 frontend/.claude/
+
+# databases live on disk / litestream, never committed (deploy seed ships via .gcloudignore)
+*.db
