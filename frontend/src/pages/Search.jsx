@@ -255,9 +255,9 @@ function ClauseCard({ m, keywords, phraseKeywords, copy, onOpenPane, onFlag, glo
 // Now that search returns in ~100-500ms, that render fires in every typing pause
 // and blocks the next keystroke. Rendering a handful instead keeps the preview
 // cheap; the full set renders once, on Enter, when the block stops being a preview.
-const PREVIEW_CAP = { phrase: 6, tag: 3, content: 3 };
+const PREVIEW_CAP = { phrase: 10, tag: 3, content: 3 };
 
-const ResultCards = memo(function ResultCards({ resp, preview, onChip, onOpenPane, onFlag }) {
+const ResultCards = memo(function ResultCards({ resp, preview, blockId, onExpand, onChip, onOpenPane, onFlag }) {
   const toast = useToast();
   // Global expand/collapse-all: allState is the target (true/false) or null
   // (untouched — cards keep their size-based default); allSeq forces cards to
@@ -297,6 +297,13 @@ const ResultCards = memo(function ResultCards({ resp, preview, onChip, onOpenPan
   const phraseMatches = _cap(resp.phrase_matches, PREVIEW_CAP.phrase);
   const tagMatches = _cap(resp.matches, PREVIEW_CAP.tag);
   const contentMatches = _cap(resp.content_matches, PREVIEW_CAP.content);
+  // True totals — the tier headers must show these even in preview, so the count
+  // never lies (a query with 12 best matches must say "12", not the capped 10).
+  const totalPhrase = (resp.phrase_matches || []).length;
+  const totalTag = (resp.matches || []).length;
+  const totalContent = (resp.content_matches || []).length;
+  const hiddenCount = (totalPhrase - phraseMatches.length)
+    + (totalTag - tagMatches.length) + (totalContent - contentMatches.length);
   const phraseGroups = groupByType(phraseMatches);
   const hasPhrase = phraseMatches.length > 0;
   const groups = groupByType(tagMatches);
@@ -338,7 +345,7 @@ const ResultCards = memo(function ResultCards({ resp, preview, onChip, onOpenPan
       {hasPhrase && (
         <div className="phrase-tier">
           <div className="phrase-tier-band">
-            <i className="fas fa-bullseye" /> Best matches for “{resp.phrase || resp.query_label}” — {phraseMatches.length} clause{phraseMatches.length === 1 ? '' : 's'}
+            <i className="fas fa-bullseye" /> Best matches for “{resp.phrase || resp.query_label}” — {totalPhrase} clause{totalPhrase === 1 ? '' : 's'}
           </div>
           {phraseGroups.map((g, gi) => {
             const st = TYPE_STYLES[g.type] || TYPE_STYLES.UNKNOWN;
@@ -369,7 +376,7 @@ const ResultCards = memo(function ResultCards({ resp, preview, onChip, onOpenPan
       {hasContent && (
         <div className="content-tier">
           <div className="content-tier-band">
-            <i className="fas fa-align-left" /> Also found in the text of {contentMatches.length} clause{contentMatches.length === 1 ? '' : 's'}
+            <i className="fas fa-align-left" /> Also found in the text of {totalContent} clause{totalContent === 1 ? '' : 's'}
             {hasMatches && <span className="content-tier-sub"> (beyond the tagged matches above)</span>}
           </div>
           {contentGroups.map((g, gi) => {
@@ -382,6 +389,14 @@ const ResultCards = memo(function ResultCards({ resp, preview, onChip, onOpenPan
             );
           })}
         </div>
+      )}
+
+      {/* Preview is truncated — say so, and let one click (or Enter) reveal the rest.
+          Without this, a relevant clause sitting just past the cap looks omitted. */}
+      {preview && hiddenCount > 0 && (
+        <button className="preview-more" onClick={() => onExpand && onExpand(blockId)}>
+          <i className="fas fa-angles-down" /> {hiddenCount} more result{hiddenCount === 1 ? '' : 's'} — show all (or press Enter)
+        </button>
       )}
 
       {(resp.chips || []).length > 0 && (
@@ -675,6 +690,13 @@ export default function Search({ module }) {
   }, []);
   const openPane = useCallback((m) => setPdfPane({ url: m.pdf_url, source: m.source }), []);
   const openFlag = useCallback((m) => setFlagClause(m), []);
+  // Expand a preview block to its full result set (same effect as pressing Enter on
+  // it). Stable identity + block id passed as a prop, so ResultCards' memo holds and
+  // the result list still doesn't re-render on every keystroke.
+  const expandBlock = useCallback((id) => {
+    if (liveIdRef.current === id) liveIdRef.current = null;
+    setHistory((h) => h.map((x) => (x.id === id ? { ...x, preview: false } : x)));
+  }, []);
 
   function onInput(e) {
     const val = e.target.value;
@@ -814,7 +836,7 @@ export default function Search({ module }) {
             <div className="chat-block iris">
               <div className="chat-label">IRIS</div>
               <div className="bubble iris-bubble">
-                {item.response ? <ResultCards resp={item.response} preview={item.preview} onChip={onChip} onOpenPane={openPane} onFlag={openFlag} />
+                {item.response ? <ResultCards resp={item.response} preview={item.preview} blockId={item.id} onExpand={expandBlock} onChip={onChip} onOpenPane={openPane} onFlag={openFlag} />
                   : item.error ? <p className="iris-msg" style={{ color: 'var(--bad)' }}>{item.error}</p>
                   : <span className="typing"><span /><span /><span /></span>}
               </div>
