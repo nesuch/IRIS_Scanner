@@ -59,14 +59,16 @@ _AGG_CONTAINS = ("private_sector_insurers", "public_sector_insurers",
 
 
 def entity_type(dimension, insurer_id):
-    t = DIM_TO_TYPE.get(dimension)
-    if t:
-        return t
+    # Aggregate detection runs FIRST, before the dimension mapping. Every typed
+    # dimension carries its own subtotal row — dimension='Channel' holds a "Total"
+    # alongside Brokers and Individual Agents — and mapping by dimension alone made
+    # that Total a channel, so a channel-mix chart showed "Total: 50%" as if it were
+    # a distribution channel.
     iid = (insurer_id or "").lower()
     if (iid in _AGG_EXACT or iid.endswith(_AGG_SUFFIX)
             or any(a in iid for a in _AGG_CONTAINS)):
         return "aggregate"
-    return "insurer"
+    return DIM_TO_TYPE.get(dimension, "insurer")
 
 
 # --- insurer class -----------------------------------------------------------

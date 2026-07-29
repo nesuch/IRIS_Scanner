@@ -14,6 +14,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import { PageLoading } from '../components/UI.jsx';
 import { api } from '../api.js';
 import Compare from './insurer/Compare.jsx';
+import Industry from './insurer/Industry.jsx';
 import './insurer/insurer360.css';
 
 const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Reinsurer', 'FRB'];
@@ -85,6 +86,7 @@ export default function Insurer360() {
   const [mode, setMode] = useState('single');     // 'single' | 'compare'
   const [cmpIds, setCmpIds] = useState([]);       // up to 4
   const [cmp, setCmp] = useState(null);
+  const [ind, setInd] = useState(null);
 
   useEffect(() => {
     api.get('/insurer/list')
@@ -117,6 +119,15 @@ export default function Insurer360() {
       .finally(() => setLoading(false));
   }, [mode, cmpIds]);
 
+  useEffect(() => {
+    if (mode !== 'industry' || ind) return;
+    setLoading(true); setErr(null);
+    api.get('/insurer/industry')
+      .then((d) => setInd(d))
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [mode, ind]);
+
   const nameOf = useCallback((id) => {
     for (const c of CLASS_ORDER) {
       const hit = (classes[c] || []).find((x) => x.id === id);
@@ -128,7 +139,8 @@ export default function Insurer360() {
   return (
     <>
       <PageHeader fullForm="Supervisory Intelligence" title="Insurer 360"
-        scope={mode === 'compare'
+        scope={mode === 'industry' ? 'Market-level trends'
+          : mode === 'compare'
           ? (cmpIds.length >= 2
               ? `Comparing ${cmpIds.length} insurers`
               : 'Comparison — pick at least two')
@@ -158,6 +170,8 @@ export default function Insurer360() {
               onClick={() => setMode('single')}>Single</button>
             <button type="button" className={mode === 'compare' ? 'on' : ''}
               onClick={() => setMode('compare')}>Compare</button>
+            <button type="button" className={mode === 'industry' ? 'on' : ''}
+              onClick={() => setMode('industry')}>Industry</button>
           </span>
         </div>
 
@@ -191,6 +205,7 @@ export default function Insurer360() {
         {loading && <PageLoading />}
 
         {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} />}
+        {!loading && mode === 'industry' && <Industry data={ind} />}
 
         {!loading && mode === 'single' && data && (
           <>

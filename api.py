@@ -992,6 +992,113 @@ def api_insurer_compare():
     })
 
 
+@api_bp.get("/insurer/industry")
+def api_industry_trends():
+    """Market-level trends: size and growth by class, concentration, channel mix,
+    and industry-wide conduct.
+
+    Everything here is built by aggregating INSURER rows rather than reading the
+    handbook's own industry totals. That is deliberate: the totals rows are
+    inconsistent across years and dimensions (some exist only at sector level, some
+    double as entities), whereas summing entity_type='insurer' is reproducible and
+    matches what the per-insurer screens show. entity_type is what makes it safe —
+    without it the sum would swallow states, channels and sector subtotals.
+    """
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    df = _ins_frame()
+    if df is None:
+        return jsonify({"ok": False, "message": "Financial engine not loaded."}), 503
+
+    # There is NO valid cross-class premium line, and reaching for one is the exact
+    # trap this module keeps warning about: `gross_premium__inr` looks universal but
+    # for life insurers it is a minor sub-line — LIC reports ₹334 Cr on it against a
+    # real book of lakhs of crores, which would have put the entire life industry at
+    # ₹2,386 Cr on this screen. Each class therefore uses ITS OWN premium basis, and
+    # the classes are never summed into one "industry total".
+    PREM_BY_CLASS = {
+        "General": ("gross_direct_premium_within_india__inr", "Gross Direct Premium"),
+        "SAHI": ("gross_direct_premium_within_india__inr", "Gross Direct Premium"),
+        "Life": ("total_premium__inr", "Total Premium"),
+    }
+
+    size, concentration, basis = {}, {}, {}
+    for cls, (mid, plabel) in PREM_BY_CLASS.items():
+        basis[cls] = plabel
+        c = df[(df["metric_id"] == mid) & (df["insurer_class"] == cls)]
+        if c.empty:
+            continue
+        by_year = c.groupby("fy_canonical")["value_base"].sum()
+        size[cls] = [{"fy": f, "v": float(v)} for f, v in
+                     sorted(by_year.items(), key=lambda kv: kv[0])]
+        # Concentration is a supervisory measure the handbook does NOT publish.
+        # HHI = sum of squared percentage shares (0-10,000). Above ~2,500 is
+        # conventionally "highly concentrated".
+        hh = []
+        for fy, grp in c.groupby("fy_canonical"):
+            shares = grp.groupby("insurer_id")["value_base"].sum()
+            tot = float(shares.sum())
+            if tot <= 0 or len(shares) < 2:
+                continue
+            pct = (shares / tot * 100.0)
+            top5 = float(pct.sort_values(ascending=False).head(5).sum())
+            hh.append({"fy": fy, "hhi": round(float((pct ** 2).sum())),
+                       "top5": round(top5, 1), "n": int(len(shares))})
+        concentration[cls] = sorted(hh, key=lambda x: x["fy"])
+
+    # CAGR over the longest common window per class — a single number that says
+    # more than a slope, and immune to a one-off spike at either end.
+    growth = {}
+    for cls, series in size.items():
+        if len(series) >= 2 and series[0]["v"] > 0:
+            n = len(series) - 1
+            growth[cls] = round(((series[-1]["v"] / series[0]["v"]) ** (1 / n) - 1) * 100, 1)
+
+    # Channel mix — how the market actually reaches customers, and how that shifts.
+    full = brain.UNIFIED_DF
+    chan = []
+    if full is not None and "entity_type" in full.columns:
+        cf = full[(full["entity_type"] == "channel")
+                  & (full["metric_id"] == "gross_premium__inr")
+                  & full["value_base"].notna()]
+        if not cf.empty:
+            latest = sorted(cf["fy_canonical"].dropna().unique())[-1]
+            cur = cf[cf["fy_canonical"] == latest].groupby("Entity")["value_base"].sum()
+            tot = float(cur.sum())
+            if tot > 0:
+                chan = [{"name": k, "v": float(v), "pct": round(float(v) / tot * 100, 1)}
+                        for k, v in cur.sort_values(ascending=False).items() if v > 0][:8]
+            chan_fy = latest
+        else:
+            chan_fy = None
+    else:
+        chan_fy = None
+
+    # Industry conduct: raw counts grow with the market, so the normalised rate is
+    # the one that tells a supervisor whether things are actually getting worse.
+    conduct = []
+    rep = df[df["metric_id"] == "reported_during_the_year__count"]
+    pol = df[df["metric_id"] == "no_of_policies__count"]
+    if not rep.empty and not pol.empty:
+        r_by = rep.groupby("fy_canonical")["value_base"].sum()
+        p_by = pol.groupby("fy_canonical")["value_base"].sum()
+        for fy in sorted(set(r_by.index) & set(p_by.index)):
+            if float(p_by[fy]) > 0:
+                conduct.append({"fy": fy, "reported": float(r_by[fy]),
+                                "per_lakh": round(float(r_by[fy]) / float(p_by[fy]) * 1e5, 1)})
+
+    return jsonify({
+        "ok": True,
+        "premium_basis": basis,
+        "size": size,
+        "growth_cagr": growth,
+        "concentration": concentration,
+        "channel_mix": chan,
+        "channel_fy": chan_fy,
+        "conduct": conduct,
+    })
+
+
 @api_bp.get("/documents")
 def api_documents():
     """Document tree (Act → Regulation → Circular) + download links + status, for

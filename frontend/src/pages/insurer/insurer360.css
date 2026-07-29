@@ -107,3 +107,39 @@
 .cmp-trendcell { padding: 4px 8px !important; }
 .cmp-trend { width: 118px; height: 34px; }
 .cmp-foot { margin-top: 14px; font-size: 11.5px; color: var(--faint); line-height: 1.6; }
+
+/* ---- industry trends ----------------------------------------------------- */
+.ind-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px; margin-bottom: 12px; }
+.ind-card { background: #fff; border: 1px solid var(--line-strong); border-left: 4px solid;
+  border-radius: 10px; padding: 13px 16px; }
+.ind-card-t { font-size: 11px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); }
+.ind-card-v { font-size: 25px; font-weight: 800; margin: 4px 0 2px; color: var(--ink, #0f172a); }
+.ind-card-s { font-size: 11px; color: var(--faint); }
+.ind-basis { display: block; font-size: 10px; font-style: italic; margin-top: 3px; }
+
+/* The basis caveat is not decorative — summing these classes would be arithmetic
+   on incompatible premium definitions, so the note sits next to the numbers. */
+.ind-note { background: var(--navy-50, #eef2fb); border: 1px dashed var(--line-strong);
+  border-radius: 8px; padding: 10px 14px; font-size: 12px; line-height: 1.6;
+  color: var(--navy-700, #1e3a8a); margin-bottom: 18px; }
+
+.ind-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+.ind-panel { background: #fff; border: 1px solid var(--line-strong); border-radius: 10px; padding: 14px 16px 12px; }
+.ind-panel h3 { margin: 0 0 10px; font-size: 13px; font-weight: 800; color: var(--navy-700, #1e3a8a); }
+.ind-sub { display: block; font-size: 10.5px; font-weight: 500; color: var(--faint); margin-top: 2px; }
+.ind-chart { height: 210px; }
+
+.ind-hhi-now { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px;
+  border-top: 1px dashed var(--line); padding-top: 10px; font-size: 11.5px; }
+.ind-hhi { display: inline-flex; align-items: center; gap: 5px; }
+.ind-hhi i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.ind-hhi em { color: var(--faint); font-style: normal; font-size: 10.5px; margin-left: 4px; }
+.ind-hhi.tone-bad strong { color: #b91c1c; } .ind-hhi.tone-warn strong { color: #b45309; }
+.ind-hhi.tone-good strong { color: #047857; }
+
+.ind-delta { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; font-size: 12px; }
+.ind-delta.worse { color: #b91c1c; } .ind-delta.better { color: #047857; }
+
+@media (max-width: 900px) { .ind-panels { grid-template-columns: 1fr; } }
