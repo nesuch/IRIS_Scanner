@@ -7,8 +7,10 @@
 import { useMemo } from 'react';
 import { Line, Bar } from 'react-chartjs-2';
 
-const CLS_COLOR = { General: '#1e3a8a', Life: '#b45309', SAHI: '#047857' };
-const CLS_LABEL = { General: 'General', Life: 'Life', SAHI: 'Standalone Health' };
+const CLS_COLOR = { General: '#1e3a8a', Life: '#b45309', SAHI: '#047857',
+  'Non-Life': '#7c3aed', Reinsurance: '#0e7490' };
+const CLS_LABEL = { General: 'General', Life: 'Life', SAHI: 'Standalone Health',
+  'Non-Life': 'Non-Life (Gen + SAHI)', Reinsurance: 'Reinsurance (incl. FRB)' };
 
 const lakhCr = (v) => `₹${(v / 1e12).toFixed(2)} L Cr`;
 

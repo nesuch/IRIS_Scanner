@@ -703,6 +703,33 @@ _KPIS = [
 _KPI_BY_ID = {k[0]: k for k in _KPIS}
 
 
+# metric_id encodes its own unit as a suffix, so labels and units for the ~230
+# metrics an insurer reports can be derived rather than hand-listed. Only the
+# curated KPIs below need human labels; everything else reads acceptably from the
+# id ("net_earned_premium__inr" -> "Net Earned Premium", ₹).
+_UNIT_SUFFIX = {"__inr": "inr", "__count": "count", "__percent": "percent"}
+_ACRONYMS = {"Inr": "₹", "Kyc": "KYC", "Tpa": "TPA", "Gdp": "GDP", "Eom": "EoM",
+             "Ulip": "ULIP", "Raci": "RACI", "Id": "ID", "Nav": "NAV", "Ppe": "PPE"}
+
+
+def _metric_meta(mid):
+    """(label, unit, agg) for any canonical metric_id."""
+    unit, base = "number", mid
+    for suf, u in _UNIT_SUFFIX.items():
+        if mid.endswith(suf):
+            unit, base = u, mid[: -len(suf)]
+            break
+    else:
+        if "ratio" in mid or "margin" in mid:
+            unit = "ratio"
+    words = [w for w in base.split("_") if w]
+    label = " ".join(_ACRONYMS.get(w.capitalize(), w.capitalize()) for w in words)
+    # Ratios are point-in-time (solvency is filed quarterly); summing them is the
+    # single easiest way to put a wrong number on screen.
+    agg = "latest_q" if unit in ("ratio", "percent") else "sum"
+    return label, unit, agg
+
+
 def _ins_frame():
     """Insurer-only slice of the financial engine, cached per data load."""
     df = brain.UNIFIED_DF
@@ -787,7 +814,11 @@ def api_insurer_360(insurer_id):
     cls = mine["insurer_class"].iloc[0]
     peers = df[(df["insurer_class"] == cls) & (df["insurer_id"] != insurer_id)]
     cohort = df[df["insurer_class"] == cls]
-    years = _fy_sort(mine["fy_canonical"])
+    years = _fy_series(mine["fy_canonical"])
+    # Year is selectable. Without this every figure silently reported the latest
+    # filing, which hides the year a supervisor is actually reviewing.
+    want_fy = (request.args.get("fy") or "").strip()
+    sel_fy = want_fy if want_fy in years else (years[-1] if years else None)
 
     # ---- KPI cards: latest value, YoY, and where it sits in its own class ----
     kpis = []
@@ -798,12 +829,16 @@ def api_insurer_360(insurer_id):
         g = _agg_by_year(m, mode)
         if g is None or g.empty:
             continue
-        g = g[[i for i in _fy_sort(g.index)]]
+        g = g[[i for i in _fy_series(g.index)]]
         if g.empty:
             continue
-        fy = g.index[-1]
-        val = float(g.iloc[-1])
-        prev = float(g.iloc[-2]) if len(g) > 1 else None
+        # Use the selected year when the metric has it; otherwise fall back to that
+        # metric's own latest and let the card mark itself stale.
+        idx = list(g.index)
+        fy = sel_fy if sel_fy in idx else idx[-1]
+        pos = idx.index(fy)
+        val = float(g.iloc[pos])
+        prev = float(g.iloc[pos - 1]) if pos > 0 else None
         yoy = ((val - prev) / abs(prev) * 100.0) if prev not in (None, 0) else None
 
         # peer distribution for the SAME year and SAME class
@@ -822,7 +857,7 @@ def api_insurer_360(insurer_id):
             # The handbook stopped publishing some series (grievances RESOLVED ends
             # at 2017-18 while REPORTED runs to 2024-25). Surfacing that beats
             # showing a stale figure that looks current.
-            "stale": bool(years and fy != years[-1]),
+            "stale": bool(sel_fy and fy != sel_fy),
             "latest_year": years[-1] if years else None,
             "trend": [{"fy": f, "v": float(v)} for f, v in g.items()],
         })
@@ -832,7 +867,8 @@ def api_insurer_360(insurer_id):
     gdp = "gross_direct_premium_within_india__inr"
     mg = mine[mine["metric_id"] == gdp]
     if not mg.empty:
-        fy = _fy_sort(mg["fy_canonical"])[-1]
+        _yrs = _fy_series(mg["fy_canonical"])
+        fy = sel_fy if sel_fy in _yrs else (_yrs[-1] if _yrs else None)
         mine_v = float(mg[mg["fy_canonical"] == fy]["value_base"].sum())
         tot = cohort[(cohort["metric_id"] == gdp) & (cohort["fy_canonical"] == fy)]
         tot_by = tot.groupby("insurer_id")["value_base"].sum().sort_values(ascending=False)
@@ -849,35 +885,72 @@ def api_insurer_360(insurer_id):
     rep = mine[mine["metric_id"] == "reported_during_the_year__count"]
     res = mine[mine["metric_id"] == "resolved_during_the_year__count"]
     if not rep.empty and not res.empty:
-        fys = sorted(set(_fy_sort(rep["fy_canonical"])) & set(_fy_sort(res["fy_canonical"])))
+        fys = sorted(set(_fy_series(rep["fy_canonical"])) & set(_fy_series(res["fy_canonical"])))
         if fys:
-            fy = fys[-1]
+            fy = sel_fy if sel_fy in fys else fys[-1]
             r = float(rep[rep["fy_canonical"] == fy]["value_base"].sum())
             s = float(res[res["fy_canonical"] == fy]["value_base"].sum())
             if r > 0:
                 derived.append({"label": "Grievance Resolution Rate", "unit": "percent",
                                 "value": round(s / r * 100.0, 1), "fy": fy,
-                                "stale": bool(years and fy != years[-1]),
+                                "stale": bool(sel_fy and fy != sel_fy),
                                 "note": ("resolved series ends " + fy +
                                          " — reported runs to " + years[-1])
                                         if years and fy != years[-1] else
                                         "may exceed 100%: prior-year grievances resolved this year"})
     pol = mine[mine["metric_id"] == "no_of_policies__count"]
     if not rep.empty and not pol.empty:
-        fys = sorted(set(_fy_sort(rep["fy_canonical"])) & set(_fy_sort(pol["fy_canonical"])))
+        fys = sorted(set(_fy_series(rep["fy_canonical"])) & set(_fy_series(pol["fy_canonical"])))
         if fys:
-            fy = fys[-1]
+            fy = sel_fy if sel_fy in fys else fys[-1]
             r = float(rep[rep["fy_canonical"] == fy]["value_base"].sum())
             p = float(pol[pol["fy_canonical"] == fy]["value_base"].sum())
-            if p > 0:
+            # Same guard the exception engine applies: below ~50k policies the
+            # denominator is a filing artefact and the rate is nonsense (one
+            # insurer files 6 policies against 206 grievances). Show the counts
+            # instead of a rate that would read as 11,51,851 per lakh.
+            if p >= 50_000:
                 derived.append({"label": "Grievances per lakh policies", "unit": "rate",
                                 "value": round(r / p * 100000.0, 1), "fy": fy,
                                 "note": "size-normalised — comparable across insurers"})
+            elif p > 0:
+                derived.append({"label": "Grievances per lakh policies", "unit": "text",
+                                "value": None, "fy": fy,
+                                "note": f"not shown — only {p:,.0f} policies filed for {fy}; "
+                                        f"too small a base for a per-lakh rate"})
+
+    # Every OTHER metric the insurer reports. A typical insurer files ~230 lines;
+    # showing ten was hiding most of what IRIS holds. These carry full trends so
+    # the client can render a series without a second round-trip.
+    curated = {k[0] for k in _KPIS}
+    others = []
+    for mid, g in mine.groupby("metric_id"):
+        if not mid or mid in curated:
+            continue
+        label, unit, agg = _metric_meta(str(mid))
+        ser = _agg_by_year(g, agg)
+        if ser is None or ser.empty:
+            continue
+        ser = ser[[i for i in _fy_series(ser.index)]]
+        if ser.empty:
+            continue
+        idx = list(ser.index)
+        fy = sel_fy if sel_fy in idx else idx[-1]
+        others.append({
+            "id": mid, "label": label, "unit": unit,
+            "fy": fy, "value": float(ser[fy]),
+            "stale": bool(sel_fy and fy != sel_fy),
+            "years": len(idx),
+            "trend": [{"fy": f, "v": float(v)} for f, v in ser.items()],
+        })
+    others.sort(key=lambda x: x["label"])
 
     return jsonify({
         "ok": True,
         "insurer": {"id": insurer_id, "name": name, "class": cls},
         "years": years,
+        "selected_fy": sel_fy,
+        "all_metrics": others,
         "kpis": kpis,
         "derived": derived,
         "cohort_size": int(cohort["insurer_id"].nunique()),
@@ -1028,16 +1101,27 @@ def api_industry_trends():
     # real book of lakhs of crores, which would have put the entire life industry at
     # ₹2,386 Cr on this screen. Each class therefore uses ITS OWN premium basis, and
     # the classes are never summed into one "industry total".
+    # Segments, not just the four classes. "Non-Life" is the supervisory grouping
+    # a user actually asks for (General + standalone health + the reinsurance
+    # branches all write non-life business), so it is offered alongside its parts
+    # rather than making the reader add classes up — which they must never do,
+    # since the premium bases differ.
     PREM_BY_CLASS = {
-        "General": ("gross_direct_premium_within_india__inr", "Gross Direct Premium"),
-        "SAHI": ("gross_direct_premium_within_india__inr", "Gross Direct Premium"),
-        "Life": ("total_premium__inr", "Total Premium"),
+        "General": (("General",), "gross_direct_premium_within_india__inr", "Gross Direct Premium"),
+        "SAHI": (("SAHI",), "gross_direct_premium_within_india__inr", "Gross Direct Premium"),
+        "Life": (("Life",), "total_premium__inr", "Total Premium"),
+        "Non-Life": (("General", "SAHI"), "gross_direct_premium_within_india__inr",
+                     "Gross Direct Premium"),
+        # Reinsurers and FRBs file no gross/direct premium line at all — their
+        # book is measured on net earned premium, so the basis differs again.
+        # This is exactly why the segments are never summed.
+        "Reinsurance": (("Reinsurer", "FRB"), "net_earned_premium__inr", "Net Earned Premium"),
     }
 
     size, concentration, basis = {}, {}, {}
-    for cls, (mid, plabel) in PREM_BY_CLASS.items():
+    for cls, (members, mid, plabel) in PREM_BY_CLASS.items():
         basis[cls] = plabel
-        c = df[(df["metric_id"] == mid) & (df["insurer_class"] == cls)]
+        c = df[(df["metric_id"] == mid) & (df["insurer_class"].isin(members))]
         if c.empty:
             continue
         by_year = c.groupby("fy_canonical")["value_base"].sum()
@@ -1138,7 +1222,9 @@ def api_insurer_exceptions():
         return jsonify({"ok": False, "message": "Financial engine not loaded."}), 503
 
     all_fy = _fy_series(df["fy_canonical"].dropna().unique())
-    latest_fy = all_fy[-1] if all_fy else None
+    want = (request.args.get("fy") or "").strip()
+    latest_fy = want if want in all_fy else (all_fy[-1] if all_fy else None)
+    all_fy = [f for f in all_fy if f <= (latest_fy or "")]   # never look ahead of the chosen year
     # A figure two years stale is a different kind of signal from a current breach,
     # so staleness is recorded rather than silently treated as live.
     recent = all_fy[-2:]
@@ -1266,6 +1352,81 @@ def api_insurer_exceptions():
                     f"{'fell' if chg < 0 else 'rose'} {abs(chg):.0f}% vs {yrs[-2]}"
                     + ("" if higher_better else " — rising grievances"),
                     {"change_pct": round(chg, 1), "prev_fy": yrs[-2]})
+
+    # ---- 5. Expense of Management above the regulatory ceiling -------------
+    # Ported from the retired Compliance Cockpit: EoM is capped at 30% of gross
+    # direct premium, 35% for standalone health insurers.
+    eom = df[df["metric_id"] == "commission_expenses_of_management__inr"]
+    gdp_m = df[df["metric_id"] == "gross_direct_premium_within_india__inr"]
+    for iid in set(eom["insurer_id"]) & set(gdp_m["insurer_id"]):
+        e = _agg_by_year(eom[eom["insurer_id"] == iid], "sum")
+        g2 = _agg_by_year(gdp_m[gdp_m["insurer_id"] == iid], "sum")
+        common = [f for f in sorted(set(e.index) & set(g2.index)) if f in all_fy]
+        if not common:
+            continue
+        fy = common[-1]
+        if float(g2[fy]) <= 0:
+            continue
+        ratio = float(e[fy]) / float(g2[fy]) * 100.0
+        limit = 35.0 if meta[iid]["class"] == "SAHI" else 30.0
+        if ratio > limit:
+            add(meta[iid], "threshold", "high" if ratio > limit * 1.2 else "medium",
+                "eom_ratio", "Expense of Management", round(ratio, 1), fy,
+                f"EoM {ratio:.1f}% of gross direct premium exceeds the {limit:.0f}% ceiling",
+                {"threshold": limit})
+
+    # ---- 6. Deteriorating solvency (3-year slide) --------------------------
+    for iid, g in sol.groupby("insurer_id"):
+        by = _agg_by_year(g, "latest_q")
+        if by is None:
+            continue
+        yrs = [f for f in _fy_series(by.index) if f in all_fy]
+        if len(yrs) < 3:
+            continue
+        a, b, c2 = (float(by[y]) for y in yrs[-3:])
+        if a > b > c2 and (a - c2) >= 0.2:
+            add(meta[iid], "trend", "medium", "solvency", "Solvency Ratio",
+                round(c2, 2), yrs[-1],
+                f"fell three years running: {a:.2f} -> {b:.2f} -> {c2:.2f} ({yrs[-3]} to {yrs[-1]})")
+
+    # ---- 7. Rising incurred claims ratio (3-year climb) --------------------
+    # ICR is excluded from the KPI cards because it is stored per line of business
+    # on mixed scales, but a consistent 3-year CLIMB in an insurer's own series is
+    # still a valid signal — the direction is meaningful even where the level is
+    # not directly comparable across insurers.
+    icr = df[df["metric_id"] == "incurred_claims_ratio__percent"]
+    for iid, g in icr.groupby("insurer_id"):
+        gg = g[g["value_base"] > 5]          # drop the fraction-scaled rows
+        if gg.empty:
+            continue
+        by = gg.groupby("fy_canonical")["value_base"].mean()
+        yrs = [f for f in _fy_series(by.index) if f in all_fy]
+        if len(yrs) < 3:
+            continue
+        a, b, c2 = (float(by[y]) for y in yrs[-3:])
+        if a < b < c2 and (c2 - a) >= 3:
+            add(meta[iid], "trend", "medium", "incurred_claims_ratio__percent",
+                "Incurred Claims Ratio", round(c2, 1), yrs[-1],
+                f"rose three years running: {a:.1f}% -> {b:.1f}% -> {c2:.1f}% ({yrs[-3]} to {yrs[-1]})")
+
+    # ---- 8. High claim repudiation -----------------------------------------
+    rep_c = df[df["metric_id"] == "claims_repudiated_during_the_period__count"]
+    paid_c = df[df["metric_id"] == "no_of_claims_paid__count"]
+    for iid in set(rep_c["insurer_id"]) & set(paid_c["insurer_id"]):
+        r = _agg_by_year(rep_c[rep_c["insurer_id"] == iid], "sum")
+        pd_ = _agg_by_year(paid_c[paid_c["insurer_id"] == iid], "sum")
+        common = [f for f in sorted(set(r.index) & set(pd_.index)) if f in all_fy]
+        if not common:
+            continue
+        fy = common[-1]
+        tot = float(r[fy]) + float(pd_[fy])
+        if tot <= 0:
+            continue
+        pct = float(r[fy]) / tot * 100.0
+        if pct > 10:
+            add(meta[iid], "outlier", "high" if pct > 20 else "medium",
+                "repudiation_ratio", "Claim Repudiation Rate", round(pct, 1), fy,
+                f"{pct:.1f}% of decided claims repudiated — above the 10% watch level")
 
     rank = {"high": 0, "medium": 1, "low": 2}
     out.sort(key=lambda e: (rank.get(e["severity"], 3), e["stale"], -abs(e.get("ratio") or 0)))

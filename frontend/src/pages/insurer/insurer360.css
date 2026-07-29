@@ -190,3 +190,69 @@
   .exc-row { grid-template-columns: 18px minmax(0, 1fr); row-gap: 3px; }
   .exc-kind, .exc-metric, .exc-why { grid-column: 2; }
 }
+
+/* ---- searchable picker --------------------------------------------------- */
+.pk { position: relative; min-width: 340px; }
+.pk-btn { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: #fff; border: 1px solid var(--line-strong); border-radius: 8px;
+  padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink,#0f172a); }
+.pk-btn .pk-ph { color: var(--faint); font-weight: 500; }
+.pk-cls { margin-left: auto; font-style: normal; font-size: 10.5px; color: var(--faint);
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.pk-btn i { color: var(--faint); font-size: 11px; }
+.pk-pop { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0;
+  background: #fff; border: 1px solid var(--line-strong); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15,23,42,0.14); overflow: hidden; }
+.pk-search { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid var(--line); }
+.pk-search i { color: var(--faint); font-size: 12px; }
+.pk-search input { flex: 1; border: 0; outline: none; font-size: 13px; background: transparent; }
+.pk-search button { border: 0; background: transparent; cursor: pointer; color: var(--faint); font-size: 16px; }
+/* Short and scrollable by design — the whole point is not to face a wall of 87. */
+.pk-list { max-height: 280px; overflow-y: auto; }
+.pk-opt { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  border: 0; background: transparent; padding: 8px 12px; cursor: pointer; font-size: 12.5px; }
+.pk-opt.on { background: var(--navy-50, #eef2fb); }
+.pk-opt.sel .pk-name { font-weight: 800; color: var(--navy-700,#1e3a8a); }
+.pk-name { flex: 1; }
+.pk-tag { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.pk-none { padding: 14px; font-size: 12px; color: var(--faint); text-align: center; }
+.pk-foot { padding: 6px 12px; font-size: 10.5px; color: var(--faint);
+  border-top: 1px solid var(--line); background: #fafbfd; }
+
+/* ---- year selector ------------------------------------------------------- */
+.i360-year { display: inline-flex; align-items: center; gap: 7px; }
+.i360-year label { font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--faint); }
+.i360-year select { padding: 7px 10px; font-size: 12.5px; }
+
+/* ---- card flip / data table --------------------------------------------- */
+.i360-card { cursor: default; }
+.i360-flip { border: 0; background: transparent; cursor: pointer; color: var(--faint);
+  padding: 0 0 0 7px; font-size: 11px; }
+.i360-flip:hover { color: var(--navy-700, #1e3a8a); }
+.i360-card.is-flipped { background: #fbfcfe; }
+.i360-table-wrap { margin-top: 6px; }
+.i360-table { width: 100%; border-collapse: collapse; font-size: 11.5px;
+  font-variant-numeric: tabular-nums; user-select: text; }
+.i360-table th { text-align: left; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--faint); border-bottom: 1px solid var(--line);
+  padding: 3px 4px; }
+.i360-table td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.i360-table td:last-child { text-align: right; }
+.i360-table tr.on { background: var(--navy-50, #eef2fb); font-weight: 800; }
+.i360-copy { margin-top: 8px; width: 100%; border: 1px solid var(--line-strong);
+  background: #fff; border-radius: 6px; padding: 5px; font-size: 11px; font-weight: 700;
+  color: var(--navy-700, #1e3a8a); cursor: pointer; }
+.i360-copy:hover { background: var(--navy-50, #eef2fb); }
+.i360-med-inline { color: var(--faint); font-size: 10.5px; }
+
+/* ---- all reported metrics ------------------------------------------------ */
+.i360-all { margin-top: 26px; border-top: 1px solid var(--line-strong); padding-top: 16px; }
+.i360-all-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.i360-all-head h3 { margin: 0; font-size: 13px; font-weight: 800; color: var(--navy-700,#1e3a8a); }
+.i360-all-head h3 span { display: inline-block; margin-left: 6px; background: var(--navy-50,#eef2fb);
+  border-radius: 10px; padding: 1px 8px; font-size: 11px; color: var(--faint); }
+.i360-mq { margin-left: auto; max-width: 260px; }
+.i360-all-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.i360-na { color: var(--faint); font-size: 20px; font-weight: 600; }

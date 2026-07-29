@@ -16,6 +16,9 @@ import { api } from '../api.js';
 import Compare from './insurer/Compare.jsx';
 import Industry from './insurer/Industry.jsx';
 import Exceptions from './insurer/Exceptions.jsx';
+import Picker from './insurer/Picker.jsx';
+import MetricCard, { fmtVal } from './insurer/MetricCard.jsx';
+import { useToast } from '../components/Toast.jsx';
 import './insurer/insurer360.css';
 
 const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Reinsurer', 'FRB'];
@@ -89,6 +92,9 @@ export default function Insurer360() {
   const [cmp, setCmp] = useState(null);
   const [ind, setInd] = useState(null);
   const [exc, setExc] = useState(null);
+  const [fy, setFy] = useState('');          // '' = latest
+  const [mq, setMq] = useState('');          // all-metrics filter
+  const toast = useToast();
 
   useEffect(() => {
     api.get('/insurer/list')
@@ -100,16 +106,16 @@ export default function Insurer360() {
       .catch((e) => setErr(e.message));
   }, []);
 
-  const load = useCallback((id) => {
+  const load = useCallback((id, year) => {
     if (!id) return;
     setLoading(true); setErr(null);
-    api.get(`/insurer/${encodeURIComponent(id)}`)
+    api.get(`/insurer/${encodeURIComponent(id)}${year ? `?fy=${encodeURIComponent(year)}` : ''}`)
       .then((d) => setData(d))
       .catch((e) => { setErr(e.message); setData(null); })
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { if (mode === 'single') load(sel); }, [sel, load, mode]);
+  useEffect(() => { if (mode === 'single') load(sel, fy); }, [sel, fy, load, mode]);
 
   useEffect(() => {
     if (mode !== 'compare' || cmpIds.length < 2) { setCmp(null); return; }
@@ -128,16 +134,19 @@ export default function Insurer360() {
       .then((d) => setInd(d))
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [mode, ind]);
+    // Industry data is year-independent, so fetch once per mount.
+  }, [mode]);
 
   useEffect(() => {
-    if (mode !== 'alerts' || exc) return;
+    if (mode !== 'alerts') return;
     setLoading(true); setErr(null);
-    api.get('/insurer/exceptions')
+    api.get(`/insurer/exceptions${fy ? `?fy=${encodeURIComponent(fy)}` : ''}`)
       .then((d) => setExc(d))
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [mode, exc]);
+    // `exc` must NOT be a dependency: this effect SETS it, so including it makes
+    // the effect retrigger itself forever and the list never settles.
+  }, [mode, fy]);
 
   const nameOf = useCallback((id) => {
     for (const c of CLASS_ORDER) {
@@ -161,16 +170,22 @@ export default function Insurer360() {
 
       <div className="page-body i360">
         <div className="i360-picker">
-          {mode === 'single' && <label htmlFor="i360-sel">Insurer</label>}
+          {mode === 'single' && <label>Insurer</label>}
           {mode === 'single' && (
-          <select id="i360-sel" className="input" value={sel || ''}
-            onChange={(e) => setSel(e.target.value)}>
-            {CLASS_ORDER.filter((c) => (classes[c] || []).length).map((c) => (
-              <optgroup key={c} label={`${CLASS_LABEL[c] || c} (${classes[c].length})`}>
-                {classes[c].map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-              </optgroup>
-            ))}
-          </select>
+            <Picker classes={classes} order={CLASS_ORDER} labels={CLASS_LABEL}
+              value={sel} onChange={setSel} placeholder="Select an insurer…" />
+          )}
+          {(mode === 'single' || mode === 'alerts') && (data?.years?.length || fy) && (
+            <span className="i360-year">
+              <label htmlFor="i360-fy">Year</label>
+              <select id="i360-fy" className="input" value={fy}
+                onChange={(e) => { setFy(e.target.value); setExc(null); }}>
+                <option value="">Latest</option>
+                {(data?.years || []).slice().reverse().map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </span>
           )}
           {mode === 'single' && data && (
             <span className="i360-cohort">
@@ -231,7 +246,9 @@ export default function Insurer360() {
                 {data.derived.map((d, i) => (
                   <div key={i} className={`i360-dcard ${d.stale ? 'is-stale' : ''}`}>
                     <div className="i360-dlabel">{d.label}</div>
-                    <div className="i360-dvalue">{fmt(d.value, d.unit)}</div>
+                    <div className="i360-dvalue">
+                      {d.value === null ? <span className="i360-na">n/a</span> : fmt(d.value, d.unit)}
+                    </div>
                     <div className="i360-dnote">
                       <span className="i360-fy">{d.fy}</span>
                       {d.stale && <span className="i360-stale">STALE</span>}
@@ -244,14 +261,8 @@ export default function Insurer360() {
 
             <div className="i360-grid">
               {data.kpis.map((k) => (
-                <div key={k.id} className="i360-card">
-                  <div className="i360-head">
-                    <span className="i360-label">{k.label}</span>
-                    <span className="i360-fy">
-                      {k.fy}{k.stale && <span className="i360-stale" title={`series ends ${k.fy}; latest data year is ${k.latest_year}`}>STALE</span>}
-                    </span>
-                  </div>
-                  <div className="i360-value">{fmt(k.value, k.unit)}</div>
+                <MetricCard key={k.id} k={{ ...k, selected_fy: data.selected_fy }}
+                  onToast={(m, bad) => (bad ? toast.error(m) : toast.success(m))}>
                   <div className="i360-sub">
                     {k.yoy_pct !== null && (
                       <span className={`i360-yoy ${yoyTone(k.yoy_pct, k.higher_is_better)}`}
@@ -265,14 +276,31 @@ export default function Insurer360() {
                         p{k.percentile} of {k.peer_n}
                       </span>
                     )}
+                    {k.peer_median !== null && (
+                      <span className="i360-med-inline">med {fmtVal(k.peer_median, k.unit)}</span>
+                    )}
                   </div>
-                  <Spark trend={k.trend} unit={k.unit} />
-                  {k.peer_median !== null && (
-                    <div className="i360-median">class median {fmt(k.peer_median, k.unit)}</div>
-                  )}
-                </div>
+                </MetricCard>
               ))}
             </div>
+
+            {(data.all_metrics || []).length > 0 && (
+              <section className="i360-all">
+                <div className="i360-all-head">
+                  <h3>All reported metrics <span>{data.all_metrics.length}</span></h3>
+                  <input className="input i360-mq" value={mq} onChange={(e) => setMq(e.target.value)}
+                    placeholder="Filter metrics…" aria-label="Filter metrics" />
+                </div>
+                <div className="i360-all-grid">
+                  {data.all_metrics
+                    .filter((m) => !mq || m.label.toLowerCase().includes(mq.toLowerCase()))
+                    .map((m) => (
+                      <MetricCard key={m.id} k={{ ...m, selected_fy: data.selected_fy }}
+                        onToast={(t, bad) => (bad ? toast.error(t) : toast.success(t))} />
+                    ))}
+                </div>
+              </section>
+            )}
 
             <p className="i360-foot">
               Peer percentiles are computed within <strong>{CLASS_LABEL[data.insurer.class] || data.insurer.class}</strong> only —

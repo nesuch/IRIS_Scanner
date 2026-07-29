@@ -13,6 +13,7 @@ const KIND = {
   loss: { icon: 'fa-arrow-trend-down', label: 'Loss-making' },
   outlier: { icon: 'fa-users-viewfinder', label: 'Peer outlier' },
   swing: { icon: 'fa-bolt', label: 'Sharp movement' },
+  trend: { icon: 'fa-chart-line', label: 'Multi-year trend' },
   data_quality: { icon: 'fa-circle-question', label: 'Data quality' },
 };
 
