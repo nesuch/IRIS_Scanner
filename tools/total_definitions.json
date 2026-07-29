@@ -1,0 +1,249 @@
+{
+ "unverified": {
+  "sub_total_a__inr": {
+   "all_instances": 682,
+   "all_reconciled": 25,
+   "components": [
+    "cash_and_bank_balances__inr",
+    "advances_and_other_assets__inr"
+   ],
+   "confidence": 0.037,
+   "instances_with_this_shape": 7,
+   "reconciled_instances": 7
+  },
+  "total_2__inr": {
+   "all_instances": 537,
+   "all_reconciled": 7,
+   "components": [
+    "miscellaneous_expenditure_to_the_extent_not_written_off_or_a__inr",
+    "debit_balance_in_profit_and_loss_account__inr"
+   ],
+   "confidence": 0.013,
+   "instances_with_this_shape": 274,
+   "reconciled_instances": 5
+  },
+  "total__inr": {
+   "all_instances": 766,
+   "all_reconciled": 532,
+   "components": [
+    "share_capital__inr",
+    "share_application_money__inr",
+    "reserves_and_surplus__inr",
+    "credit_debit_fair_value_change_account__inr",
+    "borrowings__inr"
+   ],
+   "confidence": 0.695,
+   "instances_with_this_shape": 238,
+   "reconciled_instances": 238
+  },
+  "total_c_d": {
+   "all_instances": 500,
+   "all_reconciled": 24,
+   "components": [
+    "first_year__inr",
+    "single__inr",
+    "new_business_a_b",
+    "renewal__inr"
+   ],
+   "confidence": 0.048,
+   "instances_with_this_shape": 494,
+   "reconciled_instances": 20
+  },
+  "total_claims_2__inr": {
+   "all_instances": 284,
+   "all_reconciled": 66,
+   "components": [
+    "claims_paid__inr",
+    "claims_repudiated_rejected__inr",
+    "unclaimed__inr",
+    "claims_pending_at_end_of_year__inr",
+    "claims_pending_at_start_of_year_2__inr",
+    "claims_intimated_booked_2__inr"
+   ],
+   "confidence": 0.232,
+   "instances_with_this_shape": 251,
+   "reconciled_instances": 59
+  },
+  "total_d__inr": {
+   "all_instances": 240,
+   "all_reconciled": 1,
+   "components": [
+    "surplus_available_for_appropriations__inr"
+   ],
+   "confidence": 0.004,
+   "instances_with_this_shape": 2,
+   "reconciled_instances": 1
+  }
+ },
+ "verified": {
+  "sub_total__inr": {
+   "all_instances": 486,
+   "all_reconciled": 442,
+   "components": [
+    "share_capital__inr",
+    "share_application_money_pending_allotment__inr",
+    "reserves_and_surplus__inr",
+    "credit_debit_fair_value_change_account__inr"
+   ],
+   "confidence": 0.909,
+   "instances_with_this_shape": 149,
+   "reconciled_instances": 149
+  },
+  "sub_total_b__inr": {
+   "all_instances": 682,
+   "all_reconciled": 682,
+   "components": [
+    "current_liabilities__inr",
+    "provisions__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 676,
+   "reconciled_instances": 676
+  },
+  "total__count": {
+   "all_instances": 266,
+   "all_reconciled": 266,
+   "components": [
+    "metro__count",
+    "urban__count",
+    "semi_urban__count",
+    "rural__count"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 241,
+   "reconciled_instances": 241
+  },
+  "total_a__inr": {
+   "all_instances": 2388,
+   "all_reconciled": 1723,
+   "components": [
+    "premiums_earned_net__inr",
+    "profit_loss_on_sale_redemption_of_investments__inr",
+    "interest_dividend_rent_gross__inr",
+    "other_income_net_of_other_expenses__inr"
+   ],
+   "confidence": 0.722,
+   "instances_with_this_shape": 1384,
+   "reconciled_instances": 1375
+  },
+  "total_b__inr": {
+   "all_instances": 2385,
+   "all_reconciled": 2380,
+   "components": [
+    "claims_incurred_net__inr",
+    "commission__inr",
+    "operating_expenses_related_to_insurance_business__inr",
+    "premium_deficiency__inr"
+   ],
+   "confidence": 0.998,
+   "instances_with_this_shape": 1371,
+   "reconciled_instances": 1368
+  },
+  "total_c__inr": {
+   "all_instances": 241,
+   "all_reconciled": 241,
+   "components": [
+    "benefits_paid_net__inr",
+    "interim_bonuses_paid__inr",
+    "a_gross__inr",
+    "b_amount_ceded_in_reinsurance__inr",
+    "d_transfer_to_linked_fund_fund_reserve__inr",
+    "e_fund_for_discontinued_policies__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 82,
+   "reconciled_instances": 82
+  },
+  "total_claims__inr": {
+   "all_instances": 284,
+   "all_reconciled": 284,
+   "components": [
+    "claims_pending_at_start_of_year__inr",
+    "claims_intimated_booked__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 284,
+   "reconciled_instances": 284
+  },
+  "total_claims_settled_2__count": {
+   "all_instances": 273,
+   "all_reconciled": 273,
+   "components": [
+    "within_1_month_2__count",
+    "within_1_3_months_2__count",
+    "within_3_6_months_2__count",
+    "within_6_12_months_2__count",
+    "more_than_12_months_2__count"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 241,
+   "reconciled_instances": 241
+  },
+  "total_claims_settled__count": {
+   "all_instances": 1200,
+   "all_reconciled": 1200,
+   "components": [
+    "within_30_days_of_intimation__count",
+    "31_to_90_days__count",
+    "91_to_180_days__count",
+    "181_days_to_1_year__count",
+    "more_than_1_year__count"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 928,
+   "reconciled_instances": 928
+  },
+  "total_investments__inr": {
+   "all_instances": 222,
+   "all_reconciled": 222,
+   "components": [
+    "central_government_securities__inr",
+    "state_government_other_approved_securities__inr",
+    "housing_loans_to_state_government_for_housing_and_ffe__inr",
+    "infrastructure_investments__inr",
+    "approved_investments__inr",
+    "other_investments__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 217,
+   "reconciled_instances": 217
+  },
+  "total_life_fund__inr": {
+   "all_instances": 98,
+   "all_reconciled": 98,
+   "components": [
+    "central_government_securities__inr",
+    "state_government_other_approved_securities__inr",
+    "housing_infrastructure_investments__inr",
+    "approved_investments__inr",
+    "other_investments__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 97,
+   "reconciled_instances": 97
+  },
+  "total_pension_general_annuity_group_fund__inr": {
+   "all_instances": 99,
+   "all_reconciled": 99,
+   "components": [
+    "central_government_securities__inr",
+    "state_govt_other_approved_securities__inr",
+    "approved_investments__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 99,
+   "reconciled_instances": 99
+  },
+  "total_ulip_funds__inr": {
+   "all_instances": 99,
+   "all_reconciled": 99,
+   "components": [
+    "approved_investments__inr",
+    "other_investments__inr"
+   ],
+   "confidence": 1.0,
+   "instances_with_this_shape": 96,
+   "reconciled_instances": 96
+  }
+ }
+}
