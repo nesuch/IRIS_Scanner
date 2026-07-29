@@ -29,7 +29,6 @@ function lazyRetry(factory, retries = 4, delay = 350) {
 const Search = lazyRetry(() => import('./pages/Search.jsx'));
 const DataExplorer = lazyRetry(() => import('./pages/DataExplorer.jsx'));
 const Insurer360 = lazyRetry(() => import('./pages/Insurer360.jsx'));
-const Compliance = lazyRetry(() => import('./pages/Compliance.jsx'));
 const Analytics = lazyRetry(() => import('./pages/Analytics.jsx'));
 const Admin = lazyRetry(() => import('./pages/Admin.jsx'));
 const Profile = lazyRetry(() => import('./pages/Profile.jsx'));
@@ -64,10 +63,9 @@ export default function App() {
         <Route path="dept/:dept" element={<DeptSearch />} />
         <Route path="data" element={<Suspense fallback={<PageLoading />}><DataExplorer /></Suspense>} />
         <Route path="insurer" element={<Suspense fallback={<PageLoading />}><Insurer360 /></Suspense>} />
-        <Route path="compliance" element={<Suspense fallback={<PageLoading />}><Compliance /></Suspense>} />
         <Route path="downloads" element={<Suspense fallback={<PageLoading />}><Downloads /></Suspense>} />
         <Route path="read" element={<Suspense fallback={<PageLoading />}><Reader /></Suspense>} />
-        <Route path="pqs" element={<Suspense fallback={<PageLoading />}><Pqs /></Suspense>} />
+        <Route path="pqs" element={<ProtectedRoute editorOnly><Suspense fallback={<PageLoading />}><Pqs /></Suspense></ProtectedRoute>} />
         <Route path="studio" element={<Suspense fallback={<PageLoading />}><Studio /></Suspense>} />
         <Route path="analytics" element={<Suspense fallback={<PageLoading />}><Analytics /></Suspense>} />
         <Route path="profile" element={<Suspense fallback={<PageLoading />}><Profile /></Suspense>} />

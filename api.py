@@ -1492,8 +1492,8 @@ def _pq_card(r, roots=None):
 def api_pq_tags():
     """Distinct tags across all PQs — the typeahead vocabulary. Deduplicated
     case- and space-insensitively (so 'Dental' / 'dental insurance' collapse)."""
-    if not _app.current_user.is_authenticated:
-        return jsonify({"ok": False}), 401
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     canon = {}  # normalised key -> display label (prefer the most Title-cased variant)
     for r in _app.PqDocument.query.all():
         for t in (r.tags or "").split(","):
@@ -1511,8 +1511,8 @@ def api_pq_tags():
 @api_bp.get("/pq")
 def api_pq_list():
     """List/search Parliamentary Question replies for the dedicated PQ view."""
-    if not _app.current_user.is_authenticated:
-        return jsonify({"ok": False}), 401
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     num = (request.args.get("num") or "").strip()
     tag = (request.args.get("tag") or "").strip()
     q = (request.args.get("q") or "").strip()
@@ -1573,8 +1573,8 @@ def api_pq_list():
 @api_bp.get("/pq/<int:pid>")
 def api_pq_get(pid):
     """Full rendered HTML + metadata + original-file link for one PQ."""
-    if not _app.current_user.is_authenticated:
-        return jsonify({"ok": False}), 401
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     r = _app.PqDocument.query.get_or_404(pid)
     return jsonify({
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
@@ -1590,8 +1590,8 @@ def api_pq_get(pid):
 @api_bp.get("/pq/<int:pid>/download")
 def api_pq_download(pid):
     """Stream the original .docx from storage (GCS in prod, local in dev)."""
-    if not _app.current_user.is_authenticated:
-        return jsonify({"ok": False}), 401
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
     r = _app.PqDocument.query.get_or_404(pid)
     data = storage.load_pq(r.docx_filename)
     if data is None:
@@ -3391,19 +3391,12 @@ def api_data_download():
     return jsonify({"ok": False, "message": "No data found for these filters."}), 400
 
 
-# ----------------------------------------------------------------------------
-# COMPLIANCE
-# ----------------------------------------------------------------------------
-@api_bp.get("/compliance")
-def api_compliance():
-    years = brain.get_compliance_years()
-    selected_year = request.args.get("year")
-    companies = brain.get_compliance_dashboard(target_year=selected_year)
-    return jsonify({
-        "companies": companies,
-        "years": years,
-        "active_year": selected_year if selected_year else "Latest",
-    })
+# The Compliance Cockpit was removed once Insurer 360 -> Alerts covered the same
+# ground with class-scoped peer context and explainable findings. Its brain
+# helpers (get_compliance_years / get_compliance_dashboard) are intentionally
+# KEPT: they carry threshold logic for expense-of-management and combined ratio
+# that the exception engine does not implement yet, and are the obvious source
+# when those rules are ported.
 
 
 # ----------------------------------------------------------------------------

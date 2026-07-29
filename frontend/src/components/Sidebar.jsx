@@ -20,7 +20,7 @@ function buildSections(depts) {
     items: [
       { to: '/', icon: 'fa-magnifying-glass', text: 'Universal Search', end: true },
       ...depts.map((d) => ({ to: `/dept/${d.key.toLowerCase()}`, icon: d.icon || 'fa-folder', text: `${d.label} Dept` })),
-      { to: '/pqs', icon: 'fa-landmark', text: 'Parliamentary Q&A' },
+      { to: '/pqs', icon: 'fa-landmark', text: 'Parliamentary Q&A', editorOnly: true },
       { to: '/read', icon: 'fa-book-open', text: 'Read Documents' },
     ],
   },
@@ -29,7 +29,6 @@ function buildSections(depts) {
     items: [
       { to: '/insurer', icon: 'fa-building-columns', text: 'Insurer 360' },
       { to: '/data', icon: 'fa-chart-line', text: 'Data Explorer' },
-      { to: '/compliance', icon: 'fa-gavel', text: 'Compliance Cockpit' },
       { to: '/downloads', icon: 'fa-folder-tree', text: 'Downloads' },
       { to: '/studio', icon: 'fa-pen-ruler', text: 'Document Studio', editorOnly: true },
     ],

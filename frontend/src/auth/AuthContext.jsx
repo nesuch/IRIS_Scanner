@@ -62,7 +62,7 @@ export function AuthProvider({ children }) {
   );
 }
 
-export function ProtectedRoute({ children, adminOnly = false }) {
+export function ProtectedRoute({ children, adminOnly = false, editorOnly = false }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) {
@@ -79,5 +79,11 @@ export function ProtectedRoute({ children, adminOnly = false }) {
     return <Navigate to={`/login?next=${next}`} replace />;
   }
   if (adminOnly && !user.is_admin) return <Navigate to="/" replace />;
+  // Editor gate. Admins outrank editors, so they always pass. This only hides the
+  // route — the API enforces the same rule independently, since a client-side
+  // redirect is a convenience, never a security boundary.
+  if (editorOnly && !(user.is_admin || user.role === 'admin' || user.role === 'editor')) {
+    return <Navigate to="/" replace />;
+  }
   return children;
 }
