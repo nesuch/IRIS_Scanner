@@ -27,6 +27,7 @@ function buildSections(depts) {
   {
     label: 'Data Intelligence',
     items: [
+      { to: '/insurer', icon: 'fa-building-columns', text: 'Insurer 360' },
       { to: '/data', icon: 'fa-chart-line', text: 'Data Explorer' },
       { to: '/compliance', icon: 'fa-gavel', text: 'Compliance Cockpit' },
       { to: '/downloads', icon: 'fa-folder-tree', text: 'Downloads' },

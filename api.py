@@ -656,6 +656,222 @@ def _norm_doc_type(t):
     return _DOC_TYPE_LABELS.get(key, str(t or "Document").strip() or "Document")
 
 
+
+# ---------------------------------------------------------------------------
+# INSURER 360 — every metric IRIS holds on one insurer, on one screen.
+#
+# Built on the entity/class layer (entity_type, insurer_class, metric_scope).
+# Two rules are enforced here rather than left to the caller, because getting
+# either wrong produces a confident wrong answer rather than an error:
+#
+#   1. entity_type='insurer' ALWAYS. The `insurer` column is polymorphic — it
+#      also holds states, channels, countries and sector subtotals. Omitting this
+#      is how a naive market share ranked "Maharashtra" and "Brokers" as insurers.
+#   2. Peer comparison is scoped to the insurer's OWN class. Only 23 of 957
+#      metrics are reported by all classes; persistency is a life concept and
+#      combined ratio a general one, so cross-class ranking is meaningless.
+#
+# The KPI registry is deliberately hand-picked and small. Coverage does not imply
+# usefulness — several metrics that every class reports are unlabelled balance
+# sheet subtotals ("total_a__inr"), useless on a dashboard.
+_KPIS = [
+    # metric_id, label, unit, higher_is_better, agg
+    #
+    # `agg` matters more than it looks. Summing is only valid for ADDITIVE units.
+    # Ratios are stored per-quarter (solvency: Q1..Q4 as 1.83/1.81/1.90/1.91) or
+    # per-line-of-business, so summing them yields nonsense — the first cut of this
+    # endpoint reported New India's solvency as 7.45 and its claims ratio as 475.
+    #   sum       add rows (money, counts)
+    #   latest_q  point-in-time ratio measured quarterly -> take the last quarter
+    ("gross_direct_premium_within_india__inr", "Gross Direct Premium", "inr", True, "sum"),
+    ("profit_after_tax__inr", "Profit After Tax", "inr", True, "sum"),
+    ("solvency_ratio_of_general_health_and_reinsurance_companies", "Solvency Ratio", "ratio", True, "latest_q"),
+    ("solvency_ratio", "Solvency Ratio", "ratio", True, "latest_q"),
+    ("reported_during_the_year__count", "Grievances Reported", "count", False, "sum"),
+    ("resolved_during_the_year__count", "Grievances Resolved", "count", True, "sum"),
+    ("no_of_policies__count", "Policies", "count", True, "sum"),
+    ("no_of_persons_covered__count", "Persons Covered", "count", True, "sum"),
+    ("commission__inr", "Commission", "inr", None, "sum"),
+    ("operating_expenses_related_to_insurance_business__inr", "Operating Expenses", "inr", False, "sum"),
+    ("equity_share_capital__inr", "Equity Share Capital", "inr", None, "sum"),
+]
+# DELIBERATELY EXCLUDED — incurred_claims_ratio__percent. It is stored per line of
+# business with no all-segments row, AND on two different scales in the same field
+# (Health carries both 100.98 and 0.96). A single headline figure needs a
+# premium-weighted roll-up plus a unit fix upstream; showing an unweighted mean
+# would be a confident wrong number on a supervisory screen.
+_KPI_BY_ID = {k[0]: k for k in _KPIS}
+
+
+def _ins_frame():
+    """Insurer-only slice of the financial engine, cached per data load."""
+    df = brain.UNIFIED_DF
+    if df is None or df.empty or "entity_type" not in df.columns:
+        return None
+    key = (id(df), len(df))
+    cached = getattr(_ins_frame, "_c", None)
+    if cached and cached[0] == key:
+        return cached[1]
+    sub = df[(df["entity_type"] == "insurer") & df["value_base"].notna()]
+    _ins_frame._c = (key, sub)
+    return sub
+
+
+_Q_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "Annual": 5}
+
+
+def _agg_by_year(frame, mode):
+    """Series fy -> value, aggregated per `mode`. Summing a ratio is the single
+    easiest way to put a wrong number on this screen, so the mode is explicit."""
+    if frame.empty:
+        return None
+    if mode == "latest_q":
+        f = frame.copy()
+        f["_q"] = f["Quarter"].map(lambda q: _Q_ORDER.get(str(q), 0)) if "Quarter" in f.columns else 0
+        f = f.sort_values("_q")
+        return f.groupby("fy_canonical")["value_base"].last()
+    return frame.groupby("fy_canonical")["value_base"].sum()
+
+
+def _fy_sort(fys):
+    """Financial years sort lexically ('2014-15' < '2015-16'), but guard anyway."""
+    return sorted({str(f) for f in fys if f and str(f) != "nan"})
+
+
+@api_bp.get("/insurer/list")
+def api_insurer_list():
+    """Insurers grouped by class, for the picker."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    df = _ins_frame()
+    if df is None:
+        return jsonify({"classes": {}})
+    out = {}
+    # NB: load_master_data_engine renames `insurer` -> `Entity`; the canonical
+    # id columns keep their snake_case names.
+    seen = df[["insurer_id", "Entity", "insurer_class"]].drop_duplicates("insurer_id")
+    for _, r in seen.iterrows():
+        cls = r["insurer_class"] or "Other"
+        out.setdefault(cls, []).append({"id": r["insurer_id"], "name": r["Entity"]})
+    for c in out:
+        out[c].sort(key=lambda x: x["name"])
+    return jsonify({"classes": out})
+
+
+@api_bp.get("/insurer/<insurer_id>")
+def api_insurer_360(insurer_id):
+    """Everything IRIS holds on one insurer: KPIs with peer context, trends,
+    derived metrics, and the regulatory documents that govern it."""
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    df = _ins_frame()
+    if df is None:
+        return jsonify({"ok": False, "message": "Financial engine not loaded."}), 503
+    mine = df[df["insurer_id"] == insurer_id]
+    if mine.empty:
+        return jsonify({"ok": False, "message": "Unknown insurer."}), 404
+
+    name = str(mine["Entity"].iloc[0])
+    cls = mine["insurer_class"].iloc[0]
+    peers = df[(df["insurer_class"] == cls) & (df["insurer_id"] != insurer_id)]
+    cohort = df[df["insurer_class"] == cls]
+    years = _fy_sort(mine["fy_canonical"])
+
+    # ---- KPI cards: latest value, YoY, and where it sits in its own class ----
+    kpis = []
+    for mid, label, unit, higher_better, mode in _KPIS:
+        m = mine[mine["metric_id"] == mid]
+        if m.empty:
+            continue
+        g = _agg_by_year(m, mode)
+        if g is None or g.empty:
+            continue
+        g = g[[i for i in _fy_sort(g.index)]]
+        if g.empty:
+            continue
+        fy = g.index[-1]
+        val = float(g.iloc[-1])
+        prev = float(g.iloc[-2]) if len(g) > 1 else None
+        yoy = ((val - prev) / abs(prev) * 100.0) if prev not in (None, 0) else None
+
+        # peer distribution for the SAME year and SAME class
+        pf = peers[(peers["metric_id"] == mid) & (peers["fy_canonical"] == fy)]
+        pv = (pf.groupby("insurer_id")["value_base"].last() if mode == "latest_q"
+              else pf.groupby("insurer_id")["value_base"].sum())
+        pct = median = None
+        if len(pv) >= 3:
+            median = float(pv.median())
+            pct = round(float((pv < val).sum()) / len(pv) * 100.0)
+        kpis.append({
+            "id": mid, "label": label, "unit": unit, "fy": fy, "value": val,
+            "yoy_pct": round(yoy, 1) if yoy is not None else None,
+            "peer_median": median, "percentile": pct, "peer_n": int(len(pv)),
+            "higher_is_better": higher_better,
+            # The handbook stopped publishing some series (grievances RESOLVED ends
+            # at 2017-18 while REPORTED runs to 2024-25). Surfacing that beats
+            # showing a stale figure that looks current.
+            "stale": bool(years and fy != years[-1]),
+            "latest_year": years[-1] if years else None,
+            "trend": [{"fy": f, "v": float(v)} for f, v in g.items()],
+        })
+
+    # ---- derived: market share within class (not in the handbook) ----
+    derived = []
+    gdp = "gross_direct_premium_within_india__inr"
+    mg = mine[mine["metric_id"] == gdp]
+    if not mg.empty:
+        fy = _fy_sort(mg["fy_canonical"])[-1]
+        mine_v = float(mg[mg["fy_canonical"] == fy]["value_base"].sum())
+        tot = cohort[(cohort["metric_id"] == gdp) & (cohort["fy_canonical"] == fy)]
+        tot_by = tot.groupby("insurer_id")["value_base"].sum().sort_values(ascending=False)
+        if tot_by.sum() > 0:
+            derived.append({
+                "label": f"Market Share ({cls})", "unit": "percent",
+                "value": round(mine_v / float(tot_by.sum()) * 100.0, 2), "fy": fy,
+                "note": f"rank {list(tot_by.index).index(insurer_id) + 1} of {len(tot_by)} in {cls}"
+                        if insurer_id in tot_by.index else None,
+            })
+
+    # Grievance quality: a resolution RATE and a size-normalised rate say far more
+    # than a raw count, which just ranks big insurers first.
+    rep = mine[mine["metric_id"] == "reported_during_the_year__count"]
+    res = mine[mine["metric_id"] == "resolved_during_the_year__count"]
+    if not rep.empty and not res.empty:
+        fys = sorted(set(_fy_sort(rep["fy_canonical"])) & set(_fy_sort(res["fy_canonical"])))
+        if fys:
+            fy = fys[-1]
+            r = float(rep[rep["fy_canonical"] == fy]["value_base"].sum())
+            s = float(res[res["fy_canonical"] == fy]["value_base"].sum())
+            if r > 0:
+                derived.append({"label": "Grievance Resolution Rate", "unit": "percent",
+                                "value": round(s / r * 100.0, 1), "fy": fy,
+                                "stale": bool(years and fy != years[-1]),
+                                "note": ("resolved series ends " + fy +
+                                         " — reported runs to " + years[-1])
+                                        if years and fy != years[-1] else
+                                        "may exceed 100%: prior-year grievances resolved this year"})
+    pol = mine[mine["metric_id"] == "no_of_policies__count"]
+    if not rep.empty and not pol.empty:
+        fys = sorted(set(_fy_sort(rep["fy_canonical"])) & set(_fy_sort(pol["fy_canonical"])))
+        if fys:
+            fy = fys[-1]
+            r = float(rep[rep["fy_canonical"] == fy]["value_base"].sum())
+            p = float(pol[pol["fy_canonical"] == fy]["value_base"].sum())
+            if p > 0:
+                derived.append({"label": "Grievances per lakh policies", "unit": "rate",
+                                "value": round(r / p * 100000.0, 1), "fy": fy,
+                                "note": "size-normalised — comparable across insurers"})
+
+    return jsonify({
+        "ok": True,
+        "insurer": {"id": insurer_id, "name": name, "class": cls},
+        "years": years,
+        "kpis": kpis,
+        "derived": derived,
+        "cohort_size": int(cohort["insurer_id"].nunique()),
+    })
+
+
 @api_bp.get("/documents")
 def api_documents():
     """Document tree (Act → Regulation → Circular) + download links + status, for

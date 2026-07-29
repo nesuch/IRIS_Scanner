@@ -28,6 +28,7 @@ function lazyRetry(factory, retries = 4, delay = 350) {
 // App pages (lazy — code-split per route)
 const Search = lazyRetry(() => import('./pages/Search.jsx'));
 const DataExplorer = lazyRetry(() => import('./pages/DataExplorer.jsx'));
+const Insurer360 = lazyRetry(() => import('./pages/Insurer360.jsx'));
 const Compliance = lazyRetry(() => import('./pages/Compliance.jsx'));
 const Analytics = lazyRetry(() => import('./pages/Analytics.jsx'));
 const Admin = lazyRetry(() => import('./pages/Admin.jsx'));
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="nonlife" element={<Suspense fallback={<PageLoading />}><Search module="nonlife" /></Suspense>} />
         <Route path="dept/:dept" element={<DeptSearch />} />
         <Route path="data" element={<Suspense fallback={<PageLoading />}><DataExplorer /></Suspense>} />
+        <Route path="insurer" element={<Suspense fallback={<PageLoading />}><Insurer360 /></Suspense>} />
         <Route path="compliance" element={<Suspense fallback={<PageLoading />}><Compliance /></Suspense>} />
         <Route path="downloads" element={<Suspense fallback={<PageLoading />}><Downloads /></Suspense>} />
         <Route path="read" element={<Suspense fallback={<PageLoading />}><Reader /></Suspense>} />
