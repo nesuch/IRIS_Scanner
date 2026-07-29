@@ -872,6 +872,126 @@ def api_insurer_360(insurer_id):
     })
 
 
+@api_bp.get("/insurer/compare")
+def api_insurer_compare():
+    """Side-by-side comparison of 2-4 insurers.
+
+    Cross-class comparison is the trap this endpoint exists to manage. Only 23 of
+    957 metrics are reported by every class, so comparing a life insurer's book to
+    a general insurer's is usually meaningless. Rather than refuse it (supervisors
+    sometimes DO want a cross-class view of universal balance-sheet items), the
+    response reports `mixed_class` and restricts the metric list to lines every
+    selected insurer actually reports — so a row is never half-empty by surprise.
+    """
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    ids = [i for i in request.args.getlist("id") if i][:4]
+    if len(ids) < 2:
+        return jsonify({"ok": False, "message": "Select at least two insurers."}), 400
+    df = _ins_frame()
+    if df is None:
+        return jsonify({"ok": False, "message": "Financial engine not loaded."}), 503
+
+    subs, meta = {}, []
+    for iid in ids:
+        m = df[df["insurer_id"] == iid]
+        if m.empty:
+            continue
+        subs[iid] = m
+        meta.append({"id": iid, "name": str(m["Entity"].iloc[0]),
+                     "class": m["insurer_class"].iloc[0]})
+    if len(subs) < 2:
+        return jsonify({"ok": False, "message": "Not enough valid insurers."}), 404
+    classes = {x["class"] for x in meta}
+
+    rows = []
+    for mid, label, unit, higher_better, mode in _KPIS:
+        series = {}
+        for iid, m in subs.items():
+            g = _agg_by_year(m[m["metric_id"] == mid], mode)
+            if g is None or g.empty:
+                continue
+            g = g[[i for i in _fy_sort(g.index)]]
+            if not g.empty:
+                series[iid] = g
+        # Every selected insurer must report it, else the row misleads by omission.
+        if len(series) != len(subs):
+            continue
+        # Compare on the newest year they SHARE — comparing 2024-25 against
+        # 2017-18 would silently reward whoever has fresher filings.
+        common = set.intersection(*[set(s.index) for s in series.values()])
+        if not common:
+            continue
+        fy = sorted(common)[-1]
+        vals = {iid: float(s[fy]) for iid, s in series.items()}
+        if higher_better is None:
+            best = worst = None
+        else:
+            best = max(vals, key=vals.get) if higher_better else min(vals, key=vals.get)
+            worst = min(vals, key=vals.get) if higher_better else max(vals, key=vals.get)
+        rows.append({
+            "id": mid, "label": label, "unit": unit, "fy": fy,
+            "higher_is_better": higher_better,
+            "best": best, "worst": worst,
+            "values": {iid: vals[iid] for iid in vals},
+            "trends": {iid: [{"fy": f, "v": float(v)} for f, v in s.items()]
+                       for iid, s in series.items()},
+        })
+
+    # Size-normalised conduct metric. Raw grievance counts just rank by size — New
+    # India files 7,768 against ICICI Lombard's 1,211 largely because it is bigger.
+    # Per lakh policies is what makes a small insurer's conduct problem visible
+    # next to a large one's, so it is computed for the comparison too.
+    norm = {}
+    for iid, m in subs.items():
+        rp = _agg_by_year(m[m["metric_id"] == "reported_during_the_year__count"], "sum")
+        pl = _agg_by_year(m[m["metric_id"] == "no_of_policies__count"], "sum")
+        if rp is None or pl is None or rp.empty or pl.empty:
+            continue
+        common = sorted(set(rp.index) & set(pl.index))
+        if not common:
+            continue
+        fy = common[-1]
+        if float(pl[fy]) > 0:
+            norm[iid] = {"fy": fy, "v": round(float(rp[fy]) / float(pl[fy]) * 100000.0, 1)}
+    if len(norm) == len(subs) and norm:
+        fys = {v["fy"] for v in norm.values()}
+        vals = {i: v["v"] for i, v in norm.items()}
+        rows.append({
+            "id": "_grievances_per_lakh", "label": "Grievances per lakh policies",
+            "unit": "rate", "fy": sorted(fys)[-1], "higher_is_better": False,
+            "best": min(vals, key=vals.get), "worst": max(vals, key=vals.get),
+            "values": vals, "trends": {}, "derived": True,
+            "note": "size-normalised — the comparable conduct measure",
+        })
+
+    # Market share is only meaningful inside one class — a share of "all insurance"
+    # would mix incompatible premium definitions.
+    share = {}
+    if len(classes) == 1:
+        cls = next(iter(classes))
+        gdp = "gross_direct_premium_within_india__inr"
+        cohort = df[(df["insurer_class"] == cls) & (df["metric_id"] == gdp)]
+        if not cohort.empty:
+            fy = _fy_sort(cohort["fy_canonical"])[-1]
+            tot = cohort[cohort["fy_canonical"] == fy].groupby("insurer_id")["value_base"].sum()
+            if tot.sum() > 0:
+                for iid in subs:
+                    if iid in tot.index:
+                        share[iid] = round(float(tot[iid]) / float(tot.sum()) * 100.0, 2)
+                share["_fy"] = fy
+                share["_class"] = cls
+
+    return jsonify({
+        "ok": True,
+        "insurers": meta,
+        "mixed_class": len(classes) > 1,
+        "classes": sorted(classes),
+        "metrics": rows,
+        "market_share": share,
+    })
+
+
 @api_bp.get("/documents")
 def api_documents():
     """Document tree (Act → Regulation → Circular) + download links + status, for

@@ -13,6 +13,7 @@ import '../lib/charts.js';
 import PageHeader from '../components/PageHeader.jsx';
 import { PageLoading } from '../components/UI.jsx';
 import { api } from '../api.js';
+import Compare from './insurer/Compare.jsx';
 import './insurer/insurer360.css';
 
 const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Reinsurer', 'FRB'];
@@ -81,6 +82,9 @@ export default function Insurer360() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  const [mode, setMode] = useState('single');     // 'single' | 'compare'
+  const [cmpIds, setCmpIds] = useState([]);       // up to 4
+  const [cmp, setCmp] = useState(null);
 
   useEffect(() => {
     api.get('/insurer/list')
@@ -101,34 +105,94 @@ export default function Insurer360() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(sel); }, [sel, load]);
+  useEffect(() => { if (mode === 'single') load(sel); }, [sel, load, mode]);
+
+  useEffect(() => {
+    if (mode !== 'compare' || cmpIds.length < 2) { setCmp(null); return; }
+    setLoading(true); setErr(null);
+    const qs = cmpIds.map((i) => `id=${encodeURIComponent(i)}`).join('&');
+    api.get(`/insurer/compare?${qs}`)
+      .then((d) => setCmp(d))
+      .catch((e) => { setErr(e.message); setCmp(null); })
+      .finally(() => setLoading(false));
+  }, [mode, cmpIds]);
+
+  const nameOf = useCallback((id) => {
+    for (const c of CLASS_ORDER) {
+      const hit = (classes[c] || []).find((x) => x.id === id);
+      if (hit) return hit.name;
+    }
+    return id;
+  }, [classes]);
 
   return (
     <>
       <PageHeader fullForm="Supervisory Intelligence" title="Insurer 360"
-        scope={data ? `${data.insurer.name} · ${CLASS_LABEL[data.insurer.class] || data.insurer.class}` : 'Select an insurer'} />
+        scope={mode === 'compare'
+          ? (cmpIds.length >= 2
+              ? `Comparing ${cmpIds.length} insurers`
+              : 'Comparison — pick at least two')
+          : (data ? `${data.insurer.name} · ${CLASS_LABEL[data.insurer.class] || data.insurer.class}`
+                  : 'Select an insurer')} />
 
       <div className="page-body i360">
         <div className="i360-picker">
-          <label htmlFor="i360-sel">Insurer</label>
-          <select id="i360-sel" className="input" value={sel || ''} onChange={(e) => setSel(e.target.value)}>
+          {mode === 'single' && <label htmlFor="i360-sel">Insurer</label>}
+          {mode === 'single' && (
+          <select id="i360-sel" className="input" value={sel || ''}
+            onChange={(e) => setSel(e.target.value)}>
             {CLASS_ORDER.filter((c) => (classes[c] || []).length).map((c) => (
               <optgroup key={c} label={`${CLASS_LABEL[c] || c} (${classes[c].length})`}>
                 {classes[c].map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
               </optgroup>
             ))}
           </select>
-          {data && (
+          )}
+          {mode === 'single' && data && (
             <span className="i360-cohort">
               compared against <strong>{data.cohort_size}</strong> {CLASS_LABEL[data.insurer.class] || data.insurer.class} insurers
             </span>
           )}
+          <span className="i360-modes">
+            <button type="button" className={mode === 'single' ? 'on' : ''}
+              onClick={() => setMode('single')}>Single</button>
+            <button type="button" className={mode === 'compare' ? 'on' : ''}
+              onClick={() => setMode('compare')}>Compare</button>
+          </span>
         </div>
+
+        {mode === 'compare' && (
+          <div className="cmp-picker">
+            <select className="input" value="" aria-label="Add insurer to comparison"
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v && !cmpIds.includes(v) && cmpIds.length < 4) setCmpIds([...cmpIds, v]);
+              }}>
+              <option value="">Add insurer…{cmpIds.length >= 4 ? ' (max 4)' : ''}</option>
+              {CLASS_ORDER.filter((c) => (classes[c] || []).length).map((c) => (
+                <optgroup key={c} label={`${CLASS_LABEL[c] || c} (${classes[c].length})`}>
+                  {classes[c].filter((i) => !cmpIds.includes(i.id))
+                    .map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            {cmpIds.map((id) => (
+              <span key={id} className="cmp-sel">
+                {nameOf(id)}
+                <button type="button" aria-label={`Remove ${nameOf(id)}`}
+                  onClick={() => setCmpIds(cmpIds.filter((x) => x !== id))}>&times;</button>
+              </span>
+            ))}
+            {cmpIds.length < 2 && <span className="i360-cohort">pick at least two</span>}
+          </div>
+        )}
 
         {err && <p className="iris-msg" style={{ color: 'var(--bad)' }}>{err}</p>}
         {loading && <PageLoading />}
 
-        {!loading && data && (
+        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} />}
+
+        {!loading && mode === 'single' && data && (
           <>
             {data.derived?.length > 0 && (
               <div className="i360-derived">
