@@ -1716,6 +1716,83 @@ def _invalidate_caches():
     _CACHE.clear()
 
 
+# ---------------------------------------------------------------------------
+# Entity classification, derived IN MEMORY at load time.
+#
+# tools/classify_entities.py writes entity_type/insurer_class into the database,
+# but the app must never DEPEND on that having been run: production restores its
+# SQLite from the litestream GCS replica, not from the committed seed, so a
+# migration applied to a local file never reaches prod. Deriving here means the
+# Insurer 360 screens work on any environment, migrated or not, and the DB columns
+# (when present) are purely a convenience for ad-hoc SQL.
+#
+# Rules mirror tools/classify_entities.py exactly. If they ever diverge, this one
+# is authoritative for the app.
+_DIM_TO_ENTITY = {
+    "State": "state", "Channel": "channel", "Country": "country",
+    "Ombudsman": "ombudsman_centre", "TPA": "tpa", "Industry": "aggregate",
+}
+_AGG_EXACT = {"total", "grand_total", "all_india", "industry_total"}
+_AGG_SUFFIX = ("_sector", "_industry", "_industry_all", "_total")
+_AGG_CONTAINS = ("private_sector_insurers", "public_sector_insurers",
+                 "stand_alone_health_insurers", "standalone_health_insurers")
+_INDIAN_REINSURERS = {"general_insurance_corporation_of_india_gic_re", "iti_reinsurance_ltd"}
+_CLASS_OVERRIDES = {
+    "national_insurance_co_ltd": "General", "the_new_india_assurance_co_ltd": "General",
+    "the_oriental_insurance_co_ltd": "General", "united_india_insurance_co_ltd": "General",
+    "ecgc_ltd": "General",
+}
+
+
+def _derive_entity_columns(df):
+    """Add entity_type / insurer_class to the in-memory frame when absent."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    if "insurer_id" not in df.columns or "Dimension" not in df.columns:
+        return df
+    if "entity_type" in df.columns and df["entity_type"].notna().any():
+        return df          # already migrated in the DB — trust it
+
+    iid = df["insurer_id"].fillna("").astype(str).str.lower()
+    is_agg = (iid.isin(_AGG_EXACT) | iid.str.endswith(_AGG_SUFFIX)
+              | iid.apply(lambda x: any(a in x for a in _AGG_CONTAINS)))
+    # Aggregate wins over the dimension mapping: every typed dimension carries its
+    # own subtotal row (Channel holds a "Total" beside Brokers), and mapping by
+    # dimension alone would make that subtotal a channel.
+    df["entity_type"] = df["Dimension"].map(_DIM_TO_ENTITY).fillna("insurer")
+    df.loc[is_agg, "entity_type"] = "aggregate"
+
+    # Reinsurance entities identified from DATA: only they file the foreign-branch
+    # assigned-capital line. That marker covers Indian reinsurers and foreign
+    # branches alike, so FRB is split off by the two-name domestic list.
+    reins = set()
+    if "metric_id" in df.columns:
+        m = df["metric_id"].fillna("").astype(str)
+        reins = set(df.loc[m.str.contains("assigned_capital_of_branches_of_foreign",
+                                          na=False), "insurer_id"].dropna().unique())
+
+    def _cls(i):
+        i = str(i or "").lower()
+        if i in reins:
+            return "Reinsurer" if i in _INDIAN_REINSURERS else "FRB"
+        if i in _CLASS_OVERRIDES:
+            return _CLASS_OVERRIDES[i]
+        if "lloyd" in i:
+            return "FRB"
+        if "reinsur" in i or re.search(r"(^|_)re(_|$)", i):
+            return "Reinsurer"
+        if "health" in i:
+            return "SAHI"
+        if "life" in i:
+            return "Life"
+        return "General"
+
+    ins = df["entity_type"] == "insurer"
+    df["insurer_class"] = None
+    df.loc[ins, "insurer_class"] = df.loc[ins, "insurer_id"].map(_cls)
+    return df
+
+
 def load_master_data_engine():
     global UNIFIED_DF
     try:
@@ -1783,8 +1860,14 @@ def load_master_data_engine():
             UNIFIED_DF.loc[ind, 'Entity'] = UNIFIED_DF.loc[ind, 'Entity'].map(
                 lambda e: _INDUSTRY_ALIASES.get(e, e))
 
+        # Derive the entity/class layer if the DB was not migrated (production
+        # restores from the GCS replica, which has no such columns).
+        UNIFIED_DF = _derive_entity_columns(UNIFIED_DF)
+
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
-        print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL.")
+        _et = UNIFIED_DF["entity_type"].notna().sum() if "entity_type" in UNIFIED_DF.columns else 0
+        print(f"[+] Data Engine Loaded: {len(UNIFIED_DF)} rows from SQL. "
+              f"({_et} entity-typed)")
 
     except Exception as e:
         print(f"[!] Error loading SQL data: {e}")
