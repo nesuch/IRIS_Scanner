@@ -68,7 +68,10 @@ export default function MetricCard({ k, children, onToast }) {
       onDoubleClick={() => setFlipped((f) => !f)}
       title={flipped ? 'Double-click to show the chart' : 'Double-click to show the data table'}>
       <div className="i360-head">
-        <span className="i360-label">{k.label}</span>
+        <span className="i360-label">
+          {k.label}
+          {k.context && <span className="i360-ctx" title={k.context}>{k.context}</span>}
+        </span>
         <span className="i360-fy">
           {k.fy}
           {k.stale && <span className="i360-stale" title={`no ${k.selected_fy || 'selected-year'} filing; showing ${k.fy}`}>STALE</span>}

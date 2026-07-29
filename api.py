@@ -712,6 +712,33 @@ _ACRONYMS = {"Inr": "₹", "Kyc": "KYC", "Tpa": "TPA", "Gdp": "GDP", "Eom": "EoM
              "Ulip": "ULIP", "Raci": "RACI", "Id": "ID", "Nav": "NAV", "Ppe": "PPE"}
 
 
+# Structural table artefacts, not metrics. The handbook's financial statements
+# carry unlabelled roll-up rows ("Total", "Sub Total (A)", "Total 2") and column
+# scaffolding that the ingester canonicalised like any other line. On a metric
+# list they are noise at best and misleading at worst — "Total ₹8,240 Cr" says
+# nothing about WHAT was totalled.
+#
+# The anchor matters: `total` alone (with an optional (a)/(b)/2 qualifier) is
+# junk, but `total_investments`, `total_premium` and `total_claims_settled` are
+# real metrics, so the pattern only fires when nothing meaningful follows.
+_STRUCTURAL_RE = re.compile(
+    r"^(?:(?:sub_)?(?:grand_)?total(?:_[a-e0-9]|_c_d)?"          # total, total_a, total_2
+    r"|s_no|sl_no|sr_no|serial_no"                                 # row numbering
+    r"|(?:opening|closing)_balance"                                # balance of WHAT?
+    r"|target|achieved"                                            # unanchored to any subject
+    r"|particulars|description|[a-e])(?:__\w+)?$"
+)
+
+
+def _is_structural(mid):
+    return bool(_STRUCTURAL_RE.match(str(mid or "")))
+
+
+# Leading single letters are schedule item labels ("a. Fire insurance"), not part
+# of the metric name — strip them for display but KEEP the metric, which is real.
+_SCHED_PREFIX_RE = re.compile(r"^[a-e]_(?=[a-z]{3})")
+
+
 def _metric_meta(mid):
     """(label, unit, agg) for any canonical metric_id."""
     unit, base = "number", mid
@@ -722,6 +749,9 @@ def _metric_meta(mid):
     else:
         if "ratio" in mid or "margin" in mid:
             unit = "ratio"
+    base = _SCHED_PREFIX_RE.sub("", base)
+    # A trailing "_2" marks a duplicated source column, not a second metric.
+    base = re.sub(r"_2$", "", base)
     words = [w for w in base.split("_") if w]
     label = " ".join(_ACRONYMS.get(w.capitalize(), w.capitalize()) for w in words)
     # Ratios are point-in-time (solvency is filed quarterly); summing them is the
@@ -924,10 +954,23 @@ def api_insurer_360(insurer_id):
     # the client can render a series without a second round-trip.
     curated = {k[0] for k in _KPIS}
     others = []
-    for mid, g in mine.groupby("metric_id"):
-        if not mid or mid in curated:
+    # Group by metric AND its business context, not by metric alone. A generic
+    # line like `3_months__count` appears under "Group Death Claims", "Individual
+    # Death Claims" AND "Age Analysis of Claims Paid" — summing those into one
+    # card adds up unrelated things and produces a number that means nothing.
+    # The context also supplies the label these rows are missing on their own:
+    # "3 Months" is meaningless; "Group Death Claims — 3 Months" is not.
+    ctx_col = "class_of_business" if "class_of_business" in mine.columns else None
+    lob_col = "Line_of_Business" if "Line_of_Business" in mine.columns else None
+    keys = ["metric_id"] + [c for c in (lob_col, ctx_col) if c]
+    for key, g in mine.groupby(keys, dropna=False):
+        mid = key[0] if isinstance(key, tuple) else key
+        if not mid or mid in curated or _is_structural(mid):
             continue
         label, unit, agg = _metric_meta(str(mid))
+        parts = list(key[1:]) if isinstance(key, tuple) else []
+        ctx = " · ".join(str(p) for p in parts
+                         if p and str(p) not in ("nan", "None", "-", "General"))
         ser = _agg_by_year(g, agg)
         if ser is None or ser.empty:
             continue
@@ -937,13 +980,13 @@ def api_insurer_360(insurer_id):
         idx = list(ser.index)
         fy = sel_fy if sel_fy in idx else idx[-1]
         others.append({
-            "id": mid, "label": label, "unit": unit,
-            "fy": fy, "value": float(ser[fy]),
+            "id": f"{mid}|{ctx}", "label": label, "context": ctx or None,
+            "unit": unit, "fy": fy, "value": float(ser[fy]),
             "stale": bool(sel_fy and fy != sel_fy),
             "years": len(idx),
             "trend": [{"fy": f, "v": float(v)} for f, v in ser.items()],
         })
-    others.sort(key=lambda x: x["label"])
+    others.sort(key=lambda x: (x["label"], x.get("context") or ""))
 
     return jsonify({
         "ok": True,

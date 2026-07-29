@@ -256,3 +256,7 @@
 .i360-mq { margin-left: auto; max-width: 260px; }
 .i360-all-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .i360-na { color: var(--faint); font-size: 20px; font-weight: 600; }
+/* Business context for otherwise-generic lines ("3 Months" alone says nothing). */
+.i360-ctx { display: block; font-size: 9.5px; font-weight: 600; color: var(--faint);
+  text-transform: none; letter-spacing: 0; margin-top: 1px; line-height: 1.35;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
