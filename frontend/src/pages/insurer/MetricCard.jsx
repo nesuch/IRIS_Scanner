@@ -84,11 +84,21 @@ export default function MetricCard({ k, children, onToast }) {
 
       {!flipped ? (
         <>
-          <div className="i360-value">{fmtVal(k.value, k.unit)}</div>
+          <div className="i360-value">
+            {fmtVal(k.value, k.unit)}
+            {k.computed && <i className="fas fa-calculator i360-calc"
+              title={`Computed from ${k.components?.length || 0} leaf items — not a stored figure`} />}
+          </div>
           {children}
           {trend.length > 1
             ? <div className="i360-spark"><Line data={chart} options={opts} /></div>
             : <div className="i360-spark-empty">single year</div>}
+          {k.computed && k.components?.length > 0 && (
+            <details className="i360-prov">
+              <summary>= sum of {k.components.length} items</summary>
+              <ul>{k.components.map((c) => <li key={c}>{c}</li>)}</ul>
+            </details>
+          )}
         </>
       ) : (
         <div className="i360-table-wrap">

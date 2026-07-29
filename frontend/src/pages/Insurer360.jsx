@@ -284,6 +284,26 @@ export default function Insurer360() {
               ))}
             </div>
 
+            {(data.computed || []).length > 0 && (
+              <section className="i360-all i360-computed">
+                <div className="i360-all-head">
+                  <h3>Computed totals <span>{data.computed.length}</span></h3>
+                  <p className="i360-computed-note">
+                    Not stored — reconstructed from leaf items at query time. The database holds
+                    only canonical facts, so every total here shows exactly what it was summed
+                    from. A context missing any component is omitted rather than shown as a
+                    partial sum.
+                  </p>
+                </div>
+                <div className="i360-all-grid">
+                  {data.computed.map((m) => (
+                    <MetricCard key={m.id} k={{ ...m, selected_fy: data.selected_fy }}
+                      onToast={(t, bad) => (bad ? toast.error(t) : toast.success(t))} />
+                  ))}
+                </div>
+              </section>
+            )}
+
             {(data.all_metrics || []).length > 0 && (
               <section className="i360-all">
                 <div className="i360-all-head">

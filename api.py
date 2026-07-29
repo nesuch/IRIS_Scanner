@@ -14,6 +14,7 @@ import base64
 import bisect
 import difflib
 import io
+import json
 import os
 import re
 import sys
@@ -760,6 +761,93 @@ def _metric_meta(mid):
     return label, unit, agg
 
 
+# ---------------------------------------------------------------------------
+# COMPUTED METRICS LAYER
+#
+# financial_metrics holds LEAF facts only — the roll-up rows were removed once
+# their compositions were derived and verified (tools/derive_totals.py). Totals
+# are therefore reconstructed here, from the recorded definition, at query time.
+#
+# The point is not to put the same number back. It is that the number now carries
+# its provenance: every computed value ships the component list it was summed
+# from, so a supervisor can see WHY it is what it is, and a wrong figure is
+# traceable to a wrong leaf rather than to an opaque stored aggregate.
+_TOTAL_DEFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "tools", "total_definitions.json")
+_TOTAL_DEFS_CACHE = {}
+
+
+def _total_defs():
+    """Verified total definitions, cached by file mtime so an updated derivation
+    is picked up without a restart."""
+    try:
+        mt = os.path.getmtime(_TOTAL_DEFS_PATH)
+    except OSError:
+        return {}
+    if _TOTAL_DEFS_CACHE.get("mtime") != mt:
+        try:
+            with open(_TOTAL_DEFS_PATH, encoding="utf-8") as fh:
+                data = json.load(fh) or {}
+            _TOTAL_DEFS_CACHE.update(mtime=mt, defs=data.get("verified") or {})
+        except Exception:
+            _TOTAL_DEFS_CACHE.update(mtime=mt, defs={})
+    return _TOTAL_DEFS_CACHE.get("defs", {})
+
+
+def _computed_totals(frame, sel_fy):
+    """Reconstruct each verified total for one insurer, per business context.
+
+    Computed within (line_of_business, class_of_business) — the same grouping the
+    composition was derived under. Summing a definition across contexts would add
+    unrelated sections together, which is the very error removing the stored
+    totals was meant to prevent.
+    """
+    defs = _total_defs()
+    if not defs or frame is None or frame.empty:
+        return []
+    lob_col = "Line_of_Business" if "Line_of_Business" in frame.columns else None
+    cob_col = "class_of_business" if "class_of_business" in frame.columns else None
+    keys = [c for c in (lob_col, cob_col) if c]
+    out = []
+    for mid, spec in defs.items():
+        comps = spec.get("components") or []
+        if not comps:
+            continue
+        sub = frame[frame["metric_id"].isin(comps)]
+        if sub.empty:
+            continue
+        groups = sub.groupby(keys, dropna=False) if keys else [((), sub)]
+        for gkey, g in groups:
+            # ALL components must be present. A partial sum labelled "Total B" is
+            # a wrong number wearing the right name — worse than showing nothing,
+            # because it looks authoritative. Contexts where the insurer did not
+            # file every component are simply skipped.
+            have = set(g["metric_id"].unique())
+            if not set(comps).issubset(have):
+                continue
+            ser = g.groupby("fy_canonical")["value_base"].sum()
+            ser = ser[[i for i in _fy_series(ser.index)]]
+            if ser.empty:
+                continue
+            idx = list(ser.index)
+            fy = sel_fy if sel_fy in idx else idx[-1]
+            label, unit, _ = _metric_meta(str(mid))
+            parts = list(gkey) if isinstance(gkey, tuple) else [gkey]
+            ctx = " · ".join(str(p) for p in parts
+                             if p and str(p) not in ("nan", "None", "-", "General"))
+            out.append({
+                "id": f"computed:{mid}|{ctx}", "label": label, "context": ctx or None,
+                "unit": unit, "fy": fy, "value": float(ser[fy]),
+                "stale": bool(sel_fy and fy != sel_fy),
+                "computed": True,
+                "components": sorted(_metric_meta(c)[0] for c in comps),
+                "confidence": spec.get("confidence"),
+                "trend": [{"fy": f, "v": float(v)} for f, v in ser.items()],
+            })
+    out.sort(key=lambda x: (x["label"], x.get("context") or ""))
+    return out
+
+
 def _ins_frame():
     """Insurer-only slice of the financial engine, cached per data load."""
     df = brain.UNIFIED_DF
@@ -994,6 +1082,7 @@ def api_insurer_360(insurer_id):
         "years": years,
         "selected_fy": sel_fy,
         "all_metrics": others,
+        "computed": _computed_totals(mine, sel_fy),
         "kpis": kpis,
         "derived": derived,
         "cohort_size": int(cohort["insurer_id"].nunique()),
