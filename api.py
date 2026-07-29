@@ -719,6 +719,18 @@ def _ins_frame():
 
 _Q_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "Annual": 5}
 
+# fy_canonical carries TWO formats: the dominant "2024-25" (19,129 insurer rows)
+# and a bare "2025" (354 rows) from a handful of tables. Lexical sort puts "2025"
+# after "2024-25", so a naive max() picked the 354-row fragment as the latest year.
+# Analytics restrict to the financial-year form; the bare-year rows remain in the
+# data but never define a period boundary.
+_FY_RE = re.compile(r"^\d{4}-\d{2}$")
+
+
+def _fy_series(values):
+    """Sorted financial years (YYYY-YY only)."""
+    return sorted({str(v) for v in values if v and _FY_RE.match(str(v))})
+
 
 def _agg_by_year(frame, mode):
     """Series fy -> value, aggregated per `mode`. Summing a ratio is the single
@@ -1096,6 +1108,178 @@ def api_industry_trends():
         "channel_mix": chan,
         "channel_fy": chan_fy,
         "conduct": conduct,
+    })
+
+
+# Regulatory floor for the solvency ratio (IRDAI control level). This is a real
+# statutory threshold, not a tuned parameter — which is why breaching it outranks
+# every statistical signal in the worklist.
+SOLVENCY_FLOOR = 1.50
+
+
+@api_bp.get("/insurer/exceptions")
+def api_insurer_exceptions():
+    """Ranked supervisory worklist: which insurers need attention, and why.
+
+    This is the inversion of a dashboard. A dashboard answers "what do we know
+    about X"; this answers "who should I look at today" — which is the question a
+    supervisor actually arrives with, and the reason the existing explorer screens
+    go unused.
+
+    Every exception is EXPLAINABLE by construction: each carries the value, the
+    comparison it failed, and a sentence a human can act on. Comparisons use the
+    median of the insurer's own class (never the mean, which one outlier drags,
+    and never across classes, where metrics mean different things).
+    """
+    if not _app.current_user.is_authenticated:
+        return jsonify({"ok": False}), 401
+    df = _ins_frame()
+    if df is None:
+        return jsonify({"ok": False, "message": "Financial engine not loaded."}), 503
+
+    all_fy = _fy_series(df["fy_canonical"].dropna().unique())
+    latest_fy = all_fy[-1] if all_fy else None
+    # A figure two years stale is a different kind of signal from a current breach,
+    # so staleness is recorded rather than silently treated as live.
+    recent = all_fy[-2:]
+    out = []
+
+    def add(row, kind, severity, metric, label, value, fy, why, extra=None):
+        e = {"insurer_id": row["insurer_id"], "insurer": row["insurer"],
+             "class": row["class"], "kind": kind, "severity": severity,
+             "metric_id": metric, "metric": label, "value": value, "fy": fy,
+             "why": why, "stale": fy not in recent}
+        if extra:
+            e.update(extra)
+        out.append(e)
+
+    ids = df[["insurer_id", "Entity", "insurer_class"]].drop_duplicates("insurer_id")
+    meta = {r["insurer_id"]: {"insurer_id": r["insurer_id"], "insurer": r["Entity"],
+                              "class": r["insurer_class"]} for _, r in ids.iterrows()}
+
+    # ---- 1. Solvency below the statutory floor -----------------------------
+    sol = df[df["metric_id"].str.startswith("solvency", na=False)]
+    for iid, g in sol.groupby("insurer_id"):
+        fy = sorted(g["fy_canonical"].dropna().unique())[-1]
+        last = _agg_by_year(g[g["fy_canonical"] == fy], "latest_q")
+        if last is None or last.empty:
+            continue
+        v = float(last.iloc[-1])
+        if v < SOLVENCY_FLOOR:
+            sev = "high" if v < 1.0 else "medium"
+            why = (f"Solvency {v:.2f} is below the {SOLVENCY_FLOOR:.2f} regulatory floor"
+                   + (f" — capital deficit (negative)" if v < 0 else ""))
+            add(meta[iid], "threshold", sev, "solvency", "Solvency Ratio", round(v, 2), fy, why,
+                {"threshold": SOLVENCY_FLOOR})
+
+    # ---- 2. Loss-making ----------------------------------------------------
+    pat = df[df["metric_id"] == "profit_after_tax__inr"]
+    for iid, g in pat.groupby("insurer_id"):
+        by = _agg_by_year(g, "sum")
+        if by is None or by.empty:
+            continue
+        fy = sorted(by.index)[-1]
+        v = float(by[fy])
+        # Materiality floor: a sub-crore loss rounds to "₹0 Cr" on screen and is not
+        # worth a supervisor's queue slot on its own.
+        if v < -1e7:
+            # Consecutive loss years are a materially worse signal than one bad year.
+            yrs = sorted(by.index)
+            streak = 0
+            for f in reversed(yrs):
+                if float(by[f]) < 0:
+                    streak += 1
+                else:
+                    break
+            sev = "high" if streak >= 3 else "medium"
+            why = (f"Loss of ₹{abs(v)/1e7:,.0f} Cr"
+                   + (f" — {streak} consecutive loss-making years" if streak > 1 else ""))
+            add(meta[iid], "loss", sev, "profit_after_tax__inr", "Profit After Tax",
+                round(v, 2), fy, why, {"streak": streak})
+
+    # ---- 3. Conduct outlier vs class median --------------------------------
+    # Grievances per lakh policies: the size-normalised measure. Raw counts just
+    # rank by size, so an outlier test on them would only ever flag the biggest.
+    rep = df[df["metric_id"] == "reported_during_the_year__count"]
+    pol = df[df["metric_id"] == "no_of_policies__count"]
+    # Two guards, both learned from false positives this engine produced:
+    #   * MIN_POLICIES — Go Digit Life reports 6 policies against 206 grievances,
+    #     which yields a rate of millions per lakh. A denominator that small is a
+    #     filing artefact, not conduct; below the floor no rate is computed.
+    #   * IMPLAUSIBLE_RATE — Zuno reports 4,503 grievances on 11,402 policies (39%).
+    #     A rate that high means the two lines are on different bases (policies is a
+    #     segment, grievances the whole book). That is a DATA QUALITY finding, and
+    #     is reported as one instead of being laundered into a conduct ranking.
+    MIN_POLICIES = 50_000
+    IMPLAUSIBLE_RATE = 5_000        # >5% of policies generating a grievance
+    rates = {}
+    for iid in set(rep["insurer_id"]) & set(pol["insurer_id"]):
+        r = _agg_by_year(rep[rep["insurer_id"] == iid], "sum")
+        p = _agg_by_year(pol[pol["insurer_id"] == iid], "sum")
+        common = sorted(set(r.index) & set(p.index))
+        if not common:
+            continue
+        fy = common[-1]
+        pv, rv = float(p[fy]), float(r[fy])
+        if pv < MIN_POLICIES:
+            continue
+        rate = rv / pv * 1e5
+        if rate > IMPLAUSIBLE_RATE:
+            add(meta[iid], "data_quality", "low", "_grievances_per_lakh",
+                "Grievances vs policies", round(rate, 1), fy,
+                f"{rv:,.0f} grievances against {pv:,.0f} policies — the two lines "
+                f"appear to be on different bases, not a conduct signal")
+            continue
+        rates[iid] = (fy, rate)
+    by_class = {}
+    for iid, (fy, rate) in rates.items():
+        by_class.setdefault(meta[iid]["class"], []).append(rate)
+    for iid, (fy, rate) in rates.items():
+        peers = by_class.get(meta[iid]["class"], [])
+        if len(peers) < 4:
+            continue
+        med = sorted(peers)[len(peers) // 2]
+        if med > 0 and rate > med * 1.5:
+            ratio = rate / med
+            sev = "high" if ratio >= 2.5 else "medium"
+            add(meta[iid], "outlier", sev, "_grievances_per_lakh",
+                "Grievances per lakh policies", round(rate, 1), fy,
+                f"{ratio:.1f}x the {meta[iid]['class']} median of {med:,.0f} per lakh policies",
+                {"peer_median": round(med, 1), "ratio": round(ratio, 2)})
+
+    # ---- 4. Sharp adverse year-on-year swing -------------------------------
+    SWING = {"gross_direct_premium_within_india__inr": ("Gross Direct Premium", True, 25),
+             "reported_during_the_year__count": ("Grievances Reported", False, 50)}
+    for mid, (label, higher_better, pct_gate) in SWING.items():
+        for iid, g in df[df["metric_id"] == mid].groupby("insurer_id"):
+            by = _agg_by_year(g, "sum")
+            if by is None or len(by) < 2:
+                continue
+            yrs = sorted(by.index)
+            cur, prev = float(by[yrs[-1]]), float(by[yrs[-2]])
+            if prev <= 0:
+                continue
+            chg = (cur - prev) / abs(prev) * 100.0
+            adverse = chg < -pct_gate if higher_better else chg > pct_gate
+            if adverse:
+                add(meta[iid], "swing", "medium", mid, label, round(cur, 2), yrs[-1],
+                    f"{'fell' if chg < 0 else 'rose'} {abs(chg):.0f}% vs {yrs[-2]}"
+                    + ("" if higher_better else " — rising grievances"),
+                    {"change_pct": round(chg, 1), "prev_fy": yrs[-2]})
+
+    rank = {"high": 0, "medium": 1, "low": 2}
+    out.sort(key=lambda e: (rank.get(e["severity"], 3), e["stale"], -abs(e.get("ratio") or 0)))
+
+    summary = {}
+    for e in out:
+        summary[e["severity"]] = summary.get(e["severity"], 0) + 1
+    flagged = len({e["insurer_id"] for e in out})
+
+    return jsonify({
+        "ok": True, "latest_fy": latest_fy,
+        "exceptions": out, "summary": summary,
+        "insurers_flagged": flagged,
+        "insurers_total": int(df["insurer_id"].nunique()),
     })
 
 

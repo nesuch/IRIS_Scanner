@@ -143,3 +143,50 @@
 .ind-delta.worse { color: #b91c1c; } .ind-delta.better { color: #047857; }
 
 @media (max-width: 900px) { .ind-panels { grid-template-columns: 1fr; } }
+
+/* ---- exception worklist -------------------------------------------------- */
+.exc-summary { display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  background: #fff; border: 1px solid var(--line-strong); border-radius: 10px;
+  padding: 14px 18px; margin-bottom: 16px; }
+.exc-stat { display: flex; flex-direction: column; }
+.exc-n { font-size: 26px; font-weight: 800; line-height: 1; color: var(--ink, #0f172a); }
+.exc-l { font-size: 11px; color: var(--faint); margin-top: 3px; }
+.exc-stat.sev-high .exc-n { color: #b91c1c; }
+.exc-stat.sev-med .exc-n { color: #b45309; }
+.exc-stat.sev-low .exc-n { color: var(--faint); }
+.exc-asof { margin-left: auto; font-size: 11px; color: var(--faint); }
+
+.exc-ins { background: #fff; border: 1px solid var(--line-strong); border-radius: 10px;
+  margin-bottom: 10px; overflow: hidden; }
+.exc-ins-head { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px;
+  background: var(--navy-50, #eef2fb); border-bottom: 1px solid var(--line); }
+.exc-name { border: 0; background: transparent; padding: 0; font-size: 13px; font-weight: 800;
+  color: var(--navy-700, #1e3a8a); cursor: pointer; text-align: left; }
+.exc-name:hover { text-decoration: underline; }
+.exc-cls { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.exc-count { margin-left: auto; font-size: 11px; color: var(--faint); }
+
+/* Severity is carried by a left bar, not by colouring the whole row — a wall of
+   red reads as noise and stops being triage. */
+.exc-row { display: grid; grid-template-columns: 18px 130px 170px minmax(0, 1fr); gap: 10px;
+  align-items: baseline; padding: 9px 14px; border-bottom: 1px solid var(--line);
+  border-left: 4px solid transparent; font-size: 12px; }
+.exc-row:last-child { border-bottom: 0; }
+.exc-row.sev-high { border-left-color: #b91c1c; }
+.exc-row.sev-med { border-left-color: #b45309; }
+.exc-row.sev-low { border-left-color: var(--line-strong); }
+.exc-row i { color: var(--faint); font-size: 12px; }
+.exc-row.sev-high i { color: #b91c1c; }
+.exc-row.sev-med i { color: #b45309; }
+.exc-kind { font-weight: 700; color: var(--navy-700, #1e3a8a); }
+.exc-metric { color: var(--faint); }
+.exc-why { color: var(--ink, #0f172a); }
+.exc-foot { margin-top: 16px; font-size: 11.5px; color: var(--faint); line-height: 1.7; }
+
+/* Narrow: stack into a single content column beside the icon. Every text child
+   must be pinned to column 2 — without .exc-why it auto-placed into the 18px icon
+   column and wrapped one word per line. */
+@media (max-width: 800px) {
+  .exc-row { grid-template-columns: 18px minmax(0, 1fr); row-gap: 3px; }
+  .exc-kind, .exc-metric, .exc-why { grid-column: 2; }
+}
