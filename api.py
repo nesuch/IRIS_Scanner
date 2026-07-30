@@ -1195,6 +1195,46 @@ def api_insurer_360(insurer_id):
     })
 
 
+# Ratios an insurer may omit while still filing both components. Deriving them is the
+# only honest way to fill such a gap: a ratio must be recomputed from the sums, never
+# averaged or summed across contexts.
+#
+# Galaxy Health and Narayana Health file no "All Classes" incurred-claims ratio for
+# Health, though every other standalone health insurer does — and both file the
+# numerator and denominator for exactly that context. Showing a dash there reads as
+# missing data when the figure is fully determined.
+_DERIVABLE_RATIOS = {
+    "incurred_claims_ratio__percent": ("claims_incurred_net__inr",
+                                       "net_earned_premium__inr", 100.0),
+}
+
+
+def _derive_ratio(m, mid, fy, flob, fcob):
+    """The ratio for one insurer at one context and year, from its components.
+
+    Returns None unless BOTH components resolve to a single positive denominator in
+    that exact context — a partial match would silently invent a figure.
+    """
+    spec = _DERIVABLE_RATIOS.get(mid)
+    if spec is None:
+        return None
+    num_id, den_id, scale = spec
+
+    def _one(metric_id):
+        sel = m[(m["metric_id"] == metric_id) & (m["fy_canonical"] == fy)]
+        if flob is not None and "Line_of_Business" in sel.columns:
+            sel = sel[sel["Line_of_Business"].fillna("").astype(str) == flob]
+        if fcob is not None and "Class_of_Business" in sel.columns:
+            sel = sel[sel["Class_of_Business"].fillna("").astype(str) == fcob]
+        vals = sel["value_base"].dropna()
+        return float(vals.sum()) if len(vals) else None
+
+    num, den = _one(num_id), _one(den_id)
+    if num is None or den is None or den <= 0:
+        return None
+    return num / den * scale
+
+
 @api_bp.get("/insurer/compare")
 def api_insurer_compare():
     """Side-by-side comparison of 2-8 insurers.
@@ -1303,6 +1343,18 @@ def api_insurer_compare():
                 continue
             fy = sorted(year_cover, key=lambda f: (year_cover[f], _fy_sort([f])[0]))[-1]
         vals = {iid: float(s[fy]) for iid, s in series.items() if fy in s.index}
+        # Fill gaps from components where the ratio is fully determined, and record
+        # which insurers were derived so the row can say so rather than implying the
+        # figure was filed.
+        derived_for = []
+        if mid in _DERIVABLE_RATIOS:
+            for iid, m in subs.items():
+                if iid in vals:
+                    continue
+                d = _derive_ratio(m, mid, fy, _flob, _fcob)
+                if d is not None:
+                    vals[iid] = d
+                    derived_for.append(iid)
         # Two is the floor: one value is not a comparison, and best/worst would both
         # resolve to that single insurer — the client draws "best" green, so a lone
         # figure would be decorated as having won against nobody.
@@ -1324,6 +1376,7 @@ def api_insurer_compare():
             # shows it whenever it is short of the full set, so a partial row is
             # visibly partial and "best" is never read as best-of-all.
             "coverage": len(vals), "selected": len(subs),
+            "derived_for": derived_for or None,
             "values": {iid: vals[iid] for iid in vals},
             "trends": {iid: [{"fy": f, "v": float(v)} for f, v in s.items()]
                        for iid, s in series.items()},

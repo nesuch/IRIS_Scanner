@@ -67,10 +67,16 @@ function TrendRow({ metric, insurers, colorOf }) {
   return <div className="cmp-trend"><Line data={data} options={opts} /></div>;
 }
 
-// Add-a-metric control. Only offers what THIS selection reports, and only metrics with
-// a single context — the catalogue is filtered server-side, because a metric_id that
-// spans unrelated tables would be summed across them.
-function MetricAdder({ available, extra, onChange }) {
+// Add-a-metric control. Offers what THIS selection reports, one entry per
+// (metric, line of business, class of business) — nothing is withheld, because the
+// context is part of the row's identity rather than something summed away.
+//
+// The coverage count is the point of this list. Insurers file at different
+// granularities: Galaxy and Narayana report Health incurred-claims ratio by class but
+// never under "All Classes", so that entry is 5 of 7 while "Individual (excl. Family
+// Floater)" is 7 of 7. Without the count a reader picks the aggregate, sees two
+// dashes, and concludes the data is missing when it is simply filed differently.
+function MetricAdder({ available, extra, onChange, total }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const pool = (available || []).filter((m) => !m.is_kpi && !extra.includes(m.id));
@@ -95,7 +101,13 @@ function MetricAdder({ available, extra, onChange }) {
                 onClick={() => { onChange([...extra, m.id]); setQ(''); }}>
                 <span className="mx-label">{m.label}</span>
                 {m.context && <span className="mx-ctx">{m.context}</span>}
-                <span className="mx-n">{m.n} of {m.n}</span>
+                {/* Coverage is the single most useful signal when choosing a context.
+                    Galaxy and Narayana file Health ICR by class but never under "All
+                    Classes", so that entry is 5 of 7 while "Individual (excl. Family
+                    Floater)" is 7 of 7 — invisible until this was shown. */}
+                <span className={`mx-n ${total && m.n === total ? 'full' : 'part'}`}>
+                  {m.n}{total ? ` of ${total}` : ''}
+                </span>
               </button>
             ))}
           </div>
@@ -139,7 +151,8 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8,
 
       {onExtraChange && (
         <div className="cmp-add">
-          <MetricAdder available={data.available_metrics} extra={extra} onChange={onExtraChange} />
+          <MetricAdder available={data.available_metrics} extra={extra}
+            onChange={onExtraChange} total={ins.length} />
           {extra.length > 0 && (
             <div className="cmp-added">
               {extra.map((id) => {
@@ -156,7 +169,7 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8,
             </div>
           )}
           <span className="cmp-add-note">
-            each entry is scoped to one line of business, so a row is like-for-like
+            scoped to one line of business · the count is how many of these {ins.length} filed it
           </span>
         </div>
       )}
@@ -249,7 +262,15 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8,
                 {ins.map((x) => {
                   const v = m.values?.[x.id];
                   const tone = m.best === x.id ? 'is-best' : m.worst === x.id ? 'is-worst' : '';
-                  return <td key={x.id} className={tone}>{fmt(v, m.unit)}</td>;
+                  // A figure IRIS computed from components because the insurer filed no
+                  // ratio row. Marked, so it is never mistaken for a filed number.
+                  const der = (m.derived_for || []).includes(x.id);
+                  return (
+                    <td key={x.id} className={`${tone} ${der ? 'is-calc' : ''}`}
+                      title={der ? 'Computed from claims incurred ÷ net earned premium — this insurer filed no ratio for this context' : undefined}>
+                      {fmt(v, m.unit)}{der && <sup className="cmp-calc">c</sup>}
+                    </td>
+                  );
                 })}
                 {showTrend && <td className="cmp-trendcell"><TrendRow metric={m} insurers={ins} colorOf={colorOf} /></td>}
               </tr>

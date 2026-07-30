@@ -379,7 +379,14 @@
 .mx-opt:hover { background: var(--navy-50, #eef2fb); }
 .mx-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink, #0f172a); }
 .mx-ctx { display: block; font-size: 10.5px; color: var(--muted); }
-.mx-n { display: none; }
+/* Coverage per context. Hiding this was a real mistake: a reader picking "Health ·
+   All Classes" could not see it was filed by only 5 of 7 insurers, and read the two
+   dashes as missing data rather than as an aggregate those insurers never filed. */
+.mx-n { float: right; font-size: 10px; font-weight: 800; padding: 1px 7px;
+  border-radius: 999px; margin-left: 8px; }
+.mx-n.full { background: rgba(4,120,87,0.12); color: #047857; }
+.mx-n.part { background: rgba(180,83,9,0.12); color: #b45309; }
+.mx-opt { overflow: hidden; }
 .mx-none { font-size: 12px; color: var(--muted); padding: 8px; }
 .cmp-added { display: flex; gap: 6px; flex-wrap: wrap; }
 .cmp-added-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
@@ -391,3 +398,5 @@
 .cmp-add-note { font-size: 11px; color: var(--faint); font-style: italic; }
 .cmp-rowctx { display: block; font-size: 10px; font-weight: 500; color: var(--accent, #2563eb); }
 .cmp-added-ctx { font-style: normal; font-weight: 500; color: var(--muted); font-size: 10px; margin-left: 5px; }
+.cmp-calc { color: var(--accent, #2563eb); font-weight: 800; font-size: 9px; margin-left: 2px; }
+.cmp-table td.is-calc { font-style: italic; }
