@@ -1,0 +1,31 @@
+PROVENANCE CORRECTION — this commit's message is incomplete.
+
+It was created with `git add -A`, which swept in three unrelated, authored-by-user
+fixes that were already in the working tree. They are NOT part of the highlighting
+work the message describes, and they are not by the commit's co-author:
+
+1. tools/pq_to_iris.py — _meta(): pq_no regex accepted an optional S/U starred
+   prefix (S850, U2774) and stopped relying on \b, which never fires against "_"
+   (underscore is a word char), so 18201_Reply.docx failed too. Result is now
+   normalised and uppercased. Also added LSPQ/RSPQ to house detection. Verified by
+   the author over all 170 PQ files: pq_no found on 119 before, 167 after; the 3
+   misses have no number in the filename.
+
+2. api.py — /pq/reextract now refreshes pq_no and house alongside body_text, so the
+   parser fix above reaches rows written before it. Fills a blank or corrects a
+   changed value, never blanks one out. /pq/<id>/update accepts pq_no and house for
+   manual correction.
+
+3. ingest/__init__.py — segment_pdf() forwards keep_hindi to extract(). Without it
+   the one bilingual spec (bima_asba_upi_circular_2025) had its Hindi lines dropped
+   before segmentation, which is where its clause anchors live: 2 clauses instead
+   of 15. The same omission in ingest/build.py was fixed later in 43a8973.
+
+Reviewed and tested after the fact; see also 43a8973. Known open items found during
+that review, neither introduced here:
+  - the \blspq\b / \brspq\b house patterns cannot match their own filenames (the
+    same underscore/\b trap), so they are inert; house is resolved from document
+    text instead;
+  - \brs\b matches "Rs.", so a reply with no explicit house name but a rupee figure
+    is filed as Rajya Sabha. reextract fills house only when blank and never
+    corrects it, so such a row stays wrong until edited via /pq/<id>/update.
