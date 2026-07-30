@@ -1,5 +1,6 @@
 import sqlite3
 import pandas as pd # type: ignore
+import numpy as np  # type: ignore
 import os
 import re
 import functools
@@ -1958,6 +1959,103 @@ def _apply_insurer_status(df):
     return df
 
 
+# Units that never made it onto a metric id, and the repair for each.
+#
+# These come from source tables whose headers were not unit-parsed, so the values were
+# stored as printed. The failure is silent and compounding: an unscaled amount is
+# 100,000x too small, a ratio kept as a fraction renders as "0.72%", and both sit
+# beside correctly-scaled rows under names that look interchangeable.
+#
+# Verified rather than assumed. Where claims_incurred_net appears, the incurred-claims
+# ratio in the SAME slot is stored as a fraction, and claims x 1e5 reproduces the ratio
+# identity in 1,338 of 1,343 slots. Both defects travel together because they come from
+# the same unparsed tables.
+_UNIT_REPAIRS = {
+    # metric_id            -> (canonical id, value multiplier, unit_code)
+    "claims_incurred_net": ("claims_incurred_net__inr", 1e5, "INR"),
+    # Counts and ratios need no rescaling, only a unit so the UI stops formatting them
+    # as bare numbers. Deliberately no repair for new_business_a_b or total_c_d: their
+    # scale is genuinely unknown and a guess would corrupt real figures.
+    "solvency_ratio": ("solvency_ratio__ratio", 1.0, "RATIO"),
+    "solvency_ratio_of_general_health_and_reinsurance_companies":
+        ("solvency_ratio_of_general_health_and_reinsurance_companies__ratio", 1.0, "RATIO"),
+    "number_of_individual_agents": ("number_of_individual_agents__count", 1.0, "COUNT"),
+    "number_of_corporate_agents": ("number_of_corporate_agents__count", 1.0, "COUNT"),
+    "number_of_micro_insurance_agents_life":
+        ("number_of_micro_insurance_agents_life__count", 1.0, "COUNT"),
+}
+
+_RATIO_FROM = {
+    # ratio metric -> (numerator, denominator) used to work out which scale it is on
+    "incurred_claims_ratio__percent": ("claims_incurred_net__inr", "net_earned_premium__inr"),
+}
+
+
+def _repair_units(df):
+    """Put unscaled amounts and mis-scaled ratios onto one scale.
+
+    The ratio repair does not guess. For every slot holding both components the true
+    ratio is computed and compared with the stored one, which says whether that slot is
+    on a 0-1 or a 0-100 scale. The answer is then applied per CONTEXT, because the scale
+    is a property of the source table rather than the row: measured across 26 contexts
+    with evidence, every one was internally consistent and none held both scales.
+    Contexts with no evidence either way are left alone.
+    """
+    if df is None or getattr(df, "empty", True) or "metric_id" not in df.columns:
+        return df
+
+    # --- amounts and labels ------------------------------------------------
+    for old, (new, mult, unit) in _UNIT_REPAIRS.items():
+        hit = df["metric_id"] == old
+        if not hit.any():
+            continue
+        if mult != 1.0 and "value_base" in df.columns:
+            df.loc[hit, "value_base"] = df.loc[hit, "value_base"] * mult
+        df.loc[hit, "metric_id"] = new
+        if "unit_code" in df.columns:
+            df.loc[hit, "unit_code"] = unit
+
+    # --- ratios ------------------------------------------------------------
+    need = {"insurer_id", "fy_canonical", "Line_of_Business",
+            "Class_of_Business", "value_base"}
+    if not need <= set(df.columns):
+        return df
+    key = ["insurer_id", "fy_canonical", "Line_of_Business", "Class_of_Business"]
+    for ratio_id, (num_id, den_id) in _RATIO_FROM.items():
+        rows = df["metric_id"] == ratio_id
+        if not rows.any():
+            continue
+        num = df[df["metric_id"] == num_id].groupby(key)["value_base"].sum()
+        den = df[df["metric_id"] == den_id].groupby(key)["value_base"].sum()
+        if num.empty or den.empty:
+            continue
+        expected = (num / den.where(den > 0) * 100).dropna()
+        stored = df[rows].groupby(key)["value_base"].first()
+        both = stored.to_frame("s").join(expected.to_frame("e"), how="inner")
+        both = both[both["s"] != 0]
+        if both.empty:
+            continue
+        r = both["e"] / both["s"]
+        both["scale"] = np.where(r.between(90, 110), 100.0,
+                                 np.where(r.between(0.9, 1.1), 1.0, np.nan))
+        ev = both.dropna(subset=["scale"]).reset_index()
+        if ev.empty:
+            continue
+        # One scale per context, and only where the evidence agrees.
+        per_ctx = ev.groupby(["Line_of_Business", "Class_of_Business"])["scale"].agg(
+            ["nunique", "first"])
+        fix = {ctx: float(row["first"]) for ctx, row in per_ctx.iterrows()
+               if row["nunique"] == 1 and row["first"] == 100.0}
+        if not fix:
+            continue
+        ctx_of = list(zip(df["Line_of_Business"].fillna("").astype(str),
+                          df["Class_of_Business"].fillna("").astype(str)))
+        mult = pd.Series([fix.get(c, 1.0) for c in ctx_of], index=df.index)
+        target = rows & (mult == 100.0)
+        df.loc[target, "value_base"] = df.loc[target, "value_base"] * 100.0
+    return df
+
+
 def _derive_entity_columns(df):
     """Add entity_type / insurer_class to the in-memory frame when absent."""
     if df is None or getattr(df, "empty", True):
@@ -2085,6 +2183,9 @@ def load_master_data_engine():
         # Registration status, from the Annual Report. After the entity layer, because
         # it needs the aliased names and adds a dimension rather than changing one.
         UNIFIED_DF = _apply_insurer_status(UNIFIED_DF)
+
+        # Units last: the ratio repair reads the amount columns it has just corrected.
+        UNIFIED_DF = _repair_units(UNIFIED_DF)
 
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
         _et = UNIFIED_DF["entity_type"].notna().sum() if "entity_type" in UNIFIED_DF.columns else 0
