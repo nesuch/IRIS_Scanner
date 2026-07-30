@@ -284,6 +284,29 @@ export default function Insurer360() {
               ))}
             </div>
 
+            {(data.lob_mix || []).length > 1 && (
+              <section className="i360-lob">
+                <h3>Book by line of business <span>{data.lob_mix[0].fy}</span></h3>
+                <div className="i360-lob-bars">
+                  {data.lob_mix.map((l) => (
+                    <div key={l.lob} className="i360-lob-row">
+                      <span className="i360-lob-name">{l.lob}</span>
+                      <span className="i360-lob-bar">
+                        <span style={{ width: `${l.pct}%` }} />
+                      </span>
+                      <span className="i360-lob-pct">{l.pct}%</span>
+                      <span className="i360-lob-val">{fmt(l.value, 'inr')}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="i360-lob-note">
+                  Gross direct premium split. Line-of-business market shares above are computed
+                  across every insurer writing that line — a health book competes with general
+                  insurers' health portfolios, not only with other standalone health insurers.
+                </p>
+              </section>
+            )}
+
             {(data.computed || []).length > 0 && (
               <section className="i360-all i360-computed">
                 <div className="i360-all-head">

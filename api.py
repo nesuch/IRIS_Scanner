@@ -1004,6 +1004,49 @@ def api_insurer_360(insurer_id):
                         if insurer_id in tot_by.index else None,
             })
 
+    # LINE-OF-BUSINESS SHARE — class is the wrong denominator for overlapping
+    # books. A standalone health insurer competes with every general insurer's
+    # health portfolio, so "43.5% of SAHI" flatters Star Health: on the real
+    # health market (General + SAHI together) it holds 13.1%, and the largest
+    # health writer is New India, a GENERAL insurer, at 15.5%. Life is excluded
+    # because its lines do not overlap the non-life ones.
+    LOB_MARKETS = {"Health + PA + Travel": ("Health", ("General", "SAHI")),
+                   "Fire": ("Fire", ("General",)),
+                   "Motor": ("Motor", ("General",)),
+                   "Marine": ("Marine", ("General",))}
+    lob_mix, lob_shares = [], []
+    if "Line_of_Business" in mine.columns:
+        mg2 = mine[mine["metric_id"] == gdp]
+        if not mg2.empty:
+            _y = _fy_series(mg2["fy_canonical"])
+            lfy = sel_fy if sel_fy in _y else (_y[-1] if _y else None)
+            cur = mg2[mg2["fy_canonical"] == lfy]
+            tot_all = float(cur["value_base"].sum())
+            for lob, g in cur.groupby("Line_of_Business"):
+                v = float(g["value_base"].sum())
+                if v == 0:
+                    continue
+                lob_mix.append({"lob": str(lob), "value": v, "fy": lfy,
+                                "pct": round(v / tot_all * 100, 1) if tot_all else None})
+                spec = LOB_MARKETS.get(str(lob))
+                if not spec:
+                    continue
+                mkt_label, members = spec
+                mkt = df[(df["metric_id"] == gdp) & (df["Line_of_Business"] == lob)
+                         & (df["insurer_class"].isin(members)) & (df["fy_canonical"] == lfy)]
+                by = mkt.groupby("insurer_id")["value_base"].sum().sort_values(ascending=False)
+                if by.sum() > 0 and insurer_id in by.index:
+                    lob_shares.append({
+                        "label": f"{mkt_label} market share", "unit": "percent",
+                        "value": round(float(by[insurer_id]) / float(by.sum()) * 100, 2),
+                        "fy": lfy,
+                        "note": f"rank {list(by.index).index(insurer_id)+1} of {len(by)} "
+                                f"across {' + '.join(members)} — the real {mkt_label.lower()} "
+                                f"market, not just this insurer's class",
+                    })
+            lob_mix.sort(key=lambda x: -x["value"])
+    derived.extend(lob_shares)
+
     # Grievance quality: a resolution RATE and a size-normalised rate say far more
     # than a raw count, which just ranks big insurers first.
     rep = mine[mine["metric_id"] == "reported_during_the_year__count"]
@@ -1089,6 +1132,7 @@ def api_insurer_360(insurer_id):
         "selected_fy": sel_fy,
         "all_metrics": others,
         "computed": _computed_totals(mine, sel_fy),
+        "lob_mix": lob_mix,
         "kpis": kpis,
         "derived": derived,
         "cohort_size": int(cohort["insurer_id"].nunique()),

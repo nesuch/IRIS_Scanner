@@ -276,3 +276,16 @@
 .i360-prov li { font-size: 10.5px; color: var(--faint); line-height: 1.5; }
 .i360-what { margin: 4px 0 2px; font-size: 10.5px; color: var(--navy-700, #1e3a8a);
   font-style: italic; line-height: 1.45; }
+
+/* ---- line-of-business mix ------------------------------------------------ */
+.i360-lob { margin-top: 22px; background: #fff; border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 14px 16px; }
+.i360-lob h3 { margin: 0 0 10px; font-size: 13px; font-weight: 800; color: var(--navy-700,#1e3a8a); }
+.i360-lob h3 span { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--faint); }
+.i360-lob-row { display: grid; grid-template-columns: minmax(120px,1.2fr) 3fr auto auto;
+  gap: 10px; align-items: center; margin-bottom: 6px; font-size: 12px; }
+.i360-lob-bar { background: var(--line); border-radius: 4px; height: 10px; overflow: hidden; }
+.i360-lob-bar span { display: block; height: 100%; background: var(--navy-700,#1e3a8a); border-radius: 4px; }
+.i360-lob-pct { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 46px; text-align: right; }
+.i360-lob-val { color: var(--faint); font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+.i360-lob-note { margin: 10px 0 0; font-size: 11px; color: var(--faint); line-height: 1.6; }
