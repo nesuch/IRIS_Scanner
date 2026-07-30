@@ -167,15 +167,57 @@ def _iso_date(s):
         return ""
 
 
+# PQ numbers carry an optional Starred/Unstarred letter prefix (S850, U2774) and
+# often sit next to an underscore in a filename, which "\d" and "\b" respectively
+# refused — that is why a third of the corpus had no number at all.
+#
+# But a reply can carry TWO numbers, and they are not interchangeable. This corpus
+# identifies most replies by their diary number ("Un-Starred Question Dy. No.18430"),
+# and some by their question number ("Starred Question no.13186"). Either is a valid
+# identifier when it is the only one present. When BOTH appear — PQ 31 is titled
+# "Starred Q No. 472" while its body cites "diary no. S15", and its filename holds
+# both as draft_response_to_PQ_S15__PQ472.docx — the question number is the real
+# answer, and taking whichever appeared first in the string gave S15.
+#
+# Hence ordered tiers rather than one pattern: match on the strongest available
+# evidence, not on position. Tiers 4 and 5 are the previous behaviour untouched, so
+# nothing that already resolved can regress; the new tiers only redirect a case
+# where a better signal exists.
+_PQ_TIERS = (
+    # 1. An explicit question number. "no" must follow "q"/"question" directly, so
+    #    "Question Dy. No. 18430" deliberately does NOT match here — the "Dy."
+    #    in between makes it a diary number, which tier 3 owns.
+    ("both", r"\b(?:q|question)\.?\s*no\.?\s*([SU]?[\s._-]?\d{2,6})"),
+    # 2. A bare "PQ472" in the filename — no letter prefix, so a diary reference
+    #    like "PQ_S15" sitting beside it cannot outrank it. Filename only: "PQ 1234"
+    #    in the body prose is usually a cross-reference to a different question.
+    #    No \b, for the same reason tier 4 has none: in "PQ_S15__PQ472" the second
+    #    "PQ" is preceded by "_", which is a word character, so a boundary never
+    #    fires there and the tier would silently never match its own motivating case.
+    ("file", r"pq[\s._-]*(\d{2,6})"),
+    # 3. An explicit diary number. Legitimate, and the identifier for most of this
+    #    corpus — it just loses to tier 1 when both are present.
+    ("both", r"\b(?:dy|diary)\.?\s*no\.?\s*([SU]?[\s._-]?\d{2,6})"),
+    # 4. Previous behaviour. No \b before the keyword, which is what lets the "q" of
+    #    "RSPQ_S6487" anchor the match — do not add one.
+    ("both", r"(?:question|q|pq|dy)[\s._-]*(?:no|dy)?\.?[\s._-]*([SU]?[\s._-]?\d{2,6})"),
+    # 5. Previous fallback: a bare serial in the filename.
+    ("file", r"(?<![A-Za-z0-9])([SU]?\d{3,6})(?![0-9])"),
+)
+
+
+def _pq_number(text, filename):
+    """The reply's question number, on the strongest evidence available."""
+    both = filename + " " + text
+    for scope, pat in _PQ_TIERS:
+        m = re.search(pat, filename if scope == "file" else both, re.I)
+        if m:
+            return re.sub(r"[\s._-]", "", m.group(1)).upper()
+    return ""
+
+
 def _meta(text, filename):
-    # PQ numbers carry an optional Starred/Unstarred letter prefix (S850, U2774)
-    # and often sit next to an underscore in a filename. The old patterns missed
-    # both: "\d" refused the letter, and "\b" never fires against "_" because
-    # underscore is a word character. Hence a third of the corpus had no number.
-    pq_no = (re.search(r"(?:question|q|pq|dy)[\s._-]*(?:no|dy)?\.?[\s._-]*"
-                       r"([SU]?[\s._-]?\d{2,6})", filename + " " + text, re.I)
-             or re.search(r"(?<![A-Za-z0-9])([SU]?\d{3,6})(?![0-9])", filename))
-    pq_no = re.sub(r"[\s._-]", "", pq_no.group(1)).upper() if pq_no else ""
+    pq_no = _pq_number(text, filename)
     house = ("Lok Sabha" if re.search(r"\blok\s*sabha\b|\bls\b|\blspq\b|\bls\s*pq\b", filename + " " + text, re.I)
              else "Rajya Sabha" if re.search(r"\brajya\s*sabha\b|\brs\b|\brspq\b|\brs\s*pq\b", filename + " " + text, re.I)
              else "")
