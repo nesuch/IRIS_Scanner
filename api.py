@@ -2030,12 +2030,132 @@ def api_pq_download(pid):
                      as_attachment=True, download_name=r.docx_filename)
 
 
+# A PQ number carries two things: the serial digits, and a marker saying whether the
+# question was starred. Both appear in half a dozen written forms — "9000", "U9000",
+# "U 9000", "*9000", "U.9000" — so a plain string compare treats the same question
+# filed twice as two questions.
+_PQ_STAR_RE = re.compile(r"[\*★]")
+_PQ_UNSTAR_RE = re.compile(r"\bu\b|^u(?=\d)", re.I)
+
+
+def _pq_num_parts(pq_no):
+    """(digits, marker) for a PQ number. marker: '*' starred, 'u' unstarred, '' unsaid.
+
+    Splitting the two lets us say "same question, written differently" (same digits,
+    compatible markers) apart from "different questions that share a serial" — a
+    starred and an unstarred Q both numbered 9000 in the same session are genuinely
+    two questions, and collapsing them would lose one.
+    """
+    s = (pq_no or "").strip().lower()
+    if not s:
+        return "", ""
+    digits = re.sub(r"\D", "", s)
+    if _PQ_STAR_RE.search(s):
+        marker = "*"
+    elif _PQ_UNSTAR_RE.search(s):
+        marker = "u"
+    else:
+        marker = ""
+    return digits, marker
+
+
+def _pq_markers_compatible(a, b):
+    """Two markers can describe the same question when they agree, or when one of
+    them simply didn't say. '*' vs 'u' is a real disagreement — never the same Q."""
+    return a == b or not a or not b
+
+
 def _pq_duplicate(pq_no, house):
-    """An existing PQ with the same number + house = a likely duplicate."""
+    """An existing PQ that is probably this same question.
+
+    Returns (row, confidence) or (None, None). "certain" is a byte-identical number
+    in the same house. "likely" is the same serial digits with compatible markers —
+    the "9000" vs "U 9000" case, which the old exact-string check let straight in.
+    """
     pq_no = (pq_no or "").strip()
     if not pq_no:
-        return None
-    return _app.PqDocument.query.filter_by(pq_no=pq_no, house=house or "").first()
+        return None, None
+    house = house or ""
+    exact = _app.PqDocument.query.filter_by(pq_no=pq_no, house=house).first()
+    if exact:
+        return exact, "certain"
+    digits, marker = _pq_num_parts(pq_no)
+    if not digits:
+        return None, None
+    # Two columns only. This runs once per uploaded file, and a bulk upload of 50
+    # would otherwise drag every 25k-character reply body through memory 50 times
+    # to compare a handful of digits.
+    for rid, rno in (_app.PqDocument.query
+                     .with_entities(_app.PqDocument.id, _app.PqDocument.pq_no)
+                     .filter_by(house=house).all()):
+        d2, m2 = _pq_num_parts(rno)
+        if d2 == digits and _pq_markers_compatible(marker, m2):
+            return _app.PqDocument.query.get(rid), "likely"
+    return None, None
+
+
+def _pq_dup_clusters():
+    """Every group of PQs that look like the same question filed more than once.
+
+    Grouped on (house, serial digits, marker) — with the unmarked form folded into
+    whichever marked form it shares a house and serial with, since "9000" is not a
+    third question alongside "*9000" and "U9000", it is one of them written loosely.
+    Subjects are compared so the reader can tell a genuine re-upload from two
+    different questions that happen to share a serial; nothing is deleted here.
+    """
+    rows = [r for r in _pq_newest_first() if _pq_num_parts(r.pq_no)[0]]
+    buckets = {}
+    for r in rows:
+        digits, marker = _pq_num_parts(r.pq_no)
+        buckets.setdefault((r.house or "", digits), []).append((r, marker))
+    out = []
+    for (house, digits), members in buckets.items():
+        # Within a serial, split by marker but let the unmarked ones join a marked
+        # group when there is exactly one to join (otherwise they stay on their own,
+        # because we cannot know which of '*'/'u' they meant).
+        marked = {m for _r, m in members if m}
+        groups = {}
+        for r, m in members:
+            key = m if m else (next(iter(marked)) if len(marked) == 1 else "")
+            groups.setdefault(key, []).append(r)
+        for key, grp in groups.items():
+            if len(grp) < 2:
+                continue
+            base = re.sub(r"\W+", " ", (grp[0].subject or grp[0].title or "").lower()).strip()
+            out.append({
+                "house": house, "number": digits,
+                "marker": {"*": "Starred", "u": "Unstarred"}.get(key, ""),
+                "items": [{
+                    "id": r.id, "pq_no": r.pq_no, "house": r.house,
+                    "subject": r.subject or r.title, "date": r.doc_date,
+                    "date_iso": r.doc_date_iso,
+                    "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
+                    "chars": len(r.body_text or ""),
+                    # How closely this subject matches the first in the group. A pair
+                    # at 1.0 with the same date is almost certainly one file uploaded
+                    # twice; a low score means the serial collided, not the question.
+                    "subject_match": round(difflib.SequenceMatcher(
+                        None, base,
+                        re.sub(r"\W+", " ", (r.subject or r.title or "").lower()).strip()
+                    ).ratio(), 2),
+                } for r in grp],
+            })
+    # Worst first: the tightest subject agreement is the most likely real duplicate.
+    out.sort(key=lambda g: (-min(i["subject_match"] for i in g["items"]), g["number"]))
+    return out
+
+
+@api_bp.get("/pq/duplicates")
+def api_pq_duplicates():
+    """Report PQs that look like the same question stored twice. Read-only."""
+    if not _require_role("editor"):
+        return jsonify({"message": "Editor access required"}), 403
+    groups = _pq_dup_clusters()
+    return jsonify({
+        "groups": groups,
+        "total": _app.PqDocument.query.count(),
+        "affected": sum(len(g["items"]) for g in groups),
+    })
 
 
 @api_bp.post("/pq/upload")
@@ -2056,11 +2176,18 @@ def api_pq_upload():
     except Exception as e:
         print(f"PQ parse error: {e}")
         return jsonify({"ok": False, "message": "Could not read that document."}), 400
-    dup = _pq_duplicate(parsed["pq_no"], parsed["house"])
+    dup, conf = _pq_duplicate(parsed["pq_no"], parsed["house"])
     if dup and not force:
-        return jsonify({"ok": False, "duplicate": True,
+        # "likely" says the numbers differ as strings but describe the same question
+        # (e.g. uploading "U 9000" when "9000" is already stored), so the message has
+        # to show BOTH numbers — otherwise it reads as a bug.
+        msg = (f"A PQ {dup.house} No. {dup.pq_no} already exists: \"{dup.title[:80]}\"."
+               if conf == "certain" else
+               f"This looks like the same question as {dup.house} No. {dup.pq_no} "
+               f"(you uploaded it as No. {parsed['pq_no']}): \"{dup.title[:80]}\".")
+        return jsonify({"ok": False, "duplicate": True, "confidence": conf,
                         "existing": {"id": dup.id, "title": dup.title, "pq_no": dup.pq_no, "house": dup.house},
-                        "message": f"A PQ {dup.house} No. {dup.pq_no} already exists: \"{dup.title[:80]}\"."}), 409
+                        "message": msg}), 409
     m = _app
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
     storage.save_pq(safe, raw)   # GCS in prod, local disk in dev
@@ -2098,10 +2225,11 @@ def api_pq_bulk_upload():
         except Exception as e:
             print(f"bulk PQ parse error ({f.filename}): {e}")
             skipped.append(f.filename); continue
-        dup = _pq_duplicate(parsed["pq_no"], parsed["house"])
+        dup, conf = _pq_duplicate(parsed["pq_no"], parsed["house"])
         if dup:
             duplicates.append({"filename": f.filename, "pq_no": dup.pq_no,
-                               "house": dup.house, "existing_title": dup.title})
+                               "house": dup.house, "existing_title": dup.title,
+                               "confidence": conf, "uploaded_as": parsed["pq_no"]})
             continue
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(f.filename))
         storage.save_pq(safe, raw)

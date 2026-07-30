@@ -256,6 +256,7 @@ export default function Pqs() {
   const [opening, setOpening] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
   const [allTags, setAllTags] = useState([]);
   const [flagTarget, setFlagTarget] = useState(null);   // PQ (or no-result) being flagged
   const chatRef = useRef(null);
@@ -543,6 +544,7 @@ export default function Pqs() {
       <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions" scopeDot={false}>
         {!empty && <button className="btn btn-ghost btn-sm" onClick={clearChat}><i className="fas fa-arrow-rotate-left" /> Clear</button>}
         <button className="btn btn-ghost btn-sm" onClick={() => browseAll()}><i className="fas fa-list" /> All PQs</button>
+        {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setDupOpen(true)}><i className="fas fa-clone" /> Duplicates</button>}
         {isEditor && <button className="btn btn-ghost btn-sm" onClick={() => setBulkOpen(true)}><i className="fas fa-layer-group" /> Bulk upload</button>}
         {isEditor && <button className="btn btn-primary btn-sm" onClick={() => setUploadOpen(true)}><i className="fas fa-upload" /> Upload PQ</button>}
       </PageHeader>
@@ -625,6 +627,8 @@ export default function Pqs() {
 
       {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); loadTags(); }} />}
       {bulkOpen && <BulkUploadModal onClose={() => setBulkOpen(false)} onDone={() => { setBulkOpen(false); loadTags(); }} />}
+      {dupOpen && <DuplicatesModal onClose={() => setDupOpen(false)} onOpen={open} isAdmin={isAdmin}
+        onDelete={(id) => { hide(id); if (active?.id === id) setActive(null); loadTags(); }} />}
 
       {flagTarget && (
         <FlagModal kind="pq"
@@ -686,6 +690,90 @@ function EditMeta({ pq, onSaved }) {
         </Modal>
       )}
     </>
+  );
+}
+
+// Duplicate review. Deliberately a REPORT, not a cleanup that runs itself: a
+// starred and an unstarred question can legitimately share a serial in the same
+// session, so "same number" is evidence, not proof. The subject-match score is
+// what separates the two cases — a pair at 1.00 on the same date is one file
+// uploaded twice; a low score is a serial collision between real questions.
+function DuplicatesModal({ onClose, onOpen, isAdmin, onDelete }) {
+  const toast = useToast();
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+
+  const load = () => api.get('/pq/duplicates').then(setData)
+    .catch((e) => setErr(e.message || 'Could not scan for duplicates'));
+  useEffect(() => { load(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function remove(id) {
+    if (!window.confirm('Delete this copy? This cannot be undone.')) return;
+    try {
+      await api.post(`/pq/${id}/delete`);
+      toast.success('Deleted');
+      onDelete && onDelete(id);
+      setData(null); load();
+    } catch (e) { toast.error(e.message || 'Could not delete'); }
+  }
+
+  return (
+    <Modal title="Duplicate check" onClose={onClose} width={760}>
+      {err && <p className="iris-msg" style={{ color: 'var(--bad)' }}>{err}</p>}
+      {!data && !err && <p className="pq-dup-scanning"><Spinner size={14} /> Scanning every PQ number…</p>}
+      {data && (
+        <>
+          <p className="pq-dup-lede">
+            Matched on house + serial digits, so <code>9000</code>, <code>U 9000</code> and
+            {' '}<code>U-9000</code> count as one question. Starred and unstarred are kept
+            apart — both can carry the same serial and still be different questions.
+          </p>
+          {data.groups.length === 0 ? (
+            <p className="pq-dup-clean">
+              <i className="fas fa-circle-check" /> No duplicates across {data.total} replies.
+            </p>
+          ) : (
+            <>
+              <div className="pq-dup-count">
+                {data.groups.length} {data.groups.length === 1 ? 'group' : 'groups'} ·
+                {' '}{data.affected} of {data.total} replies involved
+              </div>
+              {data.groups.map((g) => (
+                <div className="pq-dup-group" key={`${g.house}-${g.number}-${g.marker}`}>
+                  <div className="pq-dup-head">
+                    <span className="pq-no">No. {g.number}</span>
+                    {g.house && <span className="pq-house">{g.house}</span>}
+                    {g.marker && <span className="pq-dup-marker">{g.marker}</span>}
+                    <span className="pq-dup-n">{g.items.length} copies</span>
+                  </div>
+                  {g.items.map((it, i) => (
+                    <div className="pq-dup-row" key={it.id}>
+                      <button className="pq-dup-open" onClick={() => { onOpen(it.id); onClose(); }}>
+                        <span className="pq-dup-no">{it.pq_no}</span>
+                        <span className="pq-dup-subj">{it.subject}</span>
+                      </button>
+                      <span className="pq-dup-meta">
+                        {it.date || 'no date'} · {it.chars.toLocaleString()} chars
+                        {i > 0 && (
+                          <span className={`pq-dup-sim ${it.subject_match >= 0.9 ? 'high' : it.subject_match >= 0.6 ? 'mid' : 'low'}`}>
+                            {Math.round(it.subject_match * 100)}% same subject
+                          </span>
+                        )}
+                      </span>
+                      {isAdmin && (
+                        <button className="pq-dup-del" title="Delete this copy" onClick={() => remove(it.id)}>
+                          <i className="fas fa-trash" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }
 
