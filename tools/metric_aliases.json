@@ -74,6 +74,57 @@
         "The second TOTAL of the balance sheet. See total_sources_of_funds__inr for the",
         "evidence; the two were established together."
       ]
+    },
+    {
+      "canonical": "provisions_other_than_taxation_others__inr",
+      "label": "Provisions (other than taxation) - Others",
+      "members": [
+        "provisions_other_than_taxation_others__inr",
+        "b_others__inr",
+        "c_others__inr"
+      ],
+      "why": [
+        "'Others' on its own names nothing. The parent row is what gives it meaning, and the",
+        "parent was read directly from the handbook: Table 24 puts '(b) Others' under",
+        "'Provisions (other than taxation)' in the Policyholders Account, and Tables 25, 51",
+        "and 88 put '(c) Others' under the same parent in the Shareholders Account.",
+        "The sub-item letter differs only because the parent sits at a different position in",
+        "each statement - it is a place in a printed list, not identity.",
+        "Safe to merge: ZERO overlapping (insurer, year, line of business, class of business)",
+        "slots, because one lives in the Policyholders Account and the other in the",
+        "Shareholders Account, a distinction Line_of_Business already carries.",
+        "Agreed with the user on 2026-07-30."
+      ]
+    },
+    {
+      "canonical": "other_expenses_others__inr",
+      "label": "Other Expenses - Others",
+      "members": [
+        "other_expenses_others__inr",
+        "c_others_2__inr"
+      ],
+      "why": [
+        "A RENAME, deliberately NOT merged with the Provisions 'Others' above. Table 51 and",
+        "Table 88 print '(c) Others' twice in the Shareholders Account - once under PROVISIONS",
+        "(Other than taxation) and once under OTHER EXPENSES - and extraction numbered the",
+        "second occurrence rather than naming its parent.",
+        "The two coexist in 358 (insurer, year, statement) slots, so they are demonstrably",
+        "different figures reported side by side; merging would have added two unrelated",
+        "amounts together."
+      ]
+    },
+    {
+      "canonical": "appropriations_others__inr",
+      "label": "Appropriations - Others",
+      "members": [
+        "appropriations_others__inr",
+        "e_others__inr"
+      ],
+      "why": [
+        "A RENAME. Table 51 puts '(e) Others' under APPROPRIATIONS in the Shareholders",
+        "Account. It coexists with the Provisions 'Others' in 170 slots, so it is a distinct",
+        "line item and is kept separate."
+      ]
     }
   ]
 }
