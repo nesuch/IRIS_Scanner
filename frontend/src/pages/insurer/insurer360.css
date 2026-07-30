@@ -415,3 +415,18 @@
   font-size: 10.5px; font-weight: 700; letter-spacing: 0; text-transform: none;
   color: var(--muted); background: rgba(0,0,0,.05); border-radius: 999px; padding: 1px 8px;
 }
+
+/* Family heading — the outer level above the per-table groups. Heavier than the table
+   heading so the two levels are obviously nested rather than competing. */
+.i360-section { margin-bottom: 34px; }
+.i360-section-head {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 14px;
+  font-family: var(--serif, Georgia, serif); font-size: 17px; font-weight: 700;
+  color: var(--ink, #0f172a);
+  padding-bottom: 8px; border-bottom: 1px solid var(--line-strong);
+}
+.i360-section-head span {
+  font-family: var(--sans, inherit); font-size: 11px; font-weight: 700;
+  color: #fff; background: var(--navy-700, #1e3a8a); border-radius: 999px; padding: 2px 9px;
+}
+.i360-section .i360-group { margin-left: 2px; }

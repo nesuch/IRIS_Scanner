@@ -94,21 +94,40 @@ function Spark({ trend, unit }) {
   return <div className="i360-spark"><Line data={data} options={opts} /></div>;
 }
 
-// Bucket the metric list under its line of business, biggest group first so the main
-// statements lead and one-off tables fall to the bottom. Filtering is applied before
-// grouping, so a search never leaves an empty heading behind.
-function metricGroups(all, q) {
+// Two levels: a family (Financial statements, Claims, Business written…) and, inside
+// it, the handbook table each metric came from. One level was still 31 headings for a
+// life insurer.
+//
+// The family order is fixed, not by size, so the page opens the same way for every
+// insurer — the statements everyone files first, then that insurer's own business
+// lines. Which families appear is data-driven, so a life insurer shows Persistency and
+// In-Force while a general insurer shows Fire and Motor, without either being told to.
+const SECTION_ORDER = ['Financial statements', 'Business written', 'Claims',
+                       'Conduct', 'Obligations', 'Distribution', 'Other'];
+
+function metricSections(all, q) {
   const s = (q || '').trim().toLowerCase();
   const hit = (all || []).filter((m) => !s
     || m.label.toLowerCase().includes(s)
-    || (m.context || '').toLowerCase().includes(s));
-  const by = new Map();
+    || (m.context || '').toLowerCase().includes(s)
+    || (m.section || '').toLowerCase().includes(s));
+  const sections = new Map();
   hit.forEach((m) => {
+    const sec = m.section || 'Other';
     const g = (m.context || '').split('\u00b7')[0].trim() || 'Other';
-    if (!by.has(g)) by.set(g, []);
-    by.get(g).push(m);
+    if (!sections.has(sec)) sections.set(sec, new Map());
+    const groups = sections.get(sec);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(m);
   });
-  return [...by.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  return [...sections.entries()]
+    .sort((a, b) => {
+      const ia = SECTION_ORDER.indexOf(a[0]); const ib = SECTION_ORDER.indexOf(b[0]);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    })
+    .map(([sec, groups]) => [sec,
+      [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])),
+      [...groups.values()].reduce((n, v) => n + v.length, 0)]);
 }
 
 export default function Insurer360() {
@@ -442,18 +461,23 @@ export default function Insurer360() {
                     Duration" they read as what they are. The heading is the line of
                     business, which is the first half of the context already shown on
                     every card, so no new data is needed. */}
-                {metricGroups(data.all_metrics, mq).map(([group, items]) => (
-                  <div key={group} className="i360-group">
-                    <h4 className="i360-group-head">
-                      {group}<span>{items.length}</span>
-                    </h4>
-                    <div className="i360-all-grid">
-                      {items.map((m) => (
-                        <MetricCard key={m.id} k={{ ...m, selected_fy: data.selected_fy }}
-                          onToast={(t, bad) => (bad ? toast.error(t) : toast.success(t))} />
-                      ))}
-                    </div>
-                  </div>
+                {metricSections(data.all_metrics, mq).map(([section, groups, count]) => (
+                  <section key={section} className="i360-section">
+                    <h3 className="i360-section-head">{section}<span>{count}</span></h3>
+                    {groups.map(([group, items]) => (
+                      <div key={group} className="i360-group">
+                        <h4 className="i360-group-head">
+                          {group}<span>{items.length}</span>
+                        </h4>
+                        <div className="i360-all-grid">
+                          {items.map((m) => (
+                            <MetricCard key={m.id} k={{ ...m, selected_fy: data.selected_fy }}
+                              onToast={(t, bad) => (bad ? toast.error(t) : toast.success(t))} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </section>
                 ))}
               </section>
             )}

@@ -933,6 +933,40 @@ def _fy_sort(fys):
     return sorted({str(f) for f in fys if f and str(f) != "nan"})
 
 
+# Second-level grouping for the metric grid. A life insurer files 31 distinct tables and
+# a general insurer 14, which is a lot of headings to scan; these sort them into the
+# families a supervisor already thinks in.
+#
+# Ordered, first match wins, and the ORDER is the point: the statements every insurer
+# files come first so the page opens the same way for any insurer, then that insurer's
+# own business lines, then conduct. Anything unmatched falls to "Other" rather than being
+# forced somewhere - a new handbook table should look unclassified, not mis-filed.
+_METRIC_SECTIONS = (
+    ("Financial statements", re.compile(
+        r"balance sheet|policyholders account|shareholders account|investments \(aum\)", re.I)),
+    ("Claims", re.compile(
+        r"claim|death claims|settlement duration", re.I)),
+    ("Conduct", re.compile(r"grievance|complaint|ombudsman", re.I)),
+    ("Obligations", re.compile(r"rural sector|social sector|obligation", re.I)),
+    # "agent" singular, so "Avg Individual Policies Sold per Agent" lands here rather
+    # than in Other — agent productivity is a distribution measure.
+    ("Distribution", re.compile(r"offices|agent|channel|intermediar|bank", re.I)),
+    ("Business written", re.compile(
+        r"fire|marine|motor|health|personal accident|travel|life|misc|others|"
+        r"premium|in-force|persistency|linked|reinsurance|all segments|annuity|pension|"
+        r"category|plans|traditional|group|individual", re.I)),
+)
+
+
+def _metric_section(lob):
+    """Which family a table belongs to, for the second-level heading."""
+    text = str(lob or "")
+    for name, rx in _METRIC_SECTIONS:
+        if rx.search(text):
+            return name
+    return "Other"
+
+
 @api_bp.get("/insurer/list")
 def api_insurer_list():
     """Insurers grouped by class, for the picker."""
@@ -1174,6 +1208,7 @@ def api_insurer_360(insurer_id):
         fy = sel_fy if sel_fy in idx else idx[-1]
         others.append({
             "id": f"{mid}|{ctx}", "label": label, "context": ctx or None,
+            "section": _metric_section(str(ctx or "").split(" · ")[0]),
             "unit": unit, "fy": fy, "value": float(ser[fy]),
             "stale": bool(sel_fy and fy != sel_fy),
             "years": len(idx),
