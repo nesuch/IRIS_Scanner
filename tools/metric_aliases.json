@@ -37,6 +37,43 @@
         "double count.",
         "Agreed with the user on 2026-07-30."
       ]
+    },
+    {
+      "canonical": "total_sources_of_funds__inr",
+      "label": "Total - Sources of Funds",
+      "members": [
+        "total__inr"
+      ],
+      "why": [
+        "A RENAME, not a merge. The balance sheet prints TOTAL twice - once closing SOURCES",
+        "OF FUNDS and once closing APPLICATION OF FUNDS - and extraction numbered the second",
+        "occurrence rather than naming either, leaving a metric called simply 'total'.",
+        "",
+        "Evidence, and it is weaker than decision 1's so it is stated plainly:",
+        "  Structural - read from Table 89, the heading SOURCES OF FUNDS precedes the first",
+        "  TOTAL and APPLICATION OF FUNDS precedes the second. Decision 1 established that",
+        "  extraction numbers repeated labels in the order they appear.",
+        "  Empirical - the two sides differ only by rounding, which is a fingerprint. GIC",
+        "  2019-20: handbook prints 36819.3756 and 36819.3772; IRIS holds 36819.3756 under",
+        "  total__inr and 36819.3772 under total_2__inr. Both match exactly.",
+        "",
+        "Verified on one insurer end to end, not the 1,758 cells of decision 1 - a scaled",
+        "check was blocked because the handbook writes 'GIC' and the resolver cannot match a",
+        "three-letter abbreviation. Accepted anyway because this changes a LABEL and no",
+        "value: if the two were ever swapped, the numbers stay correct and only the names",
+        "trade places. Agreed with the user on 2026-07-30."
+      ]
+    },
+    {
+      "canonical": "total_application_of_funds__inr",
+      "label": "Total - Application of Funds",
+      "members": [
+        "total_2__inr"
+      ],
+      "why": [
+        "The second TOTAL of the balance sheet. See total_sources_of_funds__inr for the",
+        "evidence; the two were established together."
+      ]
     }
   ]
 }
