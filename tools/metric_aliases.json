@@ -125,6 +125,404 @@
         "Account. It coexists with the Provisions 'Others' in 170 slots, so it is a distinct",
         "line item and is kept separate."
       ]
+    },
+    {
+      "canonical": "appropriations_adjustment_on_account_of_depreciation_in_py__inr",
+      "label": null,
+      "members": [
+        "appropriations_adjustment_on_account_of_depreciation_in_py__inr",
+        "f_adjustment_on_account_of_depreciation_in_py__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "appropriations_balance_at_the_beginning_of_the_year__inr",
+      "label": null,
+      "members": [
+        "appropriations_balance_at_the_beginning_of_the_year__inr",
+        "a_balance_at_the_beginning_of_the_year__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "appropriations_dividend_distribution_tax__inr",
+      "label": null,
+      "members": [
+        "appropriations_dividend_distribution_tax__inr",
+        "d_dividend_distribution_tax__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "appropriations_interim_dividends_paid_during_the_year__inr",
+      "label": null,
+      "members": [
+        "appropriations_interim_dividends_paid_during_the_year__inr",
+        "a_interim_dividends_paid_during_the_year__inr",
+        "b_interim_dividends_paid_during_the_year__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another.",
+        "Merged 2 ids after checking they never share an (insurer, year, line of business, class of business) slot."
+      ]
+    },
+    {
+      "canonical": "appropriations_proposed_final_dividend__inr",
+      "label": null,
+      "members": [
+        "appropriations_proposed_final_dividend__inr",
+        "b_proposed_final_dividend__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "appropriations_transfer_to_any_reserves_or_other_accounts__inr",
+      "label": null,
+      "members": [
+        "appropriations_transfer_to_any_reserves_or_other_accounts__inr",
+        "d_transfer_to_any_reserves_or_other_accounts__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "appropriations_transfer_to_reserves_other_accounts__inr",
+      "label": null,
+      "members": [
+        "appropriations_transfer_to_reserves_other_accounts__inr",
+        "e_transfer_to_reserves_other_accounts__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: APPROPRIATIONS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "change_in_valuation_of_liability_in_respect_of_life_policies_amount_ce",
+      "label": null,
+      "members": [
+        "change_in_valuation_of_liability_in_respect_of_life_policies_amount_ce",
+        "b_amount_ceded_in_reinsurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Change in valuation of liability in respect .",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "change_in_valuation_of_liability_in_respect_of_life_policies_fund_for_",
+      "label": null,
+      "members": [
+        "change_in_valuation_of_liability_in_respect_of_life_policies_fund_for_",
+        "e_fund_for_discontinued_policies__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Change in valuation of liability in respect .",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "change_in_valuation_of_liability_in_respect_of_life_policies_gross__in",
+      "label": null,
+      "members": [
+        "change_in_valuation_of_liability_in_respect_of_life_policies_gross__in",
+        "a_gross__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Change in valuation of liability in respect .",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "change_in_valuation_of_liability_in_respect_of_life_policies_transfer_",
+      "label": null,
+      "members": [
+        "change_in_valuation_of_liability_in_respect_of_life_policies_transfer_",
+        "d_transfer_to_linked_fund_fund_reserve__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Change in valuation of liability in respect .",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_amortization_of_premium_discount_on_investment",
+      "label": null,
+      "members": [
+        "income_from_investments_amortization_of_premium_discount_on_investment",
+        "e_amortization_of_premium_discount_on_investments__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_amount_accepted_in_reinsurance__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_amount_accepted_in_reinsurance__inr",
+        "c_amount_accepted_in_reinsurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_dividend_distribution_tax__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_dividend_distribution_tax__inr",
+        "c_dividend_distribution_tax__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_life_insurance__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_life_insurance__inr",
+        "c_life_insurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_loss_on_sale_redemption_of_investments__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_loss_on_sale_redemption_of_investments__inr",
+        "c_loss_on_sale_redemption_of_investments__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_miscellaneous_insurance__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_miscellaneous_insurance__inr",
+        "c_miscellaneous_insurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_profit_on_sale_of_investments__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_profit_on_sale_of_investments__inr",
+        "b_profit_on_sale_of_investments__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: INCOME FROM INVESTMENTS.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_profit_on_sale_redemption_of_investments__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_profit_on_sale_redemption_of_investments__inr",
+        "b_profit_on_sale_redemption_of_investments__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_proposed_final_dividend__inr",
+      "label": null,
+      "members": [
+        "income_from_investments_proposed_final_dividend__inr",
+        "c_proposed_final_dividend__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "income_from_investments_transfer_gain_on_revaluation_change_in_fair_va",
+      "label": null,
+      "members": [
+        "income_from_investments_transfer_gain_on_revaluation_change_in_fair_va",
+        "d_transfer_gain_on_revaluation_change_in_fair_value__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Income from Investments.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "life_insurance_miscellaneous_insurance__inr",
+      "label": null,
+      "members": [
+        "life_insurance_miscellaneous_insurance__inr",
+        "d_miscellaneous_insurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: (c ) Life Insurance.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "operating_profit_fire_insurance__inr",
+      "label": null,
+      "members": [
+        "operating_profit_fire_insurance__inr",
+        "a_fire_insurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: OPERATING PROFIT/(LOSS).",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "operating_profit_marine_insurance__inr",
+      "label": null,
+      "members": [
+        "operating_profit_marine_insurance__inr",
+        "b_marine_insurance__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: OPERATING PROFIT/(LOSS).",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "other_expenses_bad_debts_written_off__inr",
+      "label": null,
+      "members": [
+        "other_expenses_bad_debts_written_off__inr",
+        "b_bad_debts_written_off__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: OTHER EXPENSES.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "other_expenses_expenses_other_than_those_related_to_insurance_business",
+      "label": null,
+      "members": [
+        "other_expenses_expenses_other_than_those_related_to_insurance_business",
+        "a_expenses_other_than_those_related_to_insurance_business__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: OTHER EXPENSES.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "premiums_earned_net_premium__inr",
+      "label": null,
+      "members": [
+        "premiums_earned_net_premium__inr",
+        "a_premium__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Premiums earned – net.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "premiums_earned_net_reinsurance_accepted__inr",
+      "label": null,
+      "members": [
+        "premiums_earned_net_reinsurance_accepted__inr",
+        "c_reinsurance_accepted__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Premiums earned – net.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "premiums_earned_net_reinsurance_ceded__inr",
+      "label": null,
+      "members": [
+        "premiums_earned_net_reinsurance_ceded__inr",
+        "b_reinsurance_ceded__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Premiums earned – net.",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "provisions_for_diminution_in_the_value_of_investments__inr",
+      "label": null,
+      "members": [
+        "provisions_for_diminution_in_the_value_of_investments__inr",
+        "a_for_diminution_in_the_value_of_investments__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: PROVISIONS (Other than taxation).",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "provisions_for_diminution_in_the_value_of_investments_net__inr",
+      "label": null,
+      "members": [
+        "provisions_for_diminution_in_the_value_of_investments_net__inr",
+        "a_for_diminution_in_the_value_of_investments_net__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: PROVISIONS (Other than taxation).",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "provisions_for_doubtful_debts__inr",
+      "label": null,
+      "members": [
+        "provisions_for_doubtful_debts__inr",
+        "b_for_doubtful_debts__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: PROVISIONS (Other than taxation).",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
+    },
+    {
+      "canonical": "provisions_provision_for_doubtful_debts__inr",
+      "label": null,
+      "members": [
+        "provisions_provision_for_doubtful_debts__inr",
+        "b_provision_for_doubtful_debts__inr"
+      ],
+      "why": [
+        "Sub-item letter replaced by its parent row, read from the handbook: Provisions (Other than taxation).",
+        "The letter is a position in a printed list, not identity - the same concept appears as (a) in one statement and (b) in another."
+      ]
     }
   ]
 }
