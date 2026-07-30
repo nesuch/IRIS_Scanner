@@ -87,7 +87,9 @@
    ],
    "confidence": 0.909,
    "instances_with_this_shape": 149,
-   "reconciled_instances": 149
+   "label": "Shareholders' Funds",
+   "reconciled_instances": 149,
+   "what": "Balance Sheet: share capital + reserves + fair value change"
   },
   "sub_total_b__inr": {
    "all_instances": 682,
@@ -98,7 +100,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 676,
-   "reconciled_instances": 676
+   "label": "Current Liabilities & Provisions",
+   "reconciled_instances": 676,
+   "what": "Balance Sheet"
   },
   "total__count": {
    "all_instances": 266,
@@ -111,7 +115,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 241,
-   "reconciled_instances": 241
+   "label": "Offices",
+   "reconciled_instances": 241,
+   "what": "across metro, urban, semi-urban and rural"
   },
   "total_a__inr": {
    "all_instances": 2388,
@@ -124,7 +130,9 @@
    ],
    "confidence": 0.722,
    "instances_with_this_shape": 1384,
-   "reconciled_instances": 1375
+   "label": "Total Income",
+   "reconciled_instances": 1375,
+   "what": "Revenue Account: premium earned + investment income + other income"
   },
   "total_b__inr": {
    "all_instances": 2385,
@@ -137,7 +145,9 @@
    ],
    "confidence": 0.998,
    "instances_with_this_shape": 1371,
-   "reconciled_instances": 1368
+   "label": "Total Outgo",
+   "reconciled_instances": 1368,
+   "what": "Revenue Account: claims + commission + operating expenses + premium deficiency"
   },
   "total_c__inr": {
    "all_instances": 241,
@@ -152,7 +162,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 82,
-   "reconciled_instances": 82
+   "label": "Total Benefits Paid",
+   "reconciled_instances": 82,
+   "what": "Life Revenue Account: benefits, bonuses and fund transfers"
   },
   "total_claims__inr": {
    "all_instances": 284,
@@ -163,7 +175,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 284,
-   "reconciled_instances": 284
+   "label": "Claims Handled",
+   "reconciled_instances": 284,
+   "what": "opening pending + intimated during the year"
   },
   "total_claims_settled_2__count": {
    "all_instances": 273,
@@ -177,7 +191,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 241,
-   "reconciled_instances": 241
+   "label": "Claims Settled",
+   "reconciled_instances": 241,
+   "what": "all settlement-duration buckets"
   },
   "total_claims_settled__count": {
    "all_instances": 1200,
@@ -191,7 +207,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 928,
-   "reconciled_instances": 928
+   "label": "Claims Settled",
+   "reconciled_instances": 928,
+   "what": "all settlement-duration buckets"
   },
   "total_investments__inr": {
    "all_instances": 222,
@@ -206,7 +224,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 217,
-   "reconciled_instances": 217
+   "label": "Total Investments",
+   "reconciled_instances": 217,
+   "what": "all instrument categories"
   },
   "total_life_fund__inr": {
    "all_instances": 98,
@@ -220,7 +240,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 97,
-   "reconciled_instances": 97
+   "label": "Life Fund Investments",
+   "reconciled_instances": 97,
+   "what": "by instrument"
   },
   "total_pension_general_annuity_group_fund__inr": {
    "all_instances": 99,
@@ -232,7 +254,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 99,
-   "reconciled_instances": 99
+   "label": "Pension & Annuity Fund Investments",
+   "reconciled_instances": 99,
+   "what": "by instrument"
   },
   "total_ulip_funds__inr": {
    "all_instances": 99,
@@ -243,7 +267,9 @@
    ],
    "confidence": 1.0,
    "instances_with_this_shape": 96,
-   "reconciled_instances": 96
+   "label": "ULIP Fund Investments",
+   "reconciled_instances": 96,
+   "what": "by instrument"
   }
  }
 }

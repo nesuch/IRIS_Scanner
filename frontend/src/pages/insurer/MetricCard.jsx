@@ -96,6 +96,7 @@ export default function MetricCard({ k, children, onToast }) {
           {k.computed && k.components?.length > 0 && (
             <details className="i360-prov">
               <summary>= sum of {k.components.length} items</summary>
+              {k.what && <p className="i360-what">{k.what}</p>}
               <ul>{k.components.map((c) => <li key={c}>{c}</li>)}</ul>
             </details>
           )}

@@ -274,3 +274,5 @@
   cursor: pointer; font-weight: 700; }
 .i360-prov ul { margin: 5px 0 0; padding-left: 16px; }
 .i360-prov li { font-size: 10.5px; color: var(--faint); line-height: 1.5; }
+.i360-what { margin: 4px 0 2px; font-size: 10.5px; color: var(--navy-700, #1e3a8a);
+  font-style: italic; line-height: 1.45; }

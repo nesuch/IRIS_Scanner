@@ -831,7 +831,12 @@ def _computed_totals(frame, sel_fy):
                 continue
             idx = list(ser.index)
             fy = sel_fy if sel_fy in idx else idx[-1]
-            label, unit, _ = _metric_meta(str(mid))
+            # Prefer the human name recorded with the definition. "Total (A)" is
+            # the source table's letter, not a concept — a supervisor reading a
+            # card cannot act on it. The recorded name says what the sum IS, and
+            # the component list below the card lets them verify that naming.
+            _dl, unit, _ = _metric_meta(str(mid))
+            label = spec.get("label") or _dl
             parts = list(gkey) if isinstance(gkey, tuple) else [gkey]
             ctx = " · ".join(str(p) for p in parts
                              if p and str(p) not in ("nan", "None", "-", "General"))
@@ -841,6 +846,7 @@ def _computed_totals(frame, sel_fy):
                 "stale": bool(sel_fy and fy != sel_fy),
                 "computed": True,
                 "components": sorted(_metric_meta(c)[0] for c in comps),
+                "what": spec.get("what"),
                 "confidence": spec.get("confidence"),
                 "trend": [{"fy": f, "v": float(v)} for f, v in ser.items()],
             })
