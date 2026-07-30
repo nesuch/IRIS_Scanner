@@ -2119,6 +2119,41 @@ def _repair_inforce_segments(df):
     return df
 
 
+_METRIC_ALIAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "tools", "metric_aliases.json")
+
+
+def _apply_metric_aliases(df):
+    """Collapse metric ids that name the same concept.
+
+    Which ids mean the same thing is a judgement, not a string operation - "(a) Interest,
+    Dividends & Rent" and "Interest, Dividend & Rent" differ by a sub-item letter and a
+    plural - so the decisions live in tools/metric_aliases.json with their evidence
+    rather than being inferred here.
+    """
+    if df is None or getattr(df, "empty", True) or "metric_id" not in df.columns:
+        return df
+    try:
+        with open(_METRIC_ALIAS_FILE, "r", encoding="utf-8") as fh:
+            spec = json.load(fh)
+    except (OSError, ValueError):
+        return df
+    remap = {}
+    for grp in spec.get("aliases") or []:
+        canon = (grp.get("canonical") or "").strip()
+        if not canon:
+            continue
+        for m in grp.get("members") or []:
+            if m and m != canon:
+                remap[m] = canon
+    if not remap:
+        return df
+    hit = df["metric_id"].isin(remap)
+    if hit.any():
+        df.loc[hit, "metric_id"] = df.loc[hit, "metric_id"].map(remap)
+    return df
+
+
 def _derive_entity_columns(df):
     """Add entity_type / insurer_class to the in-memory frame when absent."""
     if df is None or getattr(df, "empty", True):
@@ -2250,6 +2285,7 @@ def load_master_data_engine():
         # Units last: the ratio repair reads the amount columns it has just corrected.
         UNIFIED_DF = _repair_units(UNIFIED_DF)
         UNIFIED_DF = _repair_inforce_segments(UNIFIED_DF)
+        UNIFIED_DF = _apply_metric_aliases(UNIFIED_DF)
 
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
         _et = UNIFIED_DF["entity_type"].notna().sum() if "entity_type" in UNIFIED_DF.columns else 0

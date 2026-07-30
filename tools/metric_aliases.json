@@ -1,0 +1,42 @@
+{
+  "_readme": [
+    "Confirmed metric merges, decided one at a time with the user and recorded here.",
+    "",
+    "Metric ids are the handbook's own row labels turned into slugs, so the same concept",
+    "arrives under several ids: a plural 's', a leading sub-item '(a)', or simply a",
+    "different table for life and general business. Merging them is a judgement about",
+    "what the concept IS, so each entry carries its evidence and the date it was agreed.",
+    "",
+    "A merge is only made after checking the members never occupy the same",
+    "(insurer, year, line of business, class of business) slot. Zero overlap means the",
+    "ids are complementary halves of one metric and nothing is lost or double counted;",
+    "any overlap would mean they are genuinely different things.",
+    "",
+    "Applied in memory, like the insurer aliases, because production restores its",
+    "database from the Litestream replica and never sees a local migration."
+  ],
+  "aliases": [
+    {
+      "canonical": "interest_dividend_rent_gross__inr",
+      "label": "Interest, Dividend & Rent - Gross",
+      "members": [
+        "interest_dividend_rent_gross__inr",
+        "a_interest_dividend_rent_gross__inr",
+        "a_interest_dividends_rent_gross__inr"
+      ],
+      "why": [
+        "One concept, gross investment income, arriving under three ids:",
+        "  interest_dividend_rent_gross__inr     1,445 rows  'Interest, Dividend & Rent - Gross (Rs Crore)'",
+        "  a_interest_dividends_rent_gross__inr    483 rows  '(a) Interest, Dividends & Rent - Gross (Rs Lakh)'  [life tables]",
+        "  a_interest_dividend_rent_gross__inr     420 rows  '(a) Interest, Dividend & Rent - Gross (Rs Crore)'  [shareholders account]",
+        "They differ by a plural 's', a sub-item '(a)', and which table they came from.",
+        "None of that is identity: the sub-item letter is a position in a printed list, and",
+        "the life/general split is already carried by insurer_class.",
+        "Checked pairwise for collisions - all three pairs have ZERO overlapping",
+        "(insurer, year, line of business, class of business) slots, so the merge cannot",
+        "double count.",
+        "Agreed with the user on 2026-07-30."
+      ]
+    }
+  ]
+}
