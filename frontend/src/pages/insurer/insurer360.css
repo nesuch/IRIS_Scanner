@@ -89,10 +89,27 @@
 .cmp-share-val { font-weight: 800; font-variant-numeric: tabular-nums; }
 
 .cmp-tablewrap { overflow-x: auto; }
+/* width:100% alone made the table COMPRESS to fit rather than scroll, so eight
+   insurers squeezed into unreadable columns instead of overflowing. Column
+   min-widths give it a natural width to exceed, which is what makes the wrapper's
+   overflow-x actually engage. */
 .cmp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff;
   border: 1px solid var(--line-strong); border-radius: 10px; }
 .cmp-table th, .cmp-table td { padding: 10px 12px; text-align: right;
   border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.cmp-table thead th { white-space: nowrap; }
+.cmp-table thead th:not(:first-child):not(.cmp-trendhead) { min-width: 108px; }
+/* Pin the metric name. Scrolling sideways past it would leave a row of numbers with
+   nothing saying what they measure — the one column you cannot afford to lose. */
+.cmp-table thead th:first-child,
+.cmp-table tbody th[scope="row"] {
+  position: sticky; left: 0; z-index: 2;
+  min-width: 190px; max-width: 260px; white-space: normal;
+  box-shadow: 1px 0 0 var(--line-strong);
+}
+.cmp-table tbody th[scope="row"] { background: #fff; }
+.cmp-table tr.is-derived th[scope="row"] { background: #f8fafc; }
+.cmp-table thead th:first-child { z-index: 3; background: var(--navy-50, #eef2fb); }
 .cmp-table thead th { text-align: right; font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--navy-700, #1e3a8a); background: var(--navy-50, #eef2fb); }
 .cmp-table tbody th[scope="row"] { text-align: left; font-weight: 700; color: var(--ink, #0f172a); }
@@ -295,3 +312,14 @@
 .ind-kindhead span { display: block; text-transform: none; letter-spacing: 0;
   font-weight: 500; font-size: 11px; margin-top: 2px; }
 .ind-card.is-line { background: linear-gradient(135deg, #f0fdf4, #fff); }
+
+/* Comparison with no shared metric — explains the cause rather than showing an
+   empty table, which reads as a broken page. */
+.cmp-empty {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+  padding: 14px 16px;
+}
+.cmp-empty > i { color: #b45309; font-size: 16px; margin-top: 2px; flex: 0 0 auto; }
+.cmp-empty strong { display: block; font-size: 13.5px; color: #92400e; margin-bottom: 5px; }
+.cmp-empty p { margin: 0; font-size: 12.5px; color: var(--muted, #64748b); line-height: 1.6; }

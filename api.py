@@ -1141,7 +1141,7 @@ def api_insurer_360(insurer_id):
 
 @api_bp.get("/insurer/compare")
 def api_insurer_compare():
-    """Side-by-side comparison of 2-4 insurers.
+    """Side-by-side comparison of 2-8 insurers.
 
     Cross-class comparison is the trap this endpoint exists to manage. Only 23 of
     957 metrics are reported by every class, so comparing a life insurer's book to
@@ -1152,7 +1152,10 @@ def api_insurer_compare():
     """
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
-    ids = [i for i in request.args.getlist("id") if i][:4]
+    # 8, not 4. The old cap was a layout guess: within a class the shared-metric set
+    # is nearly flat as insurers are added (SAHI 91 -> 68 at eight, Life 229 -> 222,
+    # General 91 -> 90), so the extra columns carry real rows rather than blanks.
+    ids = [i for i in request.args.getlist("id") if i][:8]
     if len(ids) < 2:
         return jsonify({"ok": False, "message": "Select at least two insurers."}), 400
     df = _ins_frame()

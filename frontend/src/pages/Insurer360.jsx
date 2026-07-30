@@ -7,7 +7,7 @@
 //     cross-class rank would be meaningless.
 //   * a series the handbook stopped publishing is marked STALE rather than shown
 //     as if it were current.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import '../lib/charts.js';
 import PageHeader from '../components/PageHeader.jsx';
@@ -20,6 +20,15 @@ import Picker from './insurer/Picker.jsx';
 import MetricCard, { fmtVal } from './insurer/MetricCard.jsx';
 import { useToast } from '../components/Toast.jsx';
 import './insurer/insurer360.css';
+
+// Was 4, which was a layout guess rather than an analytical limit. Measured: the
+// shared-metric set barely moves as insurers are added within a class — SAHI 91 -> 68
+// at eight, Life 229 -> 222, General 91 -> 90 — so comparing eight is as meaningful
+// as comparing two, and the table scrolls sideways with the metric column pinned.
+// Eight is the ceiling because that is how many validated categorical colours exist;
+// a ninth series would have to reuse a hue, and two insurers sharing a colour is
+// worse than not being able to add the ninth.
+const MAX_COMPARE = 8;
 
 const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Reinsurer', 'FRB'];
 const CLASS_LABEL = {
@@ -88,7 +97,19 @@ export default function Insurer360() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [mode, setMode] = useState('single');     // 'single' | 'compare'
-  const [cmpIds, setCmpIds] = useState([]);       // up to 4
+  const [cmpIds, setCmpIds] = useState([]);       // up to MAX_COMPARE
+  // A colour slot per insurer, held for as long as it stays selected. Without this
+  // the colour came from position, so removing one repainted every insurer below it.
+  // A ref, not state: it is written during the same event that calls setCmpIds, and
+  // the render that follows reads the updated map.
+  const slotRef = useRef(new Map());
+  const slotOf = useCallback((id) => {
+    const m = slotRef.current;
+    if (!m.has(id)) m.set(id, [...Array(MAX_COMPARE).keys()]
+      .find((n) => ![...m.values()].includes(n)) ?? 0);
+    return m.get(id);
+  }, []);
+  const releaseSlot = (id) => { slotRef.current.delete(id); };
   const [cmp, setCmp] = useState(null);
   const [ind, setInd] = useState(null);
   const [exc, setExc] = useState(null);
@@ -209,9 +230,9 @@ export default function Insurer360() {
             <select className="input" value="" aria-label="Add insurer to comparison"
               onChange={(e) => {
                 const v = e.target.value;
-                if (v && !cmpIds.includes(v) && cmpIds.length < 4) setCmpIds([...cmpIds, v]);
+                if (v && !cmpIds.includes(v) && cmpIds.length < MAX_COMPARE) { slotOf(v); setCmpIds([...cmpIds, v]); }
               }}>
-              <option value="">Add insurer…{cmpIds.length >= 4 ? ' (max 4)' : ''}</option>
+              <option value="">Add insurer…{cmpIds.length >= MAX_COMPARE ? ` (max ${MAX_COMPARE})` : ''}</option>
               {CLASS_ORDER.filter((c) => (classes[c] || []).length).map((c) => (
                 <optgroup key={c} label={`${CLASS_LABEL[c] || c} (${classes[c].length})`}>
                   {classes[c].filter((i) => !cmpIds.includes(i.id))
@@ -223,7 +244,7 @@ export default function Insurer360() {
               <span key={id} className="cmp-sel">
                 {nameOf(id)}
                 <button type="button" aria-label={`Remove ${nameOf(id)}`}
-                  onClick={() => setCmpIds(cmpIds.filter((x) => x !== id))}>&times;</button>
+                  onClick={() => { releaseSlot(id); setCmpIds(cmpIds.filter((x) => x !== id)); }}>&times;</button>
               </span>
             ))}
             {cmpIds.length < 2 && <span className="i360-cohort">pick at least two</span>}
@@ -233,7 +254,7 @@ export default function Insurer360() {
         {err && <p className="iris-msg" style={{ color: 'var(--bad)' }}>{err}</p>}
         {loading && <PageLoading />}
 
-        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} />}
+        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} slotOf={slotOf} />}
         {!loading && mode === 'industry' && <Industry data={ind} />}
         {!loading && mode === 'alerts' && (
           <Exceptions data={exc} onSelect={(id) => { setSel(id); setMode('single'); }} />
