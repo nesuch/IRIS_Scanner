@@ -83,6 +83,25 @@ def ffill(row):
     return out
 
 
+# The unit is often stated per COLUMN rather than per table - "Benefit Amount
+# (₹crore)" sits beside "No. of Persons Covered ('000s)" in the same sheet. Reading
+# only the table subtitle made every crore column look 1e7 wrong when IRIS was right.
+_COL_UNITS = (
+    (re.compile(r"\bcrore\b", re.I), 1e7),
+    (re.compile(r"\blakh\b", re.I), 1e5),
+    (re.compile(r"'?000s?\b|\bthousand\b", re.I), 1e3),
+)
+
+
+def column_scale(metric, ctx, default):
+    """Scale for one column, preferring a unit named in its own header."""
+    text = f"{metric} {ctx}"
+    for rx, mult in _COL_UNITS:
+        if rx.search(text):
+            return mult
+    return default
+
+
 def table_scale(rows):
     """Multiplier turning a printed amount into base rupees, from the table subtitle."""
     head = " ".join(str(c) for r in rows[:4] for c in r if c)
@@ -133,10 +152,14 @@ def parse_sheet(rows, is_insurer):
     if first is None:
         return
     filled = [ffill(h) for h in hdr]
+    if not filled:
+        # No header rows survived, so no column can be attributed to a metric. Auditing
+        # such a sheet would compare numbers against labels we do not have.
+        return
     width = max((len(r) for r in rows), default=0)
 
     def at(level, ci):
-        if level >= len(filled):
+        if level is None or level < 0 or level >= len(filled):
             return ""
         row = filled[level]
         return row[ci] if ci < len(row) else ""
@@ -218,7 +241,8 @@ def audit_sheet(rows, iris_idx, names, sheet, part, tol=0.02):
         pool = iris_idx.get((iid, year), [])
         # A percentage is stored as filed; an amount is scaled to base rupees. Try both
         # rather than trusting the header, since a "Ratio" column can print 0.61 or 61.
-        cands = [val] if _PCT_RE.search(metric) else [val * scale, val]
+        col_scale = column_scale(metric, ctx, scale)
+        cands = [val] if _PCT_RE.search(metric) else [val * col_scale, val]
         hit = None
         for want in cands:
             if want == 0:
@@ -234,15 +258,22 @@ def audit_sheet(rows, iris_idx, names, sheet, part, tol=0.02):
             # very metric in this very context — if it does, the number is WRONG rather
             # than absent, which is the more serious finding and the one a
             # missing-cells-only audit would never surface.
+            # Only claim a mismatch when the slot is UNAMBIGUOUS. Taking the first
+            # token-overlapping row compared a handbook cell against an arbitrary
+            # neighbour - three different Benefit Amount cells all "mismatched" the same
+            # IRIS row. If several rows fit, we cannot say which column this cell is,
+            # so we say nothing.
             mt, ct = toks(metric), toks(ctx)
-            slot = None
+            slots = []
             for v, mid2, lob2, cob2 in pool:
                 if not mt or not (mt & toks(mid2)):
                     continue
                 if ct and not (ct & toks(f"{lob2} {cob2}")):
                     continue
-                slot = (v, mid2, lob2, cob2)
-                break
+                slots.append((v, mid2, lob2, cob2))
+                if len(slots) > 1:
+                    break
+            slot = slots[0] if len(slots) == 1 else None
             if slot is not None:
                 v, mid, lob, cob = slot
                 out.append({"part": part, "table": sheet, "insurer": label[:44],
@@ -250,7 +281,7 @@ def audit_sheet(rows, iris_idx, names, sheet, part, tol=0.02):
                             "hb_value": val, "status": "value_mismatch",
                             "iris_metric": mid, "iris_lob": lob, "iris_cob": cob,
                             "iris_value": v,
-                            "ratio": (v / (val * (1 if _PCT_RE.search(metric) else scale))
+                            "ratio": (v / (val * (1 if _PCT_RE.search(metric) else col_scale))
                                       if val else "")})
                 continue
             status = "missing" if val != 0 else "missing_zero"
@@ -291,7 +322,7 @@ def main():
     if a.part:
         files = [f for f in files if a.part.lower() in os.path.basename(f).lower()]
 
-    rowsout, tally = [], {}
+    rowsout, tally, skipped = [], {}, []
     for f in files:
         part = os.path.splitext(os.path.basename(f))[0]
         wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
@@ -301,8 +332,14 @@ def main():
         if a.limit_sheets:
             sheets = sheets[:a.limit_sheets]
         for sh in sheets:
-            rows = list(wb[sh].iter_rows(values_only=True))
-            res = audit_sheet(rows, iris_idx, names, sh, part)
+            # One malformed sheet must not end a 109-table run; record it and continue.
+            try:
+                rows = list(wb[sh].iter_rows(values_only=True))
+                res = audit_sheet(rows, iris_idx, names, sh, part)
+            except Exception as exc:
+                print(f"  {part:<10} table {sh:<7} SKIPPED: {type(exc).__name__}: {exc}")
+                skipped.append((part, sh, f"{type(exc).__name__}: {exc}"))
+                continue
             rowsout += res
             c = {}
             for r in res:
@@ -319,6 +356,11 @@ def main():
     print("\n=== totals ===")
     for k in ("ok", "value_mismatch", "relocated", "missing", "missing_zero"):
         print(f"  {k:<14} {agg.get(k,0):>8}  {agg.get(k,0)/total*100:5.1f}%")
+
+    if skipped:
+        print(f"\nskipped {len(skipped)} sheet(s):")
+        for p_, sh, why in skipped:
+            print(f"   {p_}/{sh}: {why}")
 
     if a.out:
         with open(a.out, "w", newline="", encoding="utf-8") as fh:
