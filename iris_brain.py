@@ -1774,13 +1774,15 @@ def _apply_insurer_aliases(df):
         s = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode()
         return re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower()[:60]
 
-    id_remap, name_remap = {}, {}
+    id_remap, name_remap, class_pin = {}, {}, {}
     for group in spec.get("aliases") or []:
         canonical = (group.get("canonical") or "").strip()
         variants = [v for v in (group.get("variants") or []) if (v or "").strip()]
         if not canonical or len(variants) < 2:
             continue
         target = _slug(canonical)
+        if group.get("insurer_class"):
+            class_pin[target] = group["insurer_class"]
         for v in variants:
             id_remap[_slug(v)] = target
             name_remap[v.strip()] = canonical
@@ -1795,6 +1797,14 @@ def _apply_insurer_aliases(df):
         for col in ("insurer", "Insurer", "Entity"):
             if col in df.columns:
                 df[col] = df[col].map(lambda v: name_remap.get(str(v).strip(), v))
+    # An explicitly declared class overrides whatever is stored or derived. The
+    # name-based derivation cannot be relied on here: _derive_entity_columns returns
+    # early whenever the DB already carries insurer_class, so a stored misclassification
+    # would survive the rename untouched. CAL sat in a life-only micro-insurance table
+    # while filed as General.
+    if class_pin and "insurer_class" in df.columns:
+        for iid, cls in class_pin.items():
+            df.loc[df["insurer_id"] == iid, "insurer_class"] = cls
     return df
 
 

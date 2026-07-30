@@ -40,6 +40,30 @@
         "Confirmed as the same company by the user on 2026-07-30, who also",
         "chose the 'Co. Ltd' rendering as canonical."
       ]
+    },
+    {
+      "canonical": "CreditAccess Life Insurance Ltd.",
+      "variants": [
+        "CreditAccess Life Insurance Ltd.",
+        "CAL"
+      ],
+      "why": [
+        "The handbook writes this insurer as the bare abbreviation 'CAL', so no",
+        "re-extraction can recover the name - it is not in the source.",
+        "Confirmed from IRDAI Annual Report 2024-25, Annexure 7 (Number of Products &",
+        "Riders, page 172), which lists 'CreditAccess Life Insurance Ltd..' at S.No 10",
+        "of the Life insurers, Private Sector.",
+        "Corroborated by the data: CAL appears in exactly two handbook tables,",
+        "'Micro-Insurance Death Claims - Group' and 'Micro-Insurance Claim Settlement -",
+        "Group', for 2023-24 and 2024-25 only. Of the 24 filers in those tables, 23 are",
+        "named '...Life...' and CAL is the sole exception - they are the life insurers'",
+        "group micro-insurance statements.",
+        "Renaming also fixes the CLASS: insurer_class is derived from the name after",
+        "aliases are applied, so 'CAL' (which matched nothing) was falling through to",
+        "General while sitting in a life-only table.",
+        "insurer_class is pinned here rather than left to the name-based derivation, because that derivation is skipped whenever the DB already carries the column - so a stored 'General' would survive the rename."
+      ],
+      "insurer_class": "Life"
     }
   ]
 }
