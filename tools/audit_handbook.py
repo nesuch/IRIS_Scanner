@@ -172,8 +172,12 @@ def parse_sheet_transposed(rows, is_insurer, first, filled, width):
         row = filled[level]
         return row[ci] if ci < len(row) else ""
 
+    # Count DISTINCT insurers, not matching cells. The table title forward-fills across
+    # every column and fuzzy-matched an insurer 203 times, beating the real insurer row's
+    # 162 — so the whole sheet was attributed to one company and every value "missing".
+    # A title repeats one name; a real insurer row carries many.
     ins_lvl = max(range(len(filled)),
-                  key=lambda l: sum(1 for v in filled[l] if v and is_insurer(v)))
+                  key=lambda l: len({v for v in filled[l] if v and is_insurer(v)}))
     year_lvl = next((l for l in range(len(filled))
                      if any(_YEAR_RE.match(str(v).strip()) for v in filled[l])), None)
 
@@ -273,27 +277,62 @@ def build_iris_index(brain):
     return idx, names
 
 
-def resolve_insurer(label, names):
+# A handbook table names insurers in short form - "HDFC", "BAJAJ ALLIANZ", "BHARTI
+# AXA" - and each of those is BOTH a life and a general company. Matching on the name
+# alone sent Table 24 (Policyholders Account of LIFE insurers) to the general insurer's
+# data, so every value looked absent when it was simply the wrong company. The table's
+# own title says which industry it covers, so it is used to break the tie.
+_CLASS_HINTS = (
+    (re.compile(r"\blife\b", re.I), "life"),
+    (re.compile(r"\bre-?insur", re.I), "reinsur"),
+    (re.compile(r"\bhealth\b", re.I), "health"),
+    (re.compile(r"\bgeneral\b|\bnon-?life\b", re.I), "general"),
+)
+
+
+def title_class(rows):
+    """The industry a sheet covers, from its title, or None."""
+    head = " ".join(str(c) for r in rows[:3] for c in r if c)
+    hits = [tag for rx, tag in _CLASS_HINTS if rx.search(head)]
+    # "GENERAL AND HEALTH INSURERS" is not a life table; a lone unambiguous hit is what
+    # we can trust, so anything mixing life with the rest is left unconstrained.
+    return hits[0] if len(hits) == 1 else None
+
+
+def resolve_insurer(label, names, want_class=None):
     k = norm(label)
     if k in names:
         return names[k]
     # The handbook carries footnote marks and small wording differences; fall back to
     # the longest name that is a prefix of the label or vice versa.
-    best, blen = None, 0
+    cands = []
     for nk, iid in names.items():
         if len(nk) < 8:
             continue
-        if (k.startswith(nk[:20]) or nk.startswith(k[:20])) and len(nk) > blen:
-            best, blen = iid, len(nk)
-    return best
+        if k.startswith(nk[:20]) or nk.startswith(k[:20]):
+            cands.append((nk, iid))
+    if want_class and len(cands) > 1:
+        narrowed = [(nk, iid) for nk, iid in cands if want_class in iid]
+        if narrowed:
+            cands = narrowed
+        elif want_class == "life":
+            # A life table naming an insurer that has no life arm is a mis-read, not a
+            # match to its general sibling.
+            return None
+    if not cands:
+        return None
+    return max(cands, key=lambda x: len(x[0]))[1]
 
 
 def audit_sheet(rows, iris_idx, names, sheet, part, tol=0.02):
     scale = table_scale(rows)
-    is_insurer = lambda s: resolve_insurer(s, names) is not None and len(s) > 8
+    # NOT named `want`: that name is already the candidate-value loop variable below,
+    # and the lambda closes over it, so the class hint became a float mid-scan.
+    want_cls = title_class(rows)
+    is_insurer = lambda s: resolve_insurer(s, names, want_cls) is not None and len(s) > 8
     out = []
     for label, year, ctx, metric, val in parse_sheet(rows, is_insurer):
-        iid = resolve_insurer(label, names)
+        iid = resolve_insurer(label, names, want_cls)
         if iid is None or not year:
             continue
         pool = iris_idx.get((iid, year), [])
