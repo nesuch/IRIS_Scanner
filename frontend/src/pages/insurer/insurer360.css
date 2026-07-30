@@ -326,3 +326,5 @@
 /* Coverage badge — shown only on rows short of the full selection. */
 .cmp-cover { display: block; font-size: 10px; font-weight: 700; color: #b45309;
   letter-spacing: 0.02em; margin-top: 2px; }
+/* Comparison year. Sits beside the picker because it scopes the table below it. */
+.cmp-year { flex: 0 0 auto; min-width: 170px; }

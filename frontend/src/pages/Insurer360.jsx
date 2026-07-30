@@ -21,14 +21,15 @@ import MetricCard, { fmtVal } from './insurer/MetricCard.jsx';
 import { useToast } from '../components/Toast.jsx';
 import './insurer/insurer360.css';
 
-// Was 4, which was a layout guess rather than an analytical limit. Measured: the
-// shared-metric set barely moves as insurers are added within a class — SAHI 91 -> 68
-// at eight, Life 229 -> 222, General 91 -> 90 — so comparing eight is as meaningful
-// as comparing two, and the table scrolls sideways with the metric column pinned.
-// Eight is the ceiling because that is how many validated categorical colours exist;
-// a ninth series would have to reuse a hue, and two insurers sharing a colour is
-// worse than not being able to add the ninth.
-const MAX_COMPARE = 8;
+// No cap on how many insurers can be compared. Partial rows are shown with a
+// coverage note and the metric column is pinned, so extra columns cost readability
+// rather than correctness.
+//
+// COLOUR_SLOTS is a different limit: only eight validated categorical colours exist,
+// so past eight the trend sparkline would repeat hues and a 12-line sparkline is
+// unreadable anyway. Past that the trend column is dropped — the table still carries
+// every number, and identity comes from the column header rather than a colour.
+const COLOUR_SLOTS = 8;
 
 const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Reinsurer', 'FRB'];
 const CLASS_LABEL = {
@@ -97,7 +98,8 @@ export default function Insurer360() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [mode, setMode] = useState('single');     // 'single' | 'compare'
-  const [cmpIds, setCmpIds] = useState([]);       // up to MAX_COMPARE
+  const [cmpIds, setCmpIds] = useState([]);
+  const [cmpFy, setCmpFy] = useState('');   // '' = let each row pick its best year
   // A colour slot per insurer, held for as long as it stays selected. Without this
   // the colour came from position, so removing one repainted every insurer below it.
   // A ref, not state: it is written during the same event that calls setCmpIds, and
@@ -105,11 +107,16 @@ export default function Insurer360() {
   const slotRef = useRef(new Map());
   const slotOf = useCallback((id) => {
     const m = slotRef.current;
-    if (!m.has(id)) m.set(id, [...Array(MAX_COMPARE).keys()]
+    if (!m.has(id)) m.set(id, [...Array(COLOUR_SLOTS).keys()]
       .find((n) => ![...m.values()].includes(n)) ?? 0);
     return m.get(id);
   }, []);
   const releaseSlot = (id) => { slotRef.current.delete(id); };
+  // The combobox offers only what is not already selected, so the list shortens as
+  // the comparison grows and you cannot add a duplicate.
+  const cmpAvailable = useMemo(() => Object.fromEntries(
+    Object.entries(classes).map(([c, list]) => [c, list.filter((i) => !cmpIds.includes(i.id))])
+  ), [classes, cmpIds]);
   const [cmp, setCmp] = useState(null);
   const [ind, setInd] = useState(null);
   const [exc, setExc] = useState(null);
@@ -141,12 +148,13 @@ export default function Insurer360() {
   useEffect(() => {
     if (mode !== 'compare' || cmpIds.length < 2) { setCmp(null); return; }
     setLoading(true); setErr(null);
-    const qs = cmpIds.map((i) => `id=${encodeURIComponent(i)}`).join('&');
+    const qs = cmpIds.map((i) => `id=${encodeURIComponent(i)}`).join('&')
+      + (cmpFy ? `&fy=${encodeURIComponent(cmpFy)}` : '');
     api.get(`/insurer/compare?${qs}`)
       .then((d) => setCmp(d))
       .catch((e) => { setErr(e.message); setCmp(null); })
       .finally(() => setLoading(false));
-  }, [mode, cmpIds]);
+  }, [mode, cmpIds, cmpFy]);
 
   useEffect(() => {
     if (mode !== 'industry' || ind) return;
@@ -227,19 +235,22 @@ export default function Insurer360() {
 
         {mode === 'compare' && (
           <div className="cmp-picker">
-            <select className="input" value="" aria-label="Add insurer to comparison"
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v && !cmpIds.includes(v) && cmpIds.length < MAX_COMPARE) { slotOf(v); setCmpIds([...cmpIds, v]); }
-              }}>
-              <option value="">Add insurer…{cmpIds.length >= MAX_COMPARE ? ` (max ${MAX_COMPARE})` : ''}</option>
-              {CLASS_ORDER.filter((c) => (classes[c] || []).length).map((c) => (
-                <optgroup key={c} label={`${CLASS_LABEL[c] || c} (${classes[c].length})`}>
-                  {classes[c].filter((i) => !cmpIds.includes(i.id))
-                    .map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-                </optgroup>
-              ))}
-            </select>
+            {/* Same combobox as single mode. A native <select> of 87 near-identical
+                company names is a wall to scroll; this filters as you type. Already
+                excludes anything selected, so the list shrinks as you build up. */}
+            <Picker classes={cmpAvailable} order={CLASS_ORDER} labels={CLASS_LABEL}
+              value="" placeholder="Search insurers to add…"
+              onChange={(v) => { if (v && !cmpIds.includes(v)) { slotOf(v); setCmpIds([...cmpIds, v]); } }} />
+            {/* Year is the user's choice, not ours. Default keeps the per-row
+                best-covered year; picking one compares everybody on that year and
+                drops rows nobody filed then. */}
+            {cmp?.years?.length > 0 && (
+              <select className="input cmp-year" value={cmpFy} aria-label="Comparison year"
+                onChange={(e) => setCmpFy(e.target.value)}>
+                <option value="">Best year per metric</option>
+                {cmp.years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            )}
             {cmpIds.map((id) => (
               <span key={id} className="cmp-sel">
                 {nameOf(id)}
@@ -254,7 +265,7 @@ export default function Insurer360() {
         {err && <p className="iris-msg" style={{ color: 'var(--bad)' }}>{err}</p>}
         {loading && <PageLoading />}
 
-        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} slotOf={slotOf} />}
+        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} slotOf={slotOf} colourSlots={COLOUR_SLOTS} />}
         {!loading && mode === 'industry' && <Industry data={ind} />}
         {!loading && mode === 'alerts' && (
           <Exceptions data={exc} onSelect={(id) => { setSel(id); setMode('single'); }} />

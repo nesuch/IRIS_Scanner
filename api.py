@@ -1152,10 +1152,14 @@ def api_insurer_compare():
     """
     if not _app.current_user.is_authenticated:
         return jsonify({"ok": False}), 401
-    # 8, not 4. The old cap was a layout guess: within a class the shared-metric set
-    # is nearly flat as insurers are added (SAHI 91 -> 68 at eight, Life 229 -> 222,
-    # General 91 -> 90), so the extra columns carry real rows rather than blanks.
-    ids = [i for i in request.args.getlist("id") if i][:8]
+    # No hard cap. The old 4 was a layout guess, and with partial rows now shown and
+    # the metric column pinned, more columns cost readability rather than correctness.
+    # A sanity ceiling only, so a malformed request cannot ask for thousands.
+    ids = [i for i in request.args.getlist("id") if i][:60]
+    # Explicit year wins; otherwise each row picks the year most of the selection
+    # filed. A supervisor comparing a specific year should not have to infer which
+    # one they got.
+    want_fy = (request.args.get("fy") or "").strip()
     if len(ids) < 2:
         return jsonify({"ok": False, "message": "Select at least two insurers."}), 400
     df = _ins_frame()
@@ -1197,13 +1201,18 @@ def api_insurer_compare():
         # a row is still a single year for everyone in it: the year the most selected
         # insurers reported, newest breaking ties. Insurers without that year get a
         # dash rather than a value from some other year.
-        year_cover = {}
-        for s in series.values():
-            for f in s.index:
-                year_cover[f] = year_cover.get(f, 0) + 1
-        if not year_cover:
-            continue
-        fy = sorted(year_cover, key=lambda f: (year_cover[f], _fy_sort([f])[0]))[-1]
+        if want_fy:
+            fy = want_fy
+            if not any(fy in sr.index for sr in series.values()):
+                continue          # nobody filed this metric in the requested year
+        else:
+            year_cover = {}
+            for sr in series.values():
+                for f in sr.index:
+                    year_cover[f] = year_cover.get(f, 0) + 1
+            if not year_cover:
+                continue
+            fy = sorted(year_cover, key=lambda f: (year_cover[f], _fy_sort([f])[0]))[-1]
         vals = {iid: float(s[fy]) for iid, s in series.items() if fy in s.index}
         # Two is the floor: one value is not a comparison, and best/worst would both
         # resolve to that single insurer — the client draws "best" green, so a lone
@@ -1241,7 +1250,15 @@ def api_insurer_compare():
         common = sorted(set(rp.index) & set(pl.index))
         if not common:
             continue
-        fy = common[-1]
+        # Honour an explicit year here too. Without this the derived row computed its
+        # own latest year and sat at 2024-25 while every other row read 2022-23 —
+        # one line silently on a different year is worse than no line.
+        if want_fy:
+            if want_fy not in common:
+                continue
+            fy = want_fy
+        else:
+            fy = common[-1]
         if float(pl[fy]) > 0:
             norm[iid] = {"fy": fy, "v": round(float(rp[fy]) / float(pl[fy]) * 100000.0, 1)}
     # Shown for whoever HAS both components, same as any other row — it used to
@@ -1293,7 +1310,15 @@ def api_insurer_compare():
             fys = _fy_series(mkt["fy_canonical"])
             if not fys:
                 continue
-            fy = fys[-1]
+            # An explicit year applies to the line-of-business rows too. These are
+            # market-share figures, so a row silently on 2024-25 while the rest of the
+            # table reads 2022-23 would put a share against the wrong denominator.
+            if want_fy:
+                if want_fy not in fys:
+                    continue
+                fy = want_fy
+            else:
+                fy = fys[-1]
             by = mkt[mkt["fy_canonical"] == fy].groupby("insurer_id")["value_base"].sum()
             tot = float(by.sum())
             if tot <= 0:
@@ -1339,6 +1364,12 @@ def api_insurer_compare():
                 share["_fy"] = fy
                 share["_class"] = cls
 
+    # Every year any selected insurer filed, newest first — the year picker's options.
+    # Offered from the SELECTION rather than the whole corpus, so the dropdown can
+    # never present a year in which none of these insurers reported anything.
+    years = sorted({str(f) for m in subs.values()
+                    for f in m["fy_canonical"].dropna().unique()
+                    if re.fullmatch(r"\d{4}-\d{2}", str(f))}, reverse=True)
     return jsonify({
         "ok": True,
         "insurers": meta,
@@ -1346,6 +1377,8 @@ def api_insurer_compare():
         "classes": sorted(classes),
         "metrics": rows,
         "market_share": share,
+        "years": years,
+        "fy": want_fy or None,      # echo, so the client knows if its request was honoured
     })
 
 

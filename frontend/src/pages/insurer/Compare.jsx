@@ -67,7 +67,7 @@ function TrendRow({ metric, insurers, colorOf }) {
   return <div className="cmp-trend"><Line data={data} options={opts} /></div>;
 }
 
-export default function Compare({ data, insurers, slotOf }) {
+export default function Compare({ data, insurers, slotOf, colourSlots = 8 }) {
   if (!data) return null;
   const ins = data.insurers || [];
   // Colour follows the INSURER, not its position in the list. Keyed on selection
@@ -76,6 +76,10 @@ export default function Compare({ data, insurers, slotOf }) {
   // legend must never do. slotOf holds a slot per insurer for as long as it is
   // selected; the index fallback keeps this component usable on its own.
   const colorOf = (id) => SERIES[((slotOf ? slotOf(id) : ins.findIndex((x) => x.id === id)) || 0) % SERIES.length];
+  // Past the palette the sparkline would repeat hues, and a 12-line sparkline in a
+  // 118px cell is unreadable regardless. Drop the column rather than draw a lie —
+  // every number is still in the table.
+  const showTrend = ins.length <= colourSlots;
 
   return (
     <div className="cmp">
@@ -152,7 +156,7 @@ export default function Compare({ data, insurers, slotOf }) {
               {ins.map((x) => (
                 <th key={x.id}><i className="cmp-dot" style={{ background: colorOf(x.id) }} />{x.name}</th>
               ))}
-              <th className="cmp-trendhead">Trend</th>
+              {showTrend && <th className="cmp-trendhead">Trend</th>}
             </tr>
           </thead>
           <tbody>
@@ -176,7 +180,7 @@ export default function Compare({ data, insurers, slotOf }) {
                   const tone = m.best === x.id ? 'is-best' : m.worst === x.id ? 'is-worst' : '';
                   return <td key={x.id} className={tone}>{fmt(v, m.unit)}</td>;
                 })}
-                <td className="cmp-trendcell"><TrendRow metric={m} insurers={ins} colorOf={colorOf} /></td>
+                {showTrend && <td className="cmp-trendcell"><TrendRow metric={m} insurers={ins} colorOf={colorOf} /></td>}
               </tr>
             ))}
           </tbody>
