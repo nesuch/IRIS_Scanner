@@ -1901,9 +1901,16 @@ def _pq_newest_first():
 
 
 def _pq_card(r, roots=None):
+    # Fall back to parsing the display date when the sort column is NULL. Rows
+    # uploaded before doc_date_iso existed still carry a perfectly parseable
+    # "14th March 2026" in doc_date, and without this they sort as undated — which
+    # put the single newest reply in the corpus at the BOTTOM of "newest first".
+    # Derived on read rather than migrated because production restores from the
+    # Litestream replica, so a local backfill would never reach it.
     return {
         "id": r.id, "pq_no": r.pq_no, "house": r.house, "title": r.title,
-        "subject": r.subject, "date": r.doc_date, "date_iso": r.doc_date_iso,
+        "subject": r.subject, "date": r.doc_date,
+        "date_iso": r.doc_date_iso or (_iso_date(r.doc_date) or None),
         "tags": [t.strip() for t in (r.tags or "").split(",") if t.strip()],
         "departments": _dept_list(r),
         "snippet": _pq_snippet(r.body_text or "", roots=roots),

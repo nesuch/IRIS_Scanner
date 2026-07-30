@@ -243,11 +243,16 @@ html.app-fixed .main { min-height: 0; height: 100%; }
    Deliberately near-invisible on its own; it reads as a change of paper, not as a
    mark. Anything stronger would recreate the noise this design removes. */
 .clause-body .clause-line.hl-cover,
+.clause-html .hl-cover,
+.pq-html .hl-cover,
 .clause-snippet.hl-cover {
   background: rgba(250,204,21,0.10);
   box-shadow: -6px 0 0 rgba(250,204,21,0.10);
   border-radius: 2px;
 }
+/* Table cells can't carry the left bar without breaking the grid. */
+.clause-html td.hl-cover, .clause-html th.hl-cover,
+.pq-html td.hl-cover, .pq-html th.hl-cover { box-shadow: none; }
 .clause-md-table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
 .clause-md-table th, .clause-md-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
 .clause-md-table th { background: var(--paper); font-weight: 600; }

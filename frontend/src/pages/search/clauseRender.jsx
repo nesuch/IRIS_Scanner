@@ -152,7 +152,24 @@ export function highlightHtml(html, keywords, phraseKeywords) {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
   _highlightNodes(doc, phraseRe, 'hl hl-phrase');
   _highlightNodes(doc, wordRe, 'hl');
+  _markCoverBlocks(doc, buildTermRegexes(keywords));
   return doc.body.innerHTML;
+}
+
+// Tier 2 on the pre-rendered-HTML path. ClauseBody can wash a line because it owns
+// the line divs; here the markup is the document's own, so the wash goes on whatever
+// block element carries every query word.
+const _COVER_BLOCKS = 'p,li,td,th,h1,h2,h3,h4,h5,h6,blockquote';
+
+function _markCoverBlocks(doc, termRes) {
+  if (!termRes) return;
+  const blocks = [...doc.body.querySelectorAll(_COVER_BLOCKS)];
+  const hits = blocks.filter((el) => coversAll(termRes, el.textContent || ''));
+  // Innermost only. A <td> inside a covering <p> inside a covering <blockquote>
+  // would otherwise wash three nested boxes and tint half the clause.
+  hits.forEach((el) => {
+    if (!hits.some((other) => other !== el && el.contains(other))) el.classList.add('hl-cover');
+  });
 }
 
 // Highlight one line: the verbatim PHRASE (own colour) takes precedence, then the

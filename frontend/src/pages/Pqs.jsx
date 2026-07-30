@@ -102,7 +102,9 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
   // the search. An undated reply sorts last either way: an unparsed date is neither
   // the newest nor the oldest thing here, and guessing would put it at one extreme.
   if (sort !== 'relevance') {
-    const dir = sort === 'oldest' ? 1 : -1;
+    // dir is the value returned when a sorts BEFORE b in ISO order (a is older).
+    // Under "oldest" that means a comes first (-1); under "newest" it comes last.
+    const dir = sort === 'oldest' ? -1 : 1;
     visible = visible.slice().sort((a, b) => {
       const x = a.date_iso || ''; const y = b.date_iso || '';
       if (!x && !y) return 0;
