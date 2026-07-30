@@ -31,10 +31,13 @@ import './insurer/insurer360.css';
 // every number, and identity comes from the column header rather than a colour.
 const COLOUR_SLOTS = 8;
 
-const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Reinsurer', 'FRB'];
+// 'Specialised' must be listed here. The Picker builds its option list by walking
+// this order, so a segment the API returns but this array omits vanishes from the UI —
+// which is exactly what happened to AIC and ECGC when Specialised was split out.
+const CLASS_ORDER = ['General', 'Life', 'SAHI', 'Specialised', 'Reinsurer', 'FRB'];
 const CLASS_LABEL = {
   General: 'General', Life: 'Life', SAHI: 'Standalone Health',
-  Reinsurer: 'Reinsurer', FRB: 'Foreign Reinsurance Branch',
+  Specialised: 'Specialised', Reinsurer: 'Reinsurer', FRB: 'Foreign Reinsurance Branch',
 };
 
 // ₹ values are stored in base units (paise-free rupees); Crore is how supervisors

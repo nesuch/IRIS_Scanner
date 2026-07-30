@@ -102,7 +102,12 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8 }) {
         {ins.map((x) => (
           <span key={x.id} className="cmp-chip">
             <i className="cmp-dot" style={{ background: colorOf(x.id) }} />
-            {x.name} <em>{x.class}</em>
+            {x.name} <em>{x.segment || x.class}</em>
+            {x.status && x.status !== 'active' && (
+              <span className={`cmp-status is-${x.status}`}>
+                {x.status === 'not_writing' ? 'not writing' : 'closed'}
+              </span>
+            )}
           </span>
         ))}
       </div>

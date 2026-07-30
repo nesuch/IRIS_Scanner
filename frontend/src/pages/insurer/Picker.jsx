@@ -75,7 +75,19 @@ export default function Picker({ classes, order, labels, value, onChange, placeh
               <button type="button" key={x.id} role="option" aria-selected={x.id === value}
                 className={`pk-opt ${i === active ? 'on' : ''} ${x.id === value ? 'sel' : ''}`}
                 onMouseEnter={() => setActive(i)} onClick={() => choose(x)}>
-                <span className="pk-name">{x.name}</span>
+                <span className="pk-name">
+                  {x.name}
+                  {/* Still selectable — its filings are real and its history opens.
+                      Marked so a reader does not take it for a current competitor. */}
+                  {x.status && x.status !== 'active' && (
+                    <span className={`pk-status is-${x.status}`}
+                      title={x.status === 'not_writing'
+                        ? 'Registered, but not writing new business'
+                        : 'No longer registered — historical data only'}>
+                      {x.status === 'not_writing' ? 'not writing' : 'closed'}
+                    </span>
+                  )}
+                </span>
                 <span className="pk-tag">{labels[x.cls] || x.cls}</span>
               </button>
             ))}

@@ -855,7 +855,17 @@ def _computed_totals(frame, sel_fy):
 
 
 def _ins_frame():
-    """Insurer-only slice of the financial engine, cached per data load."""
+    """Insurer-only slice of the financial engine, cached per data load.
+
+    Deliberately NOT filtered by registration status: an insurer that wound up still
+    has real filings, and its profile and history must still open. Status filtering
+    belongs where a CURRENT market is being described — see _current_frame.
+
+    Adds `segment`, the effective peer group: the registry segment where the Annual
+    Report gives one, else the licence class. This is what stops AIC and ECGC — filed
+    as General but registered as Specialised Insurers — being ranked against ordinary
+    general insurers.
+    """
     df = brain.UNIFIED_DF
     if df is None or df.empty or "entity_type" not in df.columns:
         return None
@@ -864,8 +874,30 @@ def _ins_frame():
     if cached and cached[0] == key:
         return cached[1]
     sub = df[(df["entity_type"] == "insurer") & df["value_base"].notna()]
+    if "registry_segment" in sub.columns:
+        sub = sub.assign(segment=sub["registry_segment"].fillna(sub["insurer_class"]))
+    else:
+        sub = sub.assign(segment=sub["insurer_class"])
     _ins_frame._c = (key, sub)
     return sub
+
+
+def _current_frame():
+    """Only insurers registered AND writing business.
+
+    Use for anything that describes a market as it stands now: market-share
+    denominators, HHI and its insurer count, peer cohorts and percentiles. Counting a
+    wound-up insurer as a competitor understates everyone's share and overstates how
+    fragmented the market is.
+
+    `not_writing` is excluded here even though it counts toward the Annual Report's
+    segment totals — Sahara and Reliance Health are registered but barred from or
+    transferred out of new business, so they are not competitors in a current year.
+    """
+    df = _ins_frame()
+    if df is None or "insurer_status" not in df.columns:
+        return df
+    return df[df["insurer_status"] == "active"]
 
 
 _Q_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "Annual": 5}
@@ -912,10 +944,19 @@ def api_insurer_list():
     out = {}
     # NB: load_master_data_engine renames `insurer` -> `Entity`; the canonical
     # id columns keep their snake_case names.
-    seen = df[["insurer_id", "Entity", "insurer_class"]].drop_duplicates("insurer_id")
+    _sc = ["insurer_id", "Entity", "insurer_class"]
+    for _c in ("segment", "insurer_status"):
+        if _c in df.columns:
+            _sc.append(_c)
+    seen = df[_sc].drop_duplicates("insurer_id")
     for _, r in seen.iterrows():
-        cls = r["insurer_class"] or "Other"
-        out.setdefault(cls, []).append({"id": r["insurer_id"], "name": r["Entity"]})
+        cls = (r["segment"] if "segment" in seen.columns and r["segment"] else None) \
+            or r["insurer_class"] or "Other"
+        st = r["insurer_status"] if "insurer_status" in seen.columns else None
+        # status travels with the option so the picker can mark an insurer that no
+        # longer writes; the row is still offered, because its history is real.
+        out.setdefault(cls, []).append({"id": r["insurer_id"], "name": r["Entity"],
+                                        "status": (st if isinstance(st, str) else None)})
     for c in out:
         out[c].sort(key=lambda x: x["name"])
     return jsonify({"classes": out})
@@ -935,9 +976,14 @@ def api_insurer_360(insurer_id):
         return jsonify({"ok": False, "message": "Unknown insurer."}), 404
 
     name = str(mine["Entity"].iloc[0])
-    cls = mine["insurer_class"].iloc[0]
-    peers = df[(df["insurer_class"] == cls) & (df["insurer_id"] != insurer_id)]
-    cohort = df[df["insurer_class"] == cls]
+    cls = (mine["segment"].iloc[0] if "segment" in mine.columns
+           else mine["insurer_class"].iloc[0])
+    # Peers and cohort come from the CURRENT market, so a percentile is a rank against
+    # live competitors rather than against a graveyard. Grouped on the effective
+    # segment, so a specialised insurer is not ranked against general insurers.
+    cur = _current_frame()
+    peers = cur[(cur["segment"] == cls) & (cur["insurer_id"] != insurer_id)]
+    cohort = cur[cur["segment"] == cls]
     years = _fy_series(mine["fy_canonical"])
     # Year is selectable. Without this every figure silently reported the latest
     # filing, which hides the year a supervisor is actually reviewing.
@@ -1032,8 +1078,13 @@ def api_insurer_360(insurer_id):
                 if not spec:
                     continue
                 mkt_label, members = spec
-                mkt = df[(df["metric_id"] == gdp) & (df["Line_of_Business"] == lob)
-                         & (df["insurer_class"].isin(members)) & (df["fy_canonical"] == lfy)]
+                # Denominator over CURRENT insurers only. Masks must all come from the
+                # same frame — combining one built on _current_frame() with others built
+                # on df would misalign on index and silently select the wrong rows.
+                _cur = _current_frame()
+                mkt = _cur[(_cur["metric_id"] == gdp) & (_cur["Line_of_Business"] == lob)
+                           & (_cur["insurer_class"].isin(members))
+                           & (_cur["fy_canonical"] == lfy)]
                 by = mkt.groupby("insurer_id")["value_base"].sum().sort_values(ascending=False)
                 if by.sum() > 0 and insurer_id in by.index:
                     lob_shares.append({
@@ -1173,7 +1224,11 @@ def api_insurer_compare():
             continue
         subs[iid] = m
         meta.append({"id": iid, "name": str(m["Entity"].iloc[0]),
-                     "class": m["insurer_class"].iloc[0]})
+                     "class": m["insurer_class"].iloc[0],
+                     "segment": (m["segment"].iloc[0] if "segment" in m.columns
+                                 else m["insurer_class"].iloc[0]),
+                     "status": (m["insurer_status"].iloc[0]
+                                if "insurer_status" in m.columns else None)})
     if len(subs) < 2:
         return jsonify({"ok": False, "message": "Not enough valid insurers."}), 404
     classes = {x["class"] for x in meta}
@@ -1353,7 +1408,8 @@ def api_insurer_compare():
     if len(classes) == 1:
         cls = next(iter(classes))
         gdp = "gross_direct_premium_within_india__inr"
-        cohort = df[(df["insurer_class"] == cls) & (df["metric_id"] == gdp)]
+        _cur = _current_frame()
+        cohort = _cur[(_cur["segment"] == cls) & (_cur["metric_id"] == gdp)]
         if not cohort.empty:
             fy = _fy_sort(cohort["fy_canonical"])[-1]
             tot = cohort[cohort["fy_canonical"] == fy].groupby("insurer_id")["value_base"].sum()
@@ -1442,7 +1498,11 @@ def api_industry_trends():
     for cls, (members, mid, plabel, lob) in PREM_BY_CLASS.items():
         basis[cls] = plabel + (f" · {lob}" if lob else "")
         kinds[cls] = "line" if lob else "class"
-        c = df[(df["metric_id"] == mid) & (df["insurer_class"].isin(members))]
+        # Current insurers only. A wound-up insurer left in the denominator understates
+        # every live insurer's share, and left in the count makes the market look more
+        # fragmented than it is — both feed straight into HHI and "top-5 of N".
+        _cur = _current_frame()
+        c = _cur[(_cur["metric_id"] == mid) & (_cur["segment"].isin(members))]
         if lob:
             if "Line_of_Business" not in c.columns:
                 continue
@@ -1565,9 +1625,16 @@ def api_insurer_exceptions():
             e.update(extra)
         out.append(e)
 
-    ids = df[["insurer_id", "Entity", "insurer_class"]].drop_duplicates("insurer_id")
+    _cols = ["insurer_id", "Entity", "insurer_class"]
+    for _c in ("insurer_status", "segment"):
+        if _c in df.columns and _c not in _cols:
+            _cols.append(_c)
+    ids = df[_cols].drop_duplicates("insurer_id")
     meta = {r["insurer_id"]: {"insurer_id": r["insurer_id"], "insurer": r["Entity"],
-                              "class": r["insurer_class"]} for _, r in ids.iterrows()}
+                              "class": r["insurer_class"],
+                              "status": r.get("insurer_status"),
+                              "segment": r.get("segment") or r["insurer_class"]}
+                 for _, r in ids.iterrows()}
 
     # ---- 1. Solvency below the statutory floor -----------------------------
     sol = df[df["metric_id"].str.startswith("solvency", na=False)]

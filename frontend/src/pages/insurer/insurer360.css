@@ -328,3 +328,13 @@
   letter-spacing: 0.02em; margin-top: 2px; }
 /* Comparison year. Sits beside the picker because it scopes the table below it. */
 .cmp-year { flex: 0 0 auto; min-width: 170px; }
+
+/* Registration status. Shown only when an insurer is NOT current — an unmarked row
+   means active, so the common case carries no visual weight. */
+.pk-status, .cmp-status {
+  display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 3px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase;
+  vertical-align: middle;
+}
+.pk-status.is-not_writing, .cmp-status.is-not_writing { background: #fef3c7; color: #92400e; }
+.pk-status.is-deregistered, .cmp-status.is-deregistered { background: #e2e8f0; color: #475569; }
