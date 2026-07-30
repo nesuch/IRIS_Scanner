@@ -147,6 +147,7 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8,
                 return (
                   <span key={id} className="cmp-added-chip">
                     {m?.label || id}
+                    {m?.context && <em className="cmp-added-ctx">{m.context}</em>}
                     <button type="button" aria-label={`Remove ${m?.label || id}`}
                       onClick={() => onExtraChange(extra.filter((x) => x !== id))}>&times;</button>
                   </span>
@@ -154,11 +155,9 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8,
               })}
             </div>
           )}
-          {data.metrics_excluded_ambiguous > 0 && (
-            <span className="cmp-add-note" title="A metric id that appears under several unrelated tables would be summed across them, so it is not offered">
-              {data.metrics_excluded_ambiguous} hidden — same name in unrelated tables
-            </span>
-          )}
+          <span className="cmp-add-note">
+            each entry is scoped to one line of business, so a row is like-for-like
+          </span>
         </div>
       )}
 
@@ -233,6 +232,9 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8,
               <tr key={m.id} className={m.derived ? 'is-derived' : ''}>
                 <th scope="row">
                   {m.label}
+                  {/* Context is what makes an added row meaningful — without it two
+                      ageing buckets from unrelated tables read as duplicate rows. */}
+                  {m.context && <span className="cmp-rowctx">{m.context}</span>}
                   <span className="cmp-fy">{m.fy}</span>
                   {/* Only when short of the full set. A dash then reads as "this
                       insurer did not report it", not as a broken cell — and it stops

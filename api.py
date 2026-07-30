@@ -1246,13 +1246,32 @@ def api_insurer_compare():
     # paint a green "best" on a metric where high is bad. So they show values without
     # best/worst marking rather than a colour that might be backwards.
     _kpi_ids = {k[0] for k in _KPIS}
-    _specs = list(_KPIS) + [(m,) + _metric_meta(m)[:2] + (None,) + (_metric_meta(m)[2],)
-                            for m in extra_ids if m not in _kpi_ids]
+    # An extra arrives as "metric_id|lob|cob". The context is part of the identity, so
+    # two ageing buckets from different tables are two different rows rather than one
+    # row summing both. A bare metric_id still works (no context filter), so an older
+    # client or a hand-built URL degrades to the previous behaviour instead of 404ing.
+    _specs = list(_KPIS)
+    for raw in extra_ids:
+        mid, _, rest = str(raw).partition("|")
+        if mid in _kpi_ids:
+            continue
+        lob, _, cob = rest.partition("|")
+        label, unit, mode = _metric_meta(mid)
+        ctx = " · ".join(x for x in (lob, cob) if x)
+        _specs.append((mid, label, unit, None, mode, lob or None, cob or None, ctx or None))
+
     rows = []
-    for mid, label, unit, higher_better, mode in _specs:
+    for spec in _specs:
+        mid, label, unit, higher_better, mode = spec[:5]
+        _flob, _fcob, _fctx = (spec[5], spec[6], spec[7]) if len(spec) > 5 else (None, None, None)
         series = {}
         for iid, m in subs.items():
-            g = _agg_by_year(m[m["metric_id"] == mid], mode)
+            _sel = m[m["metric_id"] == mid]
+            if _flob is not None and "Line_of_Business" in _sel.columns:
+                _sel = _sel[_sel["Line_of_Business"].fillna("").astype(str) == _flob]
+            if _fcob is not None and "Class_of_Business" in _sel.columns:
+                _sel = _sel[_sel["Class_of_Business"].fillna("").astype(str) == _fcob]
+            g = _agg_by_year(_sel, mode)
             if g is None or g.empty:
                 continue
             g = g[[i for i in _fy_sort(g.index)]]
@@ -1295,7 +1314,10 @@ def api_insurer_compare():
             best = max(vals, key=vals.get) if higher_better else min(vals, key=vals.get)
             worst = min(vals, key=vals.get) if higher_better else max(vals, key=vals.get)
         rows.append({
-            "id": mid, "label": label, "unit": unit, "fy": fy,
+            "id": ("|".join((mid, _flob or "", _fcob or "")) if _flob is not None or _fcob is not None else mid),
+            "metric_id": mid,
+            "context": _fctx,
+            "label": label, "unit": unit, "fy": fy,
             "higher_is_better": higher_better,
             "best": best, "worst": worst,
             # How many of the selected insurers this row actually covers. The client
@@ -1452,31 +1474,36 @@ def api_insurer_compare():
     # Claims, Individual Death Claims AND Age Analysis at once — and the row builder
     # aggregates by metric_id alone, so adding such a metric would silently sum
     # incompatible things. Better to offer fewer metrics than to offer a wrong number.
-    catalogue, ctx = {}, {}
+    # Catalogued per (metric, line of business, class of business) rather than per
+    # metric. A metric_id alone is not a comparable quantity: "3 Months" is a
+    # claims-ageing bucket living under Group Death Claims, Individual Death Claims and
+    # Age Analysis at once, and "Claims Paid" means different things under Fire and
+    # Health. Scoping the row to its context is what makes it a like-for-like column,
+    # and it means nothing has to be withheld — every triple is offered.
+    #
+    # The curated KPIs are deliberately NOT scoped this way: summing gross premium
+    # across every line IS the total premium, and splitting those would be wrong.
     _lob = "Line_of_Business" if "Line_of_Business" in df.columns else None
     _cob = "Class_of_Business" if "Class_of_Business" in df.columns else None
+    catalogue = {}
     for iid, m in subs.items():
-        for mid in m["metric_id"].dropna().unique():
-            mid = str(mid)
+        keep = m[~m["metric_id"].isna()]
+        for mid, lob, cob in {(str(a), str(b or ""), str(c or "")) for a, b, c in zip(
+                keep["metric_id"],
+                keep[_lob] if _lob else keep["metric_id"],
+                keep[_cob] if _cob else keep["metric_id"])}:
             if _is_structural(mid):
                 continue
-            catalogue.setdefault(mid, set()).add(iid)
-            if _lob:
-                rows_m = m[m["metric_id"] == mid]
-                for pair in {(str(a), str(b)) for a, b in
-                             zip(rows_m[_lob].fillna(""), rows_m[_cob].fillna("") if _cob else rows_m[_lob].fillna(""))}:
-                    ctx.setdefault(mid, set()).add(pair)
-    ambiguous = {mid for mid, c in ctx.items() if len(c) > 1}
-    catalogue = {mid: who for mid, who in catalogue.items() if mid not in ambiguous}
+            catalogue.setdefault((mid, lob, cob), set()).add(iid)
     _kpi_set = {k[0] for k in _KPIS}
     available = sorted(
-        ({"id": mid, "label": _metric_meta(mid)[0], "unit": _metric_meta(mid)[1],
+        ({"id": "|".join((mid, lob, cob)),
+          "metric_id": mid,
+          "label": _metric_meta(mid)[0], "unit": _metric_meta(mid)[1],
           "n": len(who), "is_kpi": mid in _kpi_set,
-          # The one context this metric has here — shown in the picker, because
-          # "Claims Paid" means different things under Fire and under Health.
-          "context": " · ".join(x for x in sorted(ctx.get(mid, [{("", "")}]))[0] if x) or None}
-         for mid, who in catalogue.items()),
-        key=lambda d: (-d["n"], d["label"]))
+          "context": " · ".join(x for x in (lob, cob) if x) or None}
+         for (mid, lob, cob), who in catalogue.items()),
+        key=lambda d: (-d["n"], d["label"], d["context"] or ""))
     return jsonify({
         "ok": True,
         "insurers": meta,
@@ -1487,7 +1514,6 @@ def api_insurer_compare():
         "years": years,
         "fy": want_fy or None,      # echo, so the client knows if its request was honoured
         "available_metrics": available,
-        "metrics_excluded_ambiguous": len(ambiguous),
         "extra": [m for m in extra_ids if m not in _kpi_set],
     })
 

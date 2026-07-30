@@ -389,3 +389,5 @@
   font-size: 14px; line-height: 1; padding: 0 2px; }
 .cmp-added-chip button:hover { color: var(--bad, #b91c1c); }
 .cmp-add-note { font-size: 11px; color: var(--faint); font-style: italic; }
+.cmp-rowctx { display: block; font-size: 10px; font-weight: 500; color: var(--accent, #2563eb); }
+.cmp-added-ctx { font-style: normal; font-weight: 500; color: var(--muted); font-size: 10px; margin-left: 5px; }
