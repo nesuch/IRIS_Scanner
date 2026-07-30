@@ -9,7 +9,7 @@
 // do not and a coverage count when it is short of the full set. Requiring every
 // insurer to report a row hid seven useful columns because of one missing eighth.
 // The year is the part that stays strict: one year per row for everyone in it.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 
 // Eight categorical slots, in fixed order. Not eyeballed — the previous four were,
@@ -67,7 +67,46 @@ function TrendRow({ metric, insurers, colorOf }) {
   return <div className="cmp-trend"><Line data={data} options={opts} /></div>;
 }
 
-export default function Compare({ data, insurers, slotOf, colourSlots = 8 }) {
+// Add-a-metric control. Only offers what THIS selection reports, and only metrics with
+// a single context — the catalogue is filtered server-side, because a metric_id that
+// spans unrelated tables would be summed across them.
+function MetricAdder({ available, extra, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const pool = (available || []).filter((m) => !m.is_kpi && !extra.includes(m.id));
+  const s = q.trim().toLowerCase();
+  const hits = (s ? pool.filter((m) => m.label.toLowerCase().includes(s)
+    || (m.context || '').toLowerCase().includes(s)) : pool).slice(0, 60);
+  if (!available?.length) return null;
+  return (
+    <div className="mx">
+      <button type="button" className="mx-btn" onClick={() => setOpen((o) => !o)}>
+        <i className="fas fa-plus" /> Add metric
+        <span className="mx-avail">{pool.length} available</span>
+      </button>
+      {open && (
+        <div className="mx-pop">
+          <input className="mx-q" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Search metrics this selection reports…" />
+          <div className="mx-list">
+            {hits.length === 0 && <div className="mx-none">No metric matches “{q}”.</div>}
+            {hits.map((m) => (
+              <button type="button" key={m.id} className="mx-opt"
+                onClick={() => { onChange([...extra, m.id]); setQ(''); }}>
+                <span className="mx-label">{m.label}</span>
+                {m.context && <span className="mx-ctx">{m.context}</span>}
+                <span className="mx-n">{m.n} of {m.n}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Compare({ data, insurers, slotOf, colourSlots = 8,
+                                  extra = [], onExtraChange }) {
   if (!data) return null;
   const ins = data.insurers || [];
   // Colour follows the INSURER, not its position in the list. Keyed on selection
@@ -95,6 +134,31 @@ export default function Compare({ data, insurers, slotOf, colourSlots = 8 }) {
             general insurer genuinely compete on health, and are ranked there against every
             insurer writing it.
           </div>
+        </div>
+      )}
+
+      {onExtraChange && (
+        <div className="cmp-add">
+          <MetricAdder available={data.available_metrics} extra={extra} onChange={onExtraChange} />
+          {extra.length > 0 && (
+            <div className="cmp-added">
+              {extra.map((id) => {
+                const m = (data.available_metrics || []).find((x) => x.id === id);
+                return (
+                  <span key={id} className="cmp-added-chip">
+                    {m?.label || id}
+                    <button type="button" aria-label={`Remove ${m?.label || id}`}
+                      onClick={() => onExtraChange(extra.filter((x) => x !== id))}>&times;</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          {data.metrics_excluded_ambiguous > 0 && (
+            <span className="cmp-add-note" title="A metric id that appears under several unrelated tables would be summed across them, so it is not offered">
+              {data.metrics_excluded_ambiguous} hidden — same name in unrelated tables
+            </span>
+          )}
         </div>
       )}
 

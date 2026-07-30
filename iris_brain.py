@@ -1871,7 +1871,7 @@ def _apply_insurer_status(df):
     # Ambiguity guard: if two DIFFERENT registry names reduce to the same token set,
     # that key identifies nothing and must not match anything. Silently keeping the
     # last one is how a generic key can attach to the wrong segment.
-    registered, seen_names = {}, {}
+    registered, seen_names, owned = {}, {}, {}
     for seg, d in (reg.get("segments") or {}).items():
         for own in ("public", "private"):
             for nm in d.get(own) or []:
@@ -1883,6 +1883,7 @@ def _apply_insurer_status(df):
                     continue
                 seen_names[k] = nm
                 registered[k] = seg
+                owned[k] = own          # public vs private, straight from the report
     if not registered:
         return df
     not_writing = set(k for k in (reg.get("registered_but_not_writing") or {})
@@ -1920,7 +1921,18 @@ def _apply_insurer_status(df):
             return registered[hits[0]]
         return None
 
-    status, seg_of = {}, {}
+    def _own(nm):
+        k = _reg_key(nm)
+        if not k:
+            return None
+        if k in owned:
+            return owned[k]
+        if len(k) < 2:
+            return None
+        hits = [rk for rk in owned if len(rk) >= 2 and (k <= rk or rk <= k)]
+        return owned[hits[0]] if len(hits) == 1 else None
+
+    status, seg_of, own_of = {}, {}, {}
     for iid, nm in df[["insurer_id", name_col]].dropna().drop_duplicates("insurer_id").values:
         seg = _lookup(nm)
         if str(iid) in not_writing:
@@ -1932,7 +1944,14 @@ def _apply_insurer_status(df):
             seg_of[iid] = seg
         else:
             status[iid] = "deregistered"
+        o = _own(nm)
+        if o:
+            own_of[iid] = o
     df["insurer_status"] = df["insurer_id"].map(status)
+    # Ownership is only knowable from the report — nothing in a filing says whether an
+    # insurer is state-owned. Left blank for anything not in the registry rather than
+    # guessed, so a "PSU" filter can never quietly include a private insurer.
+    df["insurer_ownership"] = df["insurer_id"].map(own_of)
     # Specialised is a registry segment with no insurer_class of its own; surface it
     # so AIC and ECGC stop being counted as ordinary general insurers.
     df["registry_segment"] = df["insurer_id"].map(seg_of)

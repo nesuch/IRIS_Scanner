@@ -103,6 +103,7 @@ export default function Insurer360() {
   const [mode, setMode] = useState('single');     // 'single' | 'compare'
   const [cmpIds, setCmpIds] = useState([]);
   const [cmpFy, setCmpFy] = useState('');   // '' = let each row pick its best year
+  const [cmpExtra, setCmpExtra] = useState([]);   // metric_ids added beyond the KPI set
   // A colour slot per insurer, held for as long as it stays selected. Without this
   // the colour came from position, so removing one repainted every insurer below it.
   // A ref, not state: it is written during the same event that calls setCmpIds, and
@@ -117,6 +118,35 @@ export default function Insurer360() {
   const releaseSlot = (id) => { slotRef.current.delete(id); };
   // The combobox offers only what is not already selected, so the list shortens as
   // the comparison grows and you cannot add a duplicate.
+  // Quick filters. Built from the registry's own public/private split rather than a
+  // hardcoded list of names, so "PSU" cannot drift out of date or quietly include a
+  // private insurer. Only ACTIVE insurers are added — a cohort you assemble in one
+  // click should be the current market, not a graveyard; closed insurers stay
+  // individually selectable.
+  const quickSets = useMemo(() => {
+    const all = Object.entries(classes).flatMap(([seg, list]) =>
+      (list || []).map((i) => ({ ...i, seg })));
+    const live = all.filter((i) => !i.status || i.status === 'active');
+    const pick = (fn) => live.filter(fn).map((i) => i.id);
+    const defs = [
+      ['PSU — all', (i) => i.ownership === 'public'],
+      ['PSU Life', (i) => i.ownership === 'public' && i.seg === 'Life'],
+      ['PSU Non-Life', (i) => i.ownership === 'public' && i.seg === 'General'],
+      ['PSU Specialised', (i) => i.ownership === 'public' && i.seg === 'Specialised'],
+      ['Private Life', (i) => i.ownership === 'private' && i.seg === 'Life'],
+      ['Private General', (i) => i.ownership === 'private' && i.seg === 'General'],
+      ['Standalone Health', (i) => i.seg === 'SAHI'],
+      ['Reinsurers & FRB', (i) => i.seg === 'Reinsurer' || i.seg === 'FRB'],
+    ];
+    return defs.map(([label, fn]) => ({ label, ids: pick(fn) })).filter((d) => d.ids.length > 1);
+  }, [classes]);
+
+  const applyQuick = (ids) => {
+    slotRef.current = new Map();          // a fresh cohort gets fresh colours
+    ids.forEach((id) => slotOf(id));
+    setCmpIds(ids);
+  };
+
   const cmpAvailable = useMemo(() => Object.fromEntries(
     Object.entries(classes).map(([c, list]) => [c, list.filter((i) => !cmpIds.includes(i.id))])
   ), [classes, cmpIds]);
@@ -152,12 +182,13 @@ export default function Insurer360() {
     if (mode !== 'compare' || cmpIds.length < 2) { setCmp(null); return; }
     setLoading(true); setErr(null);
     const qs = cmpIds.map((i) => `id=${encodeURIComponent(i)}`).join('&')
-      + (cmpFy ? `&fy=${encodeURIComponent(cmpFy)}` : '');
+      + (cmpFy ? `&fy=${encodeURIComponent(cmpFy)}` : '')
+      + cmpExtra.map((m) => `&m=${encodeURIComponent(m)}`).join('');
     api.get(`/insurer/compare?${qs}`)
       .then((d) => setCmp(d))
       .catch((e) => { setErr(e.message); setCmp(null); })
       .finally(() => setLoading(false));
-  }, [mode, cmpIds, cmpFy]);
+  }, [mode, cmpIds, cmpFy, cmpExtra]);
 
   useEffect(() => {
     if (mode !== 'industry' || ind) return;
@@ -236,6 +267,19 @@ export default function Insurer360() {
           </span>
         </div>
 
+        {mode === 'compare' && quickSets.length > 0 && (
+          <div className="cmp-quick">
+            <span className="cmp-quick-label">Quick sets</span>
+            {quickSets.map((q) => (
+              <button type="button" key={q.label} className="cmp-quick-chip"
+                title={`Compare all ${q.ids.length} — replaces the current selection`}
+                onClick={() => applyQuick(q.ids)}>
+                {q.label}<span className="cmp-quick-n">{q.ids.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {mode === 'compare' && (
           <div className="cmp-picker">
             {/* Same combobox as single mode. A native <select> of 87 near-identical
@@ -254,6 +298,11 @@ export default function Insurer360() {
                 {cmp.years.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             )}
+            {cmpIds.length > 0 && (
+              <button type="button" className="cmp-clear" onClick={() => { slotRef.current = new Map(); setCmpIds([]); }}>
+                Clear all
+              </button>
+            )}
             {cmpIds.map((id) => (
               <span key={id} className="cmp-sel">
                 {nameOf(id)}
@@ -268,7 +317,8 @@ export default function Insurer360() {
         {err && <p className="iris-msg" style={{ color: 'var(--bad)' }}>{err}</p>}
         {loading && <PageLoading />}
 
-        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} slotOf={slotOf} colourSlots={COLOUR_SLOTS} />}
+        {!loading && mode === 'compare' && <Compare data={cmp} insurers={classes} slotOf={slotOf} colourSlots={COLOUR_SLOTS}
+            extra={cmpExtra} onExtraChange={setCmpExtra} />}
         {!loading && mode === 'industry' && <Industry data={ind} />}
         {!loading && mode === 'alerts' && (
           <Exceptions data={exc} onSelect={(id) => { setSel(id); setMode('single'); }} />

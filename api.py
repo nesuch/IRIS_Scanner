@@ -945,7 +945,7 @@ def api_insurer_list():
     # NB: load_master_data_engine renames `insurer` -> `Entity`; the canonical
     # id columns keep their snake_case names.
     _sc = ["insurer_id", "Entity", "insurer_class"]
-    for _c in ("segment", "insurer_status"):
+    for _c in ("segment", "insurer_status", "insurer_ownership"):
         if _c in df.columns:
             _sc.append(_c)
     seen = df[_sc].drop_duplicates("insurer_id")
@@ -955,8 +955,10 @@ def api_insurer_list():
         st = r["insurer_status"] if "insurer_status" in seen.columns else None
         # status travels with the option so the picker can mark an insurer that no
         # longer writes; the row is still offered, because its history is real.
+        ow = r["insurer_ownership"] if "insurer_ownership" in seen.columns else None
         out.setdefault(cls, []).append({"id": r["insurer_id"], "name": r["Entity"],
-                                        "status": (st if isinstance(st, str) else None)})
+                                        "status": (st if isinstance(st, str) else None),
+                                        "ownership": (ow if isinstance(ow, str) else None)})
     for c in out:
         out[c].sort(key=lambda x: x["name"])
     return jsonify({"classes": out})
@@ -988,6 +990,9 @@ def api_insurer_360(insurer_id):
     # Year is selectable. Without this every figure silently reported the latest
     # filing, which hides the year a supervisor is actually reviewing.
     want_fy = (request.args.get("fy") or "").strip()
+    # Extra metrics the user added, beyond the curated KPI set. Capped so a crafted
+    # request cannot ask for all 943 at once.
+    extra_ids = [m for m in request.args.getlist("m") if m][:40]
     sel_fy = want_fy if want_fy in years else (years[-1] if years else None)
 
     # ---- KPI cards: latest value, YoY, and where it sits in its own class ----
@@ -1211,6 +1216,9 @@ def api_insurer_compare():
     # filed. A supervisor comparing a specific year should not have to infer which
     # one they got.
     want_fy = (request.args.get("fy") or "").strip()
+    # Extra metrics the user added, beyond the curated KPI set. Capped so a crafted
+    # request cannot ask for all 943 at once.
+    extra_ids = [m for m in request.args.getlist("m") if m][:40]
     if len(ids) < 2:
         return jsonify({"ok": False, "message": "Select at least two insurers."}), 400
     df = _ins_frame()
@@ -1233,8 +1241,15 @@ def api_insurer_compare():
         return jsonify({"ok": False, "message": "Not enough valid insurers."}), 404
     classes = {x["class"] for x in meta}
 
+    # The curated KPIs, then anything the user asked for. Extras carry no direction —
+    # nothing tells us whether "up" is good for an arbitrary line, and guessing would
+    # paint a green "best" on a metric where high is bad. So they show values without
+    # best/worst marking rather than a colour that might be backwards.
+    _kpi_ids = {k[0] for k in _KPIS}
+    _specs = list(_KPIS) + [(m,) + _metric_meta(m)[:2] + (None,) + (_metric_meta(m)[2],)
+                            for m in extra_ids if m not in _kpi_ids]
     rows = []
-    for mid, label, unit, higher_better, mode in _KPIS:
+    for mid, label, unit, higher_better, mode in _specs:
         series = {}
         for iid, m in subs.items():
             g = _agg_by_year(m[m["metric_id"] == mid], mode)
@@ -1426,6 +1441,42 @@ def api_insurer_compare():
     years = sorted({str(f) for m in subs.values()
                     for f in m["fy_canonical"].dropna().unique()
                     if re.fullmatch(r"\d{4}-\d{2}", str(f))}, reverse=True)
+
+    # The catalogue the "add metric" picker searches. Built from what THIS selection
+    # actually filed, not the full 943 canonical metrics — a search that mostly returns
+    # metrics nobody here reports is worse than a shorter honest list. `n` is how many
+    # of the selected insurers report it, so the picker can lead with the comparable
+    # ones. Structural artefacts (s_no, totals) are excluded, as everywhere else.
+    # Only metrics with ONE context across the selection are offered. A metric_id can
+    # span unrelated tables — "3 Months" is a claims-ageing bucket under Group Death
+    # Claims, Individual Death Claims AND Age Analysis at once — and the row builder
+    # aggregates by metric_id alone, so adding such a metric would silently sum
+    # incompatible things. Better to offer fewer metrics than to offer a wrong number.
+    catalogue, ctx = {}, {}
+    _lob = "Line_of_Business" if "Line_of_Business" in df.columns else None
+    _cob = "Class_of_Business" if "Class_of_Business" in df.columns else None
+    for iid, m in subs.items():
+        for mid in m["metric_id"].dropna().unique():
+            mid = str(mid)
+            if _is_structural(mid):
+                continue
+            catalogue.setdefault(mid, set()).add(iid)
+            if _lob:
+                rows_m = m[m["metric_id"] == mid]
+                for pair in {(str(a), str(b)) for a, b in
+                             zip(rows_m[_lob].fillna(""), rows_m[_cob].fillna("") if _cob else rows_m[_lob].fillna(""))}:
+                    ctx.setdefault(mid, set()).add(pair)
+    ambiguous = {mid for mid, c in ctx.items() if len(c) > 1}
+    catalogue = {mid: who for mid, who in catalogue.items() if mid not in ambiguous}
+    _kpi_set = {k[0] for k in _KPIS}
+    available = sorted(
+        ({"id": mid, "label": _metric_meta(mid)[0], "unit": _metric_meta(mid)[1],
+          "n": len(who), "is_kpi": mid in _kpi_set,
+          # The one context this metric has here — shown in the picker, because
+          # "Claims Paid" means different things under Fire and under Health.
+          "context": " · ".join(x for x in sorted(ctx.get(mid, [{("", "")}]))[0] if x) or None}
+         for mid, who in catalogue.items()),
+        key=lambda d: (-d["n"], d["label"]))
     return jsonify({
         "ok": True,
         "insurers": meta,
@@ -1435,6 +1486,9 @@ def api_insurer_compare():
         "market_share": share,
         "years": years,
         "fy": want_fy or None,      # echo, so the client knows if its request was honoured
+        "available_metrics": available,
+        "metrics_excluded_ambiguous": len(ambiguous),
+        "extra": [m for m in extra_ids if m not in _kpi_set],
     })
 
 

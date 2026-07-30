@@ -338,3 +338,54 @@
 }
 .pk-status.is-not_writing, .cmp-status.is-not_writing { background: #fef3c7; color: #92400e; }
 .pk-status.is-deregistered, .cmp-status.is-deregistered { background: #e2e8f0; color: #475569; }
+
+/* ---- Quick sets ----
+   One click assembles a whole cohort. Sits above the picker because it REPLACES the
+   selection rather than adding to it — the picker is for building up, these for
+   jumping straight to a standard comparison. */
+.cmp-quick { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; }
+.cmp-quick-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--faint); margin-right: 2px; }
+.cmp-quick-chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: #fff; border-radius: var(--r-pill, 999px);
+  padding: 4px 6px 4px 12px; font: inherit; font-size: 11.5px; font-weight: 600;
+  color: var(--ink, #0f172a); transition: 0.14s;
+}
+.cmp-quick-chip:hover { border-color: var(--navy-700, #1e3a8a); background: var(--navy-50, #eef2fb); }
+.cmp-quick-n { font-size: 10px; font-weight: 800; background: rgba(0,0,0,0.06);
+  border-radius: 999px; padding: 1px 7px; color: var(--muted); }
+.cmp-clear { border: none; background: none; cursor: pointer; font-size: 11.5px;
+  color: var(--muted); text-decoration: underline; padding: 4px 6px; }
+.cmp-clear:hover { color: var(--bad, #b91c1c); }
+
+/* ---- Add-a-metric ---- */
+.cmp-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.mx { position: relative; }
+.mx-btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font: inherit;
+  font-size: 11.5px; font-weight: 700; padding: 5px 12px; border-radius: var(--r-pill, 999px);
+  border: 1px dashed var(--line-strong); background: #fff; color: var(--navy-700, #1e3a8a); }
+.mx-btn:hover { border-style: solid; background: var(--navy-50, #eef2fb); }
+.mx-avail { font-weight: 600; color: var(--faint); }
+.mx-pop { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; width: 440px;
+  max-width: 88vw; background: #fff; border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: var(--sh-3); padding: 8px; }
+.mx-q { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px;
+  font: inherit; font-size: 12.5px; margin-bottom: 6px; }
+.mx-q:focus { outline: none; border-color: var(--brand, #2563eb); }
+.mx-list { max-height: 300px; overflow-y: auto; }
+.mx-opt { display: block; width: 100%; text-align: left; border: 0; background: none;
+  cursor: pointer; padding: 6px 8px; border-radius: 6px; font: inherit; }
+.mx-opt:hover { background: var(--navy-50, #eef2fb); }
+.mx-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink, #0f172a); }
+.mx-ctx { display: block; font-size: 10.5px; color: var(--muted); }
+.mx-n { display: none; }
+.mx-none { font-size: 12px; color: var(--muted); padding: 8px; }
+.cmp-added { display: flex; gap: 6px; flex-wrap: wrap; }
+.cmp-added-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+  font-weight: 600; background: var(--navy-50, #eef2fb); border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill, 999px); padding: 3px 6px 3px 11px; }
+.cmp-added-chip button { border: 0; background: none; cursor: pointer; color: var(--faint);
+  font-size: 14px; line-height: 1; padding: 0 2px; }
+.cmp-added-chip button:hover { color: var(--bad, #b91c1c); }
+.cmp-add-note { font-size: 11px; color: var(--faint); font-style: italic; }
