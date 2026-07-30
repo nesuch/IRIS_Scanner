@@ -2154,6 +2154,37 @@ def _apply_metric_aliases(df):
     return df
 
 
+# Context that is a printing convention rather than a dimension.
+#
+# An account statement is a flat list of line items under a couple of printed headings.
+# Extraction captured the FIRST heading and stamped it on every row, so in the life
+# Policyholders Account commission, benefits paid and operating expenses all read
+# "Premiums earned - net". In an account statement the LINE ITEM is the identity -
+# Commission is Commission - so the heading adds nothing and a wrong one actively misleads.
+#
+# Only these exact pairs are cleared. The GENERAL Policyholders Account uses Fire, Marine,
+# Miscellaneous and Total, which are real business lines carrying nine metrics each, and
+# must survive untouched.
+_DROP_CONTEXT = {
+    ("Policyholders Account", "Premiums earned – net"),
+    ("Shareholders Account", "Income From Investments"),
+    ("Shareholders Account", "General"),
+}
+
+
+def _clear_pseudo_context(df):
+    """Blank a class_of_business that is a section heading, not a business class."""
+    need = {"Line_of_Business", "Class_of_Business"}
+    if df is None or getattr(df, "empty", True) or not need <= set(df.columns):
+        return df
+    pair = list(zip(df["Line_of_Business"].astype(str),
+                    df["Class_of_Business"].astype(str)))
+    hit = pd.Series([p in _DROP_CONTEXT for p in pair], index=df.index)
+    if hit.any():
+        df.loc[hit, "Class_of_Business"] = None
+    return df
+
+
 def _derive_entity_columns(df):
     """Add entity_type / insurer_class to the in-memory frame when absent."""
     if df is None or getattr(df, "empty", True):
@@ -2286,6 +2317,7 @@ def load_master_data_engine():
         UNIFIED_DF = _repair_units(UNIFIED_DF)
         UNIFIED_DF = _repair_inforce_segments(UNIFIED_DF)
         UNIFIED_DF = _apply_metric_aliases(UNIFIED_DF)
+        UNIFIED_DF = _clear_pseudo_context(UNIFIED_DF)
 
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
         _et = UNIFIED_DF["entity_type"].notna().sum() if "entity_type" in UNIFIED_DF.columns else 0
