@@ -97,6 +97,73 @@
         "NOTE: renamed to Generali Central Insurance after this report; the display name is",
         "left as filed for now so it matches the handbook and the Annual Report."
       ]
+    },
+    {
+      "canonical": "Zurich Kotak General Insurance Co. (India) Ltd.",
+      "variants": [
+        "Zurich Kotak General Insurance Co. (India) Ltd.",
+        "Kotak Mahindra General Insurance Co. Ltd."
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.157) lists this insurer as 'Zurich Kotak General Insurance Co. (India) Ltd.'",
+        "with '(erstwhile Kotak Mahindra General Ins. Co. Ltd.)' printed beside it.",
+        "Unlike the other renames, our data holds BOTH names as separate entities -",
+        "929 rows under the old, 991 under the new, with zero overlapping",
+        "(metric, lob, fy) triples - so this is a merge, not just a display change."
+      ]
+    },
+    {
+      "canonical": "Magma General Insurance Ltd.",
+      "variants": [
+        "Magma General Insurance Ltd.",
+        "Magma HDI General Insurance Co. Ltd."
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.157): 'Magma General Insurance Ltd. (erstwhile Magma HDI General Insurance Co. Ltd.)'.",
+        "We hold only the erstwhile name, so this is a display rename - no rows move."
+      ]
+    },
+    {
+      "canonical": "Canara HSBC Life Insurance Co. Ltd.",
+      "variants": [
+        "Canara HSBC Life Insurance Co. Ltd.",
+        "Canara HSBC OBC Life Insurance Ltd."
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.157) lists 'Canara HSBC Life Insurance Co. Ltd.'; the handbook still carries the",
+        "older 'OBC' form. Display rename - we hold only the old name."
+      ]
+    },
+    {
+      "canonical": "Kotak Mahindra Life Insurance Co. Ltd.",
+      "variants": [
+        "Kotak Mahindra Life Insurance Co. Ltd.",
+        "Kotak Mahindra OM Life Insurance Co. Ltd."
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.157) lists 'Kotak Mahindra Life Insurance Co. Ltd.'; the handbook keeps the older",
+        "'OM' form. Display rename - we hold only the old name."
+      ]
+    },
+    {
+      "canonical": "IndiaFirst Life Insurance Co. Ltd.",
+      "variants": [
+        "IndiaFirst Life Insurance Co. Ltd.",
+        "India First Life Insurance Ltd."
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.157) prints it closed up as 'IndiaFirst'. Spacing only; display rename."
+      ]
+    },
+    {
+      "canonical": "Manipal Cigna Health Insurance Co. Ltd.",
+      "variants": [
+        "Manipal Cigna Health Insurance Co. Ltd.",
+        "ManipalCigna Health Insurance Co. Ltd."
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.157) prints it spaced as 'Manipal Cigna'. Spacing only; display rename."
+      ]
     }
   ]
 }

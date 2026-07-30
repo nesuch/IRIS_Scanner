@@ -30,11 +30,11 @@
     "'CreditAccess Life Insurance Ltd..'), because matching is done on normalised",
     "tokens rather than exact strings and the printed form is the citable one."
   ],
-  "source": "IRDAI Annual Report 2024-25, Annexures 1, 3, 6 and 7",
+  "source": "IRDAI Annual Report 2024-25, Annexure 1 (registration list, p.157-158); Annexures 3, 6, 7 for activity",
   "as_at": "2025-03-31",
   "segments": {
     "General": {
-      "authority": "Annexure 3 (p.162), 25 insurers",
+      "authority": "Annexure 1 (p.157), Non-Life: 4 public + 21 private = 25",
       "public": [
         "National Insurance Co. Ltd.",
         "The New India Assurance Co. Ltd.",
@@ -74,36 +74,37 @@
       "private": []
     },
     "SAHI": {
-      "authority": "Annexure 7 (p.172), Standalone Health Insurers, 7 listed",
+      "authority": "Annexure 1 (p.157), Stand-alone Health Insurers (Private Sector) = 8",
       "public": [],
       "private": [
         "Aditya Birla Health Insurance Co. Ltd.",
         "Care Health Insurance Ltd.",
-        "Galaxy Health & Allied Insurance Co. Ltd.",
+        "Galaxy Health and Allied Insurance Co. Ltd.",
         "Manipal Cigna Health Insurance Co. Ltd.",
+        "Narayana Health Insurance Ltd.",
         "Niva Bupa Health Insurance Co. Ltd.",
-        "Narayana Health Insurance Co. Ltd.",
-        "Star Health and Allied Insurance Co Ltd"
+        "Reliance Health Insurance Ltd.",
+        "Star Health & Allied Insurance Co. Ltd."
       ]
     },
     "Life": {
-      "authority": "Annexure 7 (p.172), 25 insurers (1 public + 24 private)",
+      "authority": "Annexure 1 (p.157), Life Insurers: 1 public + 25 private = 26",
       "public": [
         "Life Insurance Corporation of India"
       ],
       "private": [
         "Acko Life Insurance Ltd.",
-        "Aditya Birla Sun Life Insurance Co. Ltd.",
-        "Ageas Federal Life Insurance Co. Ltd.",
-        "Aviva Life Insurance Company India Ltd.",
-        "Axis Max Life Insurance Co. Ltd.",
+        "Aditya Birla Sun Life Insurance Co. Ltd",
+        "Ageas Federal Life Insurance Co. Ltd",
+        "Aviva Life Insurance Co. India Ltd",
+        "Axis Max Life Insurance Ltd.",
         "Bajaj Allianz Life Insurance Co. Ltd.",
         "Bandhan Life Insurance Ltd.",
         "Bharti AXA Life Insurance Co. Ltd.",
         "Canara HSBC Life Insurance Co. Ltd.",
         "CreditAccess Life Insurance Ltd.",
         "Edelweiss Life Insurance Co. Ltd.",
-        "Future Generali Life Insurance Co. Ltd.",
+        "Future Generali India Life Insurance Co. Ltd.",
         "Go Digit Life Insurance Ltd.",
         "HDFC Life Insurance Co. Ltd.",
         "ICICI Prudential Life Insurance Co. Ltd.",
@@ -111,10 +112,11 @@
         "Kotak Mahindra Life Insurance Co. Ltd.",
         "PNB MetLife India Insurance Co. Ltd.",
         "Pramerica Life Insurance Ltd.",
-        "Reliance Nippon Life Insurance Co Ltd",
+        "Reliance Nippon Life Insurance Co. Ltd.",
+        "Sahara India Life Insurance Co. Ltd.",
         "SBI Life Insurance Co. Ltd.",
         "Shriram Life Insurance Co. Ltd.",
-        "Star Union Dai-ichi Life Ins. Co. Ltd.",
+        "Star Union Dai-ichi Life Insurance Co. Ltd.",
         "Tata AIA Life Insurance Co. Ltd."
       ]
     },
@@ -147,23 +149,38 @@
     }
   },
   "_pending": [
-    "RESOLVED: reinsurers and FRBs transcribed from Annexure 1 (p.158). The newly",
-    "registered private reinsurer is Valueattics Reinsurance Limited.",
+    "RESOLVED: life 26 and SAHI 8 both reconcile against Annexure 1 (p.157). The earlier",
+    "shortfall came from using Annexures 3/6/7, which are ACTIVITY tables - Sahara (life",
+    "business transferred) and Reliance Health (barred from new policies) are registered",
+    "but file no products, so they are absent there and present here.",
+    "RESOLVED: ITI Reinsurance is Investment Trust of India, licence cancelled - a",
+    "different entity from Valueattics. The suspected rename was wrong and was not acted on.",
     "",
-    "OPEN - is our 'ITI Reinsurance Ltd.' the same entity as Valueattics Reinsurance",
-    "Limited? ITI Re is absent from Annexure 1 while Valueattics is the only private",
-    "reinsurer listed, and we hold no Valueattics rows at all. A rename would explain",
-    "both. Needs confirming before an alias is written - a wrong merge here fuses the",
-    "only two private-reinsurer records we have.",
-    "",
-    "OPEN - counts still short of the user's stated registration figures: life 25",
-    "transcribed v 26 stated, SAHI 7 v 8. Annexures 3/6/7 are activity tables (products",
-    "filed, MTP written), so an insurer registered but not yet writing can be absent.",
-    "Annexure 1 is the registration list and should settle both - only its Reinsurers",
-    "page was read (p.158); the life/general/SAHI pages of Annexure 1 come earlier.",
-    "",
-    "NOTE - Lloyd's service companies are counted inside the 12 alongside the 10 true",
-    "FRBs, per the report's own numbering. Our data also carries 'Lloyd's of India' as",
-    "an entity and 'MS Amlin' as a Lloyd's sub-entry; neither appears in Annexure 1."
-  ]
+    "OPEN - segment totals sum to 75 (26 life + 25 non-life + 2 specialised + 8 SAHI +",
+    "2 reinsurers + 12 FRB/Lloyd's) against the 74 stated. Likely a counting convention",
+    "around Lloyd's India or the specialised pair; not chased.",
+    "OPEN - we hold no data at all for Valueattics Reinsurance (newly registered) or for",
+    "several FRBs (Allianz Global, Hannover, Munich Re, Swiss Re, Markel, Volante)."
+  ],
+  "registered_but_not_writing": {
+    "_note": [
+      "Registered per Annexure 1, so they COUNT toward the segment totals, but are",
+      "not writing new business. Cohorts, market shares and 'current' views should",
+      "exclude them; history must still resolve."
+    ],
+    "sahara_india_life_insurance_ltd": "Life business transferred to SBI Life by IRDAI order dated 02.06.2023 (Annexure 1 footnote)",
+    "reliance_health_insurance_ltd": "Directed to stop selling new policies - IRDA/F&A/ORD/SOLP/200/11/2019 dated 06.11.2019 (Annexure 1 footnote $)",
+    "iti_reinsurance_ltd": "ITI = Investment Trust of India. Absent from Annexure 1; licence reported cancelled by IRDAI. NOT the same entity as Valueattics Reinsurance."
+  },
+  "deregistered_absent_from_annexure_1": {
+    "_note": [
+      "Held in our data with real historical filings, but no longer registered - so",
+      "they must not be counted, and must not be deleted either."
+    ],
+    "exide_life_insurance_ltd": "Merged into HDFC Life; absent from Annexure 1",
+    "hdfc_ergo_health_insurance_co_ltd": "Merged into HDFC ERGO General; absent from the SAHI list",
+    "aegon_life_insurance_ltd": "Became Bandhan Life; absent under the Aegon name",
+    "bharti_axa_general_insurance_co_ltd": "General business transferred to ICICI Lombard; absent from the Non-Life list",
+    "l_t_general_insurance_co_ltd": "Absent from Annexure 1"
+  }
 }
