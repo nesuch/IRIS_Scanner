@@ -94,6 +94,23 @@ function Spark({ trend, unit }) {
   return <div className="i360-spark"><Line data={data} options={opts} /></div>;
 }
 
+// Bucket the metric list under its line of business, biggest group first so the main
+// statements lead and one-off tables fall to the bottom. Filtering is applied before
+// grouping, so a search never leaves an empty heading behind.
+function metricGroups(all, q) {
+  const s = (q || '').trim().toLowerCase();
+  const hit = (all || []).filter((m) => !s
+    || m.label.toLowerCase().includes(s)
+    || (m.context || '').toLowerCase().includes(s));
+  const by = new Map();
+  hit.forEach((m) => {
+    const g = (m.context || '').split('\u00b7')[0].trim() || 'Other';
+    if (!by.has(g)) by.set(g, []);
+    by.get(g).push(m);
+  });
+  return [...by.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+}
+
 export default function Insurer360() {
   const [classes, setClasses] = useState({});
   const [sel, setSel] = useState(null);
@@ -419,14 +436,25 @@ export default function Insurer360() {
                   <input className="input i360-mq" value={mq} onChange={(e) => setMq(e.target.value)}
                     placeholder="Filter metrics…" aria-label="Filter metrics" />
                 </div>
-                <div className="i360-all-grid">
-                  {data.all_metrics
-                    .filter((m) => !mq || m.label.toLowerCase().includes(mq.toLowerCase()))
-                    .map((m) => (
-                      <MetricCard key={m.id} k={{ ...m, selected_fy: data.selected_fy }}
-                        onToast={(t, bad) => (bad ? toast.error(t) : toast.success(t))} />
-                    ))}
-                </div>
+                {/* Grouped under the statement or table each metric came from. Flat and
+                    alphabetical, "1 Yr", "13th Month" and "31 To 90 Days" sit together
+                    meaning nothing; under "Persistency" and "Death Claim Settlement
+                    Duration" they read as what they are. The heading is the line of
+                    business, which is the first half of the context already shown on
+                    every card, so no new data is needed. */}
+                {metricGroups(data.all_metrics, mq).map(([group, items]) => (
+                  <div key={group} className="i360-group">
+                    <h4 className="i360-group-head">
+                      {group}<span>{items.length}</span>
+                    </h4>
+                    <div className="i360-all-grid">
+                      {items.map((m) => (
+                        <MetricCard key={m.id} k={{ ...m, selected_fy: data.selected_fy }}
+                          onToast={(t, bad) => (bad ? toast.error(t) : toast.success(t))} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </section>
             )}
 

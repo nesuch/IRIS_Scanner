@@ -400,3 +400,18 @@
 .cmp-added-ctx { font-style: normal; font-weight: 500; color: var(--muted); font-size: 10px; margin-left: 5px; }
 .cmp-calc { color: var(--accent, #2563eb); font-weight: 800; font-size: 9px; margin-left: 2px; }
 .cmp-table td.is-calc { font-style: italic; }
+
+/* ---- Metric groups ----
+   187 metrics in one alphabetical list is a wall. Grouping them under the statement
+   they came from is the difference between a list and a document. */
+.i360-group { margin-bottom: 22px; }
+.i360-group-head {
+  display: flex; align-items: center; gap: 9px; margin: 0 0 10px;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--navy-700, #1e3a8a);
+  padding-bottom: 6px; border-bottom: 2px solid var(--navy-50, #eef2fb);
+}
+.i360-group-head span {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0; text-transform: none;
+  color: var(--muted); background: rgba(0,0,0,.05); border-radius: 999px; padding: 1px 8px;
+}
