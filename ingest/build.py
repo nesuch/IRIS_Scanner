@@ -65,7 +65,12 @@ def to_xlsx(rows, sheet, path):
 
 def run(spec_path, pdf_path, out_path):
     spec=json.load(open(spec_path))
+    # keep_hindi must be forwarded, exactly as segment_pdf() does. Dropping it here
+    # silently diverges this CLI from the app: extract() discards Hindi lines when
+    # it is false, but segment() reads clause anchors off those lines for bilingual
+    # specs, so Bima-ASBA yielded 2 clauses instead of 15.
     L,D=extract(pdf_path, ignore_patterns=spec.get('ignore_patterns'),
+                keep_hindi=spec.get('keep_hindi', False),
                 small=spec.get('small_type'))
     for step in spec.get('preprocess', []):
         if step == 'explode_layout_tables':
