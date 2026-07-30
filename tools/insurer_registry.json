@@ -19,6 +19,8 @@
     "Sources, all from IRDAI Annual Report 2024-25:",
     "  Annexure 3 (p.162) - Motor Third Party market share: the definitive list of 25",
     "     general insurers.",
+    "  Annexure 1 (p.158) - LIST OF REGISTERED INSURERS/REINSURERS OPERATING IN INDIA",
+    "     as on 31 March 2025: the registration list. Reinsurers page transcribed.",
     "  Annexure 6 (p.171) - micro-insurance products by life insurers: 24 life",
     "     insurers, and the second confirmation of CreditAccess Life.",
     "  Annexure 7 (p.172) - products and riders: life, general, specialised (public",
@@ -28,7 +30,7 @@
     "'CreditAccess Life Insurance Ltd..'), because matching is done on normalised",
     "tokens rather than exact strings and the printed form is the citable one."
   ],
-  "source": "IRDAI Annual Report 2024-25, Annexures 3, 6 and 7",
+  "source": "IRDAI Annual Report 2024-25, Annexures 1, 3, 6 and 7",
   "as_at": "2025-03-31",
   "segments": {
     "General": {
@@ -115,18 +117,53 @@
         "Star Union Dai-ichi Life Ins. Co. Ltd.",
         "Tata AIA Life Insurance Co. Ltd."
       ]
+    },
+    "Reinsurer": {
+      "authority": "Annexure 1 (p.158), Reinsurers: 1 public + 1 private",
+      "public": [
+        "General Insurance Corporation of India"
+      ],
+      "private": [
+        "Valueattics Reinsurance Limited"
+      ]
+    },
+    "FRB": {
+      "authority": "Annexure 1 (p.158), Branches of Foreign Reinsurers (10) + Service Companies of Lloyd's (2), numbered 1-12",
+      "public": [],
+      "private": [
+        "Allianz Global Corporate & Speciality SE, India Branch",
+        "AXA France Vie - India Reinsurance Branch",
+        "Factory Mutual Insurance Company, India Branch",
+        "General Reinsurance AG - India Branch",
+        "Hannover Ruck SE - India Branch",
+        "Munchener Ruckversicherungs-Gesellschaft Aktiengesellschaft - India Branch",
+        "RGA Reinsurance Company, India Branch",
+        "SCOR SE - India Branch",
+        "Swiss Reinsurance Company Ltd, India Branch",
+        "XL Insurance Company SE, India Reinsurance Branch",
+        "Markel Services India Private Limited",
+        "Volante Global Services India Pvt. Ltd - Lloyd's India"
+      ]
     }
   },
   "_pending": [
-    "Reinsurers and Foreign Reinsurance Branches are NOT yet transcribed - the list",
-    "is not in Annexures 3, 6 or 7 (pages 162-172). The user reports 12 reinsurers",
-    "and FRBs including one newly registered reinsurer; find that annexure and add a",
-    "'Reinsurer' and 'FRB' segment here.",
+    "RESOLVED: reinsurers and FRBs transcribed from Annexure 1 (p.158). The newly",
+    "registered private reinsurer is Valueattics Reinsurance Limited.",
     "",
-    "Counts to reconcile against the user's stated registration figures (74 total):",
-    "life 26 v 25 transcribed, SAHI 8 v 7 transcribed. Annexures 3/6/7 are activity",
-    "tables (products filed, MTP written), so an insurer registered but not yet",
-    "writing may be absent. Treat the gap as unresolved rather than assuming either",
-    "number is wrong."
+    "OPEN - is our 'ITI Reinsurance Ltd.' the same entity as Valueattics Reinsurance",
+    "Limited? ITI Re is absent from Annexure 1 while Valueattics is the only private",
+    "reinsurer listed, and we hold no Valueattics rows at all. A rename would explain",
+    "both. Needs confirming before an alias is written - a wrong merge here fuses the",
+    "only two private-reinsurer records we have.",
+    "",
+    "OPEN - counts still short of the user's stated registration figures: life 25",
+    "transcribed v 26 stated, SAHI 7 v 8. Annexures 3/6/7 are activity tables (products",
+    "filed, MTP written), so an insurer registered but not yet writing can be absent.",
+    "Annexure 1 is the registration list and should settle both - only its Reinsurers",
+    "page was read (p.158); the life/general/SAHI pages of Annexure 1 come earlier.",
+    "",
+    "NOTE - Lloyd's service companies are counted inside the 12 alongside the 10 true",
+    "FRBs, per the report's own numbering. Our data also carries 'Lloyd's of India' as",
+    "an entity and 'MS Amlin' as a Lloyd's sub-entry; neither appears in Annexure 1."
   ]
 }
