@@ -2056,6 +2056,69 @@ def _repair_units(df):
     return df
 
 
+_INFORCE_SEG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "tools", "inforce_segments.json")
+
+# The in-force tables repeat the same metrics once per business segment. Extraction met
+# each label 16 times, numbered the repeats _2 .. _9 to keep ids unique, and dropped the
+# segment heading — so eight segments of in-force business were all filed as "Non Linked
+# Life Business", and the number, which carries no meaning to a reader, became the only
+# thing separating them.
+# Two ways the repeats were made unique, and both are positional. The start/additions/
+# deletions rows got a NUMBER (_2 .. _9). The end-of-year row is printed "(A)", "(B)",
+# "(C)" in the handbook itself, one letter per segment, so those became _a .. _p.
+_INFORCE_RE = re.compile(
+    r"^(additions_during_the_year"
+    r"|deletions_during_the_year"
+    r"|business_in_force_at_start_of_the_financial_year"
+    r"|business_in_force_at_end_of_the_financial_year)"
+    r"_(\d+|[a-p])(__(?:count|inr))$")
+
+
+def _repair_inforce_segments(df):
+    """Give the numbered in-force metrics their real business segment back.
+
+    A metric_id ending _N is the Nth segment of its table; the number is positional and
+    was verified cell by cell against the original workbook (1,758 matches, 0
+    mismatches). Relabelling restores the segment and lets the nine ids collapse to one
+    metric, which is what they always were.
+
+    Only _2 .. _9 are touched. Segment 1 and segments 10-16 share the UN-numbered id and
+    already carry the right class of business, so they are left exactly as they are.
+    """
+    need = {"metric_id", "Class_of_Business", "Line_of_Business"}
+    if df is None or getattr(df, "empty", True) or not need <= set(df.columns):
+        return df
+    try:
+        with open(_INFORCE_SEG_FILE, "r", encoding="utf-8") as fh:
+            spec = json.load(fh)
+    except (OSError, ValueError):
+        return df
+    by_lob = {t["line_of_business"]: t["segments"]
+              for t in (spec.get("tables") or {}).values() if t.get("segments")}
+    if not by_lob:
+        return df
+
+    mids = df["metric_id"].fillna("").astype(str)
+    hit = mids.str.match(_INFORCE_RE)
+    if not hit.any():
+        return df
+    for idx in df.index[hit]:
+        m = _INFORCE_RE.match(str(df.at[idx, "metric_id"]))
+        base, tag, unit = m.group(1), m.group(2), m.group(3)
+        # "(A)" is the first segment, so a letter is just another way of counting.
+        n = int(tag) if tag.isdigit() else ord(tag) - ord("a") + 1
+        segs = by_lob.get(str(df.at[idx, "Line_of_Business"]))
+        # A letter tag names its own segment even at position 1, unlike a number where
+        # segment 1 is the un-numbered id.
+        lo = 2 if tag.isdigit() else 1
+        if not segs or n < lo or n > len(segs):
+            continue                      # unknown table or out of range: leave alone
+        df.at[idx, "Class_of_Business"] = segs[n - 1]
+        df.at[idx, "metric_id"] = base + unit
+    return df
+
+
 def _derive_entity_columns(df):
     """Add entity_type / insurer_class to the in-memory frame when absent."""
     if df is None or getattr(df, "empty", True):
@@ -2186,6 +2249,7 @@ def load_master_data_engine():
 
         # Units last: the ratio repair reads the amount columns it has just corrected.
         UNIFIED_DF = _repair_units(UNIFIED_DF)
+        UNIFIED_DF = _repair_inforce_segments(UNIFIED_DF)
 
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
         _et = UNIFIED_DF["entity_type"].notna().sum() if "entity_type" in UNIFIED_DF.columns else 0

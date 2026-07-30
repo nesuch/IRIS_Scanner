@@ -1,0 +1,77 @@
+{
+  "_readme": [
+    "Business segments of handbook Tables 10 and 11 (Individual Business in force), in the",
+    "order printed.",
+    "",
+    "Why this exists: those tables repeat the same metrics once per business segment. Our",
+    "extractor met the same row label 16 times, numbered the repeats _2 .. _9 to keep ids",
+    "unique, and DISCARDED the segment heading - the only thing telling them apart. Every",
+    "numbered row was then stamped with the FIRST segment's name, so eight segments of",
+    "in-force business all read 'Non Linked Life Business'.",
+    "",
+    "Mapping is positional: a metric_id ending _N is the Nth segment here. Segment 1 and",
+    "segments 10-16 both sit under the UN-numbered id and are told apart by their class of",
+    "business, which extracted correctly for those - so only _2.._9 need relabelling.",
+    "",
+    "Verified against the original workbook on (insurer, year, metric, segment):",
+    "  Table 11  1,577 matches, 0 mismatches",
+    "  Table 10    181 matches, 0 mismatches",
+    "An earlier run reported 89%. That was the CHECK, which kept one value per metric id",
+    "when the un-numbered id holds several segments. A separate off-by-one was caught here",
+    "too: Table 10's unit subtitle '(Number of Policies in 000s)' was being counted as a",
+    "segment, which would have shifted every mapping by one.",
+    "",
+    "Positional, so valid only for the 2024-25 layout. Re-verify before reusing on a future",
+    "edition."
+  ],
+  "source": "IRDAI Handbook 2024-25, Part I, Tables 10 and 11",
+  "verified": "1,758 cell matches, 0 mismatches, 2026-07-30",
+  "tables": {
+    "10": {
+      "line_of_business": "In-Force Policies",
+      "unit_suffix": "__count",
+      "segments": [
+        "Non Linked Life Business",
+        "Non Linked -General Annuity Business",
+        "Non Linked - Pension Business",
+        "Non linked Health Business",
+        "Linked Business - Life business",
+        "Linked General annuity business",
+        "Linked Pension Business",
+        "Linked Health Business",
+        "Non-Linked VIP-Life Business",
+        "Non-Linked VIP-General Annuity Business",
+        "Non-Linked VIP-Pension Business",
+        "Non-Linked VIP-Health Business",
+        "Linked VIP-Life Business",
+        "Linked VIP-General Annuity Business",
+        "Linked VIP-Pension Business",
+        "Linked VIP-Health Business",
+        "Grand Total"
+      ]
+    },
+    "11": {
+      "line_of_business": "In-Force Sum Assured",
+      "unit_suffix": "__inr",
+      "segments": [
+        "Non Linked Life Business",
+        "Non Linked -General Annuity Business",
+        "Non Linked - Pension Business",
+        "Non linked Health Business",
+        "Linked Business - Life business",
+        "Linked General annuity business",
+        "Linked Pension Business",
+        "Linked Health Business",
+        "Non-Linked VIP-Life Business",
+        "Non-Linked VIP-General Annuity Business",
+        "Non-Linked VIP-Pension Business",
+        "Non-Linked VIP-Health Business",
+        "Linked VIP-Life Business",
+        "Linked VIP-General Annuity Business",
+        "Linked VIP-Pension Business",
+        "Linked VIP-Health Business",
+        "Grand Total"
+      ]
+    }
+  }
+}
