@@ -1808,6 +1808,137 @@ def _apply_insurer_aliases(df):
     return df
 
 
+_INSURER_REGISTRY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "tools", "insurer_registry.json")
+
+# Words that carry no identity, dropped before matching a name against the registry.
+# Class words (life/general/health/re) are deliberately KEPT — they are what separates
+# SBI Life from SBI General, and dropping them would fuse two real companies.
+# "corporation" is NOT noise. Stripping it reduced "General Insurance Corporation of
+# India" to the single token {general}, which then EXACTLY matched "L&T General
+# Insurance Co. Ltd." - declaring a general insurer to be the national reinsurer. Few
+# insurers are a Corporation, so the word carries real identity.
+_REG_NOISE = {"ltd", "limited", "co", "company", "india", "the", "assurance", "pvt",
+              "private", "of", "plc", "and", "ins", "insurance",
+              # "allied" is noise because Galaxy dropped it from its name while the
+              # Annual Report still prints it; Star Health carries it in both forms.
+              "allied", "branch", "indian"}
+
+
+def _reg_key(name):
+    """Identity tokens of an insurer name, order-independent.
+
+    Matching on tokens rather than strings absorbs the differences that separate the
+    handbook from the Annual Report without needing an alias for each: '&' vs 'and',
+    'Co. Ltd.' vs 'Ltd', punctuation, and word order.
+    """
+    n = unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode()
+    n = n.replace("&", " and ")
+    # Single characters are dropped: they carry no identity and are usually an
+    # artefact of an apostrophe. "Lloyd's of India" tokenised to {lloyd, s}, which
+    # cleared the two-token floor and then uniquely subset-matched Volante Global
+    # Services - Lloyd's India, silently declaring the Lloyd's platform to be one of
+    # its service companies.
+    return frozenset(t for t in re.split(r"[^a-z0-9]+", n.lower())
+                     if len(t) > 1 and t not in _REG_NOISE)
+
+
+def _apply_insurer_status(df):
+    """Add insurer_status: active | not_writing | deregistered.
+
+    Registration is a legal fact that the filings cannot express. The handbook keeps
+    publishing an insurer for years after it stops writing — Sahara India Life and
+    Reliance Health both still show 2024-25 — so neither the data nor the last filed
+    year can distinguish a live insurer from a closed one.
+
+      active        registered per Annexure 1 and writing business
+      not_writing   registered, so it counts toward segment totals, but barred or
+                    transferred out (Sahara, Reliance Health, ITI Re)
+      deregistered  absent from Annexure 1; real history, but not a current insurer
+                    (Exide Life, HDFC ERGO Health, Aegon Life, Bharti AXA General)
+
+    Nothing is dropped. Cohorts, market-share denominators and HHI counts should use
+    active only; a historical series must still resolve for all three.
+    """
+    if df is None or getattr(df, "empty", True) or "insurer_id" not in df.columns:
+        return df
+    try:
+        with open(_INSURER_REGISTRY_FILE, "r", encoding="utf-8") as fh:
+            reg = json.load(fh)
+    except (OSError, ValueError):
+        return df
+
+    # Ambiguity guard: if two DIFFERENT registry names reduce to the same token set,
+    # that key identifies nothing and must not match anything. Silently keeping the
+    # last one is how a generic key can attach to the wrong segment.
+    registered, seen_names = {}, {}
+    for seg, d in (reg.get("segments") or {}).items():
+        for own in ("public", "private"):
+            for nm in d.get(own) or []:
+                k = _reg_key(nm)
+                if not k:
+                    continue
+                if k in seen_names and seen_names[k] != nm:
+                    registered.pop(k, None)      # collision -> unusable
+                    continue
+                seen_names[k] = nm
+                registered[k] = seg
+    if not registered:
+        return df
+    not_writing = set(k for k in (reg.get("registered_but_not_writing") or {})
+                      if not k.startswith("_"))
+
+    name_col = next((c for c in ("Entity", "insurer", "Insurer") if c in df.columns), None)
+    if name_col is None:
+        return df
+    def _lookup(nm):
+        """Registry segment for a name, or None.
+
+        Exact token match first. Then a subset fallback, because the handbook
+        abbreviates where the report is formal — "Allianz Global" against "Allianz
+        Global Corporate & Speciality SE, India Branch", "GIC Re" against "General
+        Insurance Corporation of India". Guarded twice: the shorter side must carry at
+        least two identity tokens, and the match must be UNIQUE. Without the
+        uniqueness test a one-token name would sweep up every registry entry
+        containing it, quietly marking unrelated insurers active.
+        """
+        k = _reg_key(nm)
+        if not k:
+            return None
+        # Exact match accepts a single token, because several real names reduce to one:
+        # "National Insurance Co. Ltd." -> {national}, "ECGC Ltd." -> {ecgc}, "The New
+        # India Assurance Co. Ltd." -> {new}. The two-token floor below therefore guards
+        # only the fuzzy subset path.
+        if k in registered:
+            return registered[k]
+        if len(k) < 2:
+            return None
+        cands = {seg for rk, seg in registered.items()
+                 if len(rk) >= 2 and (k <= rk or rk <= k)}
+        hits = [rk for rk in registered if len(rk) >= 2 and (k <= rk or rk <= k)]
+        if len(hits) == 1:
+            return registered[hits[0]]
+        return None
+
+    status, seg_of = {}, {}
+    for iid, nm in df[["insurer_id", name_col]].dropna().drop_duplicates("insurer_id").values:
+        seg = _lookup(nm)
+        if str(iid) in not_writing:
+            status[iid] = "not_writing"
+            if seg:
+                seg_of[iid] = seg
+        elif seg:
+            status[iid] = "active"
+            seg_of[iid] = seg
+        else:
+            status[iid] = "deregistered"
+    df["insurer_status"] = df["insurer_id"].map(status)
+    # Specialised is a registry segment with no insurer_class of its own; surface it
+    # so AIC and ECGC stop being counted as ordinary general insurers.
+    df["registry_segment"] = df["insurer_id"].map(seg_of)
+    return df
+
+
 def _derive_entity_columns(df):
     """Add entity_type / insurer_class to the in-memory frame when absent."""
     if df is None or getattr(df, "empty", True):
@@ -1931,6 +2062,10 @@ def load_master_data_engine():
         # Derive the entity/class layer if the DB was not migrated (production
         # restores from the GCS replica, which has no such columns).
         UNIFIED_DF = _derive_entity_columns(UNIFIED_DF)
+
+        # Registration status, from the Annual Report. After the entity layer, because
+        # it needs the aliased names and adds a dimension rather than changing one.
+        UNIFIED_DF = _apply_insurer_status(UNIFIED_DF)
 
         _invalidate_caches()   # data changed → drop memoised filter options / compliance
         _et = UNIFIED_DF["entity_type"].notna().sum() if "entity_type" in UNIFIED_DF.columns else 0

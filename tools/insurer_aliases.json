@@ -38,7 +38,8 @@
         "'Galaxy Health Insurance Co. Ltd' held Personal Accident alone,",
         "stranding 6,390 policies and 274 lakh of gross premium off the profile.",
         "Confirmed as the same company by the user on 2026-07-30, who also",
-        "chose the 'Co. Ltd' rendering as canonical."
+        "chose the 'Co. Ltd' rendering as canonical.",
+        "DIVERGES DELIBERATELY from the Annual Report, which prints the older 'and Allied' form in both Annexure 1 (p.157) and Annexure 7 (p.172). The company's own website now uses 'Galaxy Health Insurance Co. Ltd', i.e. it dropped 'and Allied' after the report was published. Confirmed by the user on 2026-07-30. The 'and Allied' form stays in variants, so registry matching and anyone searching the old name still hit."
       ]
     },
     {
@@ -163,6 +164,77 @@
       ],
       "why": [
         "IRDAI Annual Report 2024-25, Annexure 1 (p.157) prints it spaced as 'Manipal Cigna'. Spacing only; display rename."
+      ]
+    },
+    {
+      "canonical": "General Insurance Corporation of India",
+      "variants": [
+        "General Insurance Corporation of India",
+        "General Insurance Corporation of India (GIC Re)"
+      ],
+      "why": [
+        "IRDAI Annual Report 2024-25, Annexure 1 (p.158) lists the public-sector reinsurer as 'General Insurance Corporation of India'.",
+        "Our data appends '(GIC Re)'. Same entity; the suffix is a market nickname.",
+        "The handbook uses a market short name where the report uses the full legal one. Token matching cannot bridge these - 'Munich' is not a substring of 'Munchener', and 'Re' is not 'Reinsurance' - so the mapping is declared rather than inferred. Canonical is the report's form so registry matching succeeds; the short name stays in variants so it remains searchable."
+      ]
+    },
+    {
+      "canonical": "Hannover Ruck SE - India Branch",
+      "variants": [
+        "Hannover Ruck SE - India Branch",
+        "Hannover Re"
+      ],
+      "why": [
+        "The handbook uses a market short name where the report uses the full legal one. Token matching cannot bridge these - 'Munich' is not a substring of 'Munchener', and 'Re' is not 'Reinsurance' - so the mapping is declared rather than inferred. Canonical is the report's form so registry matching succeeds; the short name stays in variants so it remains searchable."
+      ]
+    },
+    {
+      "canonical": "Munchener Ruckversicherungs-Gesellschaft Aktiengesellschaft - India Branch",
+      "variants": [
+        "Munchener Ruckversicherungs-Gesellschaft Aktiengesellschaft - India Branch",
+        "Munich Re"
+      ],
+      "why": [
+        "Munich Re is the market name for Munchener Ruckversicherungs-Gesellschaft Aktiengesellschaft. The two share no tokens at all, so nothing but an explicit declaration could connect them.",
+        "The handbook uses a market short name where the report uses the full legal one. Token matching cannot bridge these - 'Munich' is not a substring of 'Munchener', and 'Re' is not 'Reinsurance' - so the mapping is declared rather than inferred. Canonical is the report's form so registry matching succeeds; the short name stays in variants so it remains searchable."
+      ]
+    },
+    {
+      "canonical": "Swiss Reinsurance Company Ltd, India Branch",
+      "variants": [
+        "Swiss Reinsurance Company Ltd, India Branch",
+        "Swiss Re"
+      ],
+      "why": [
+        "The handbook uses a market short name where the report uses the full legal one. Token matching cannot bridge these - 'Munich' is not a substring of 'Munchener', and 'Re' is not 'Reinsurance' - so the mapping is declared rather than inferred. Canonical is the report's form so registry matching succeeds; the short name stays in variants so it remains searchable."
+      ]
+    },
+    {
+      "canonical": "RGA Reinsurance Company, India Branch",
+      "variants": [
+        "RGA Reinsurance Company, India Branch",
+        "RGA"
+      ],
+      "why": [
+        "A bare acronym, below the two-token floor the subset matcher requires, so it could never match on its own.",
+        "The handbook uses a market short name where the report uses the full legal one. Token matching cannot bridge these - 'Munich' is not a substring of 'Munchener', and 'Re' is not 'Reinsurance' - so the mapping is declared rather than inferred. Canonical is the report's form so registry matching succeeds; the short name stays in variants so it remains searchable."
+      ]
+    },
+    {
+      "canonical": "Markel Services India Private Limited",
+      "variants": [
+        "Markel Services India Private Limited",
+        "Markel Services P Ltd.",
+        "Lloyd's of India - Markel Services Private Limited"
+      ],
+      "why": [
+        "One Lloyd's service company written two ways in the handbook - once standalone",
+        "as 'Markel Services P Ltd.' and once as a Lloyd's sub-entry - which made the FRB",
+        "count read 13 against the official 12.",
+        "IRDAI Annual Report 2024-25 Annexure 1 (p.158) lists it once, at S.No 11 of",
+        "Service Companies of Lloyd's, as 'Markel Services India Private Limited'.",
+        "Note it was ALSO classified General in our data while being a Lloyd's service",
+        "company, which is why it appeared in the general-insurer picker."
       ]
     }
   ]
