@@ -8,9 +8,13 @@ import { useMemo } from 'react';
 import { Line, Bar } from 'react-chartjs-2';
 
 const CLS_COLOR = { General: '#1e3a8a', Life: '#b45309', SAHI: '#047857',
-  'Non-Life': '#7c3aed', Reinsurance: '#0e7490' };
+  'Non-Life': '#7c3aed', Reinsurance: '#0e7490',
+  'Health (line)': '#059669', 'Motor (line)': '#dc2626',
+  'Fire (line)': '#ea580c', 'Marine (line)': '#0891b2' };
 const CLS_LABEL = { General: 'General', Life: 'Life', SAHI: 'Standalone Health',
-  'Non-Life': 'Non-Life (Gen + SAHI)', Reinsurance: 'Reinsurance (incl. FRB)' };
+  'Non-Life': 'Non-Life (Gen + SAHI)', Reinsurance: 'Reinsurance (incl. FRB)',
+  'Health (line)': 'Health', 'Motor (line)': 'Motor',
+  'Fire (line)': 'Fire', 'Marine (line)': 'Marine' };
 
 const lakhCr = (v) => `₹${(v / 1e12).toFixed(2)} L Cr`;
 
@@ -91,8 +95,9 @@ export default function Industry({ data }) {
 
   return (
     <div className="ind">
+      <div className="ind-kindhead">By licence class</div>
       <div className="ind-cards">
-        {classes.map((c) => {
+        {classes.filter((c) => (data.segment_kind || {})[c] !== 'line').map((c) => {
           const ser = data.size[c] || [];
           const last = ser[ser.length - 1];
           const cagr = data.growth_cagr?.[c];
@@ -109,10 +114,39 @@ export default function Industry({ data }) {
         })}
       </div>
 
+      {classes.some((c) => (data.segment_kind || {})[c] === 'line') && (
+        <>
+          <div className="ind-kindhead">
+            By line of business
+            <span>cuts across classes — every general insurer writes health too</span>
+          </div>
+          <div className="ind-cards">
+            {classes.filter((c) => (data.segment_kind || {})[c] === 'line').map((c) => {
+              const ser = data.size[c] || [];
+              const last = ser[ser.length - 1];
+              return (
+                <div key={c} className="ind-card is-line" style={{ borderLeftColor: CLS_COLOR[c] }}>
+                  <div className="ind-card-t">{CLS_LABEL[c] || c}</div>
+                  <div className="ind-card-v">{last ? lakhCr(last.v) : '—'}</div>
+                  <div className="ind-card-s">
+                    {last?.fy} · <strong>{data.growth_cagr?.[c]}%</strong> CAGR
+                    <span className="ind-basis">basis: {data.premium_basis?.[c]}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       <div className="ind-note">
         Each class uses its <strong>own premium basis</strong> and the classes are deliberately
         not summed — no single premium line is comparable across Life, General and Standalone
         Health, so an "industry total" here would be arithmetic on incompatible definitions.
+        {' '}Line segments are a different cut of the same market — the Health <em>line</em>
+        (₹1.27 L Cr, competitive) is over three times the Standalone Health <em>class</em>
+        (₹0.38 L Cr, highly concentrated), because every general insurer writes health.
+        Never add a class segment to a line segment.
       </div>
 
       <div className="ind-panels">

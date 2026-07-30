@@ -1346,22 +1346,42 @@ def api_industry_trends():
     # branches all write non-life business), so it is offered alongside its parts
     # rather than making the reader add classes up — which they must never do,
     # since the premium bases differ.
+    # Two kinds of segment, and the difference matters. A CLASS segment groups
+    # companies by licence; a LINE segment groups by the business actually written.
+    # They give different answers: "SAHI" is ₹0.38 L Cr of licensed health insurers,
+    # while the real HEALTH line is far larger because every general insurer writes
+    # health too — and the biggest health writer in the country is a general
+    # insurer. A class-only view of this market is misleading.
     PREM_BY_CLASS = {
-        "General": (("General",), "gross_direct_premium_within_india__inr", "Gross Direct Premium"),
-        "SAHI": (("SAHI",), "gross_direct_premium_within_india__inr", "Gross Direct Premium"),
-        "Life": (("Life",), "total_premium__inr", "Total Premium"),
+        "General": (("General",), "gross_direct_premium_within_india__inr", "Gross Direct Premium", None),
+        "SAHI": (("SAHI",), "gross_direct_premium_within_india__inr", "Gross Direct Premium", None),
+        "Life": (("Life",), "total_premium__inr", "Total Premium", None),
         "Non-Life": (("General", "SAHI"), "gross_direct_premium_within_india__inr",
-                     "Gross Direct Premium"),
+                     "Gross Direct Premium", None),
+        # --- line-of-business segments (cut across classes) ---
+        "Health (line)": (("General", "SAHI"), "gross_direct_premium_within_india__inr",
+                          "Gross Direct Premium", "Health + PA + Travel"),
+        "Motor (line)": (("General",), "gross_direct_premium_within_india__inr",
+                         "Gross Direct Premium", "Motor"),
+        "Fire (line)": (("General",), "gross_direct_premium_within_india__inr",
+                        "Gross Direct Premium", "Fire"),
+        "Marine (line)": (("General",), "gross_direct_premium_within_india__inr",
+                          "Gross Direct Premium", "Marine"),
         # Reinsurers and FRBs file no gross/direct premium line at all — their
         # book is measured on net earned premium, so the basis differs again.
         # This is exactly why the segments are never summed.
-        "Reinsurance": (("Reinsurer", "FRB"), "net_earned_premium__inr", "Net Earned Premium"),
+        "Reinsurance": (("Reinsurer", "FRB"), "net_earned_premium__inr", "Net Earned Premium", None),
     }
 
-    size, concentration, basis = {}, {}, {}
-    for cls, (members, mid, plabel) in PREM_BY_CLASS.items():
-        basis[cls] = plabel
+    size, concentration, basis, kinds = {}, {}, {}, {}
+    for cls, (members, mid, plabel, lob) in PREM_BY_CLASS.items():
+        basis[cls] = plabel + (f" · {lob}" if lob else "")
+        kinds[cls] = "line" if lob else "class"
         c = df[(df["metric_id"] == mid) & (df["insurer_class"].isin(members))]
+        if lob:
+            if "Line_of_Business" not in c.columns:
+                continue
+            c = c[c["Line_of_Business"] == lob]
         if c.empty:
             continue
         by_year = c.groupby("fy_canonical")["value_base"].sum()
@@ -1426,6 +1446,7 @@ def api_industry_trends():
     return jsonify({
         "ok": True,
         "premium_basis": basis,
+        "segment_kind": kinds,
         "size": size,
         "growth_cagr": growth,
         "concentration": concentration,
