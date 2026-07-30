@@ -3,8 +3,12 @@
 // The whole design problem here is that comparison INVITES the meaningless
 // cross-class query — a life insurer's book against a general insurer's. Rather
 // than block it (universal balance-sheet lines are legitimately comparable), the
-// UI shows only metrics every selected insurer reports, and says loudly when the
-// selection spans classes.
+// UI says loudly when the selection spans classes.
+//
+// A row is shown when ANY selected insurer reports it, with a dash for those that
+// do not and a coverage count when it is short of the full set. Requiring every
+// insurer to report a row hid seven useful columns because of one missing eighth.
+// The year is the part that stays strict: one year per row for everyone in it.
 import { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 
@@ -80,9 +84,9 @@ export default function Compare({ data, insurers, slotOf }) {
           <i className="fas fa-triangle-exclamation" />
           <div>
             <strong>Comparing across insurer classes ({data.classes.join(', ')}).</strong>{' '}
-            Only lines every selected insurer reports are shown; class-specific metrics are
-            hidden because they mean different things in each class, and class market share
-            is suppressed. <strong>Where their books overlap on a line of business</strong>,
+            Class-specific metrics mean different things in each class, so a row here is
+            only as comparable as its label suggests, and class market share is suppressed.
+            Check the coverage note on a row before reading across it. <strong>Where their books overlap on a line of business</strong>,
             that line is compared directly at the top — a standalone health insurer and a
             general insurer genuinely compete on health, and are ranked there against every
             insurer writing it.
@@ -124,21 +128,18 @@ export default function Compare({ data, insurers, slotOf }) {
         </div>
       )}
 
-      {/* Metrics are compared on the most recent year EVERY selected insurer filed,
-          so one recently licensed insurer can empty the whole table — measured: eight
-          standalone health insurers drop from 13 rows to 3 once Narayana is added.
-          That is legitimate (a year nobody shares cannot be compared) but it used to
-          render as a headed table with no body, which reads as a broken page rather
-          than as a finding. Say it, and say what to do about it. */}
+      {/* Now rare — it takes a selection where no insurer reports any tracked KPI at
+          all, rather than merely disagreeing on years. Still worth handling: an empty
+          headed table reads as a broken page rather than as a finding. */}
       {(data.metrics || []).length === 0 ? (
         <div className="cmp-empty">
           <i className="fas fa-circle-info" />
           <div>
-            <strong>No metric is reported by all {ins.length} of these insurers in a year they share.</strong>
+            <strong>None of these {ins.length} insurers reports a metric IRIS tracks for comparison.</strong>
             <p>
-              Comparison needs one common filing year, so a single insurer with a short
-              history narrows the whole set — a recently licensed or wound-up insurer is
-              the usual cause. Remove one or two and the rows come back.
+              This usually means the selection is all specialised or newly licensed
+              insurers whose filings sit outside the compared set. Try one alongside an
+              established insurer of the same class.
             </p>
           </div>
         </div>
@@ -160,6 +161,14 @@ export default function Compare({ data, insurers, slotOf }) {
                 <th scope="row">
                   {m.label}
                   <span className="cmp-fy">{m.fy}</span>
+                  {/* Only when short of the full set. A dash then reads as "this
+                      insurer did not report it", not as a broken cell — and it stops
+                      the green "best" mark being read as best-of-all. */}
+                  {m.coverage != null && m.selected != null && m.coverage < m.selected && (
+                    <span className="cmp-cover" title={`${m.coverage} of ${m.selected} selected insurers reported this in ${m.fy}`}>
+                      {m.coverage}/{m.selected} reported
+                    </span>
+                  )}
                   {m.note && <span className="cmp-note">{m.note}</span>}
                 </th>
                 {ins.map((x) => {
@@ -177,8 +186,11 @@ export default function Compare({ data, insurers, slotOf }) {
 
       <p className="cmp-foot">
         Green marks the better figure <em>for that metric's direction</em> — lowest is best for
-        grievances and expenses, highest for premium and profit. Metrics are compared on the most
-        recent year all selected insurers share, so a fresher filing never wins by default.
+        grievances and expenses, highest for premium and profit, and it ranks only the insurers
+        that reported the row. Each row is a single year for everyone in it — the year the most
+        selected insurers filed — so a fresher filing never wins by default; an insurer without
+        that year shows <strong>—</strong> rather than a figure from a different one. Rows every
+        insurer reports come first.
       </p>
     </div>
   );

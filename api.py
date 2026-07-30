@@ -1184,16 +1184,32 @@ def api_insurer_compare():
             g = g[[i for i in _fy_sort(g.index)]]
             if not g.empty:
                 series[iid] = g
-        # Every selected insurer must report it, else the row misleads by omission.
-        if len(series) != len(subs):
+        if not series:
             continue
-        # Compare on the newest year they SHARE — comparing 2024-25 against
-        # 2017-18 would silently reward whoever has fresher filings.
-        common = set.intersection(*[set(s.index) for s in series.values()])
-        if not common:
+        # A metric only SOME of them report is still worth showing: seven insurers
+        # side by side and a dash for the eighth answers the question, where hiding
+        # the row answers nothing. Requiring universal coverage threw away up to 8
+        # of these 11 rows — eight standalone health insurers saw 3 — because one
+        # recently licensed insurer had no year in common with the rest.
+        #
+        # What must NOT be relaxed is the year. Comparing one insurer's 2024-25
+        # against another's 2017-18 silently rewards whoever files more promptly, so
+        # a row is still a single year for everyone in it: the year the most selected
+        # insurers reported, newest breaking ties. Insurers without that year get a
+        # dash rather than a value from some other year.
+        year_cover = {}
+        for s in series.values():
+            for f in s.index:
+                year_cover[f] = year_cover.get(f, 0) + 1
+        if not year_cover:
             continue
-        fy = sorted(common)[-1]
-        vals = {iid: float(s[fy]) for iid, s in series.items()}
+        fy = sorted(year_cover, key=lambda f: (year_cover[f], _fy_sort([f])[0]))[-1]
+        vals = {iid: float(s[fy]) for iid, s in series.items() if fy in s.index}
+        # Two is the floor: one value is not a comparison, and best/worst would both
+        # resolve to that single insurer — the client draws "best" green, so a lone
+        # figure would be decorated as having won against nobody.
+        if len(vals) < 2:
+            continue
         if higher_better is None:
             best = worst = None
         else:
@@ -1203,6 +1219,10 @@ def api_insurer_compare():
             "id": mid, "label": label, "unit": unit, "fy": fy,
             "higher_is_better": higher_better,
             "best": best, "worst": worst,
+            # How many of the selected insurers this row actually covers. The client
+            # shows it whenever it is short of the full set, so a partial row is
+            # visibly partial and "best" is never read as best-of-all.
+            "coverage": len(vals), "selected": len(subs),
             "values": {iid: vals[iid] for iid in vals},
             "trends": {iid: [{"fy": f, "v": float(v)} for f, v in s.items()]
                        for iid, s in series.items()},
@@ -1224,16 +1244,25 @@ def api_insurer_compare():
         fy = common[-1]
         if float(pl[fy]) > 0:
             norm[iid] = {"fy": fy, "v": round(float(rp[fy]) / float(pl[fy]) * 100000.0, 1)}
-    if len(norm) == len(subs) and norm:
+    # Shown for whoever HAS both components, same as any other row — it used to
+    # require all of them, so one insurer missing a policy count hid the single
+    # most comparable conduct measure from everyone.
+    if len(norm) >= 2:      # same floor: one insurer is not a comparison
         fys = {v["fy"] for v in norm.values()}
         vals = {i: v["v"] for i, v in norm.items()}
         rows.append({
             "id": "_grievances_per_lakh", "label": "Grievances per lakh policies",
             "unit": "rate", "fy": sorted(fys)[-1], "higher_is_better": False,
             "best": min(vals, key=vals.get), "worst": max(vals, key=vals.get),
+            "coverage": len(vals), "selected": len(subs),
             "values": vals, "trends": {}, "derived": True,
             "note": "size-normalised — the comparable conduct measure",
         })
+
+    # Fullest rows first. A metric all eight report is a better answer than one only
+    # two do, and sorting is stable so the curated _KPIS order survives within a
+    # coverage band. Derived rows keep their place at the end of their band.
+    rows.sort(key=lambda r: -(r.get("coverage") or 0))
 
     # LINE-OF-BUSINESS OVERLAP — the reason a General/SAHI comparison is not
     # apples-to-oranges after all. Their books overlap on health, so on that LINE
