@@ -1,0 +1,337 @@
+﻿concept,members,concept_rows,decision,kind,numbered_variant,metric_id,rows,unit,handbook_text,example_context
+deletions during year,11,6619,,DIFFERENT UNITS,,deletions_during_the_year__count,2887,COUNT,Deletions during the year ('000s),In-Force Policies|Linked Business - Life business / In-Force Policies|
+deletions during year,11,6619,,DIFFERENT UNITS,,deletions_during_the_year__inr,1641,INR,Deletions during the year (₹Crore),In-Force Sum Assured|Linked VIP-General Annuity Business / In-Force Su
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_2__count,423,COUNT,Deletions during the year (2) ('000s),In-Force Policies|Linked General annuity business / In-Force Policies|
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_4__inr,212,INR,Deletions during the year (4) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_5__inr,212,INR,Deletions during the year (5) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_7__inr,212,INR,Deletions during the year (7) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_2__inr,211,INR,Deletions during the year (2) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_3__inr,209,INR,Deletions during the year (3) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_9__inr,207,INR,Deletions during the year (9) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_8__inr,204,INR,Deletions during the year (8) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+deletions during year,11,6619,,DIFFERENT UNITS,YES,deletions_during_the_year_6__inr,201,INR,Deletions during the year (6) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,,additions_during_the_year__count,2888,COUNT,Additions during the year ('000s),In-Force Policies|Linked Business - Life business / In-Force Policies|
+additions during year,11,6617,,DIFFERENT UNITS,,additions_during_the_year__inr,1642,INR,Additions during the year (₹Crore),In-Force Sum Assured|Linked VIP-General Annuity Business / In-Force Su
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_2__count,423,COUNT,Additions during the year (2) ('000s),In-Force Policies|Linked General annuity business / In-Force Policies|
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_4__inr,212,INR,Additions during the year (4) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_5__inr,212,INR,Additions during the year (5) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_7__inr,212,INR,Additions during the year (7) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_2__inr,211,INR,Additions during the year (2) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_3__inr,209,INR,Additions during the year (3) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_9__inr,205,INR,Additions during the year (9) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_8__inr,203,INR,Additions during the year (8) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+additions during year,11,6617,,DIFFERENT UNITS,YES,additions_during_the_year_6__inr,200,INR,Additions during the year (6) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,,business_in_force_at_start_of_the_financial_year__count,2882,COUNT,Business in force at start of the financial year ('000s),In-Force Policies|Linked Business - Life business / In-Force Policies|
+business financial force start year,11,6604,,DIFFERENT UNITS,,business_in_force_at_start_of_the_financial_year__inr,1637,INR,Business in force at start of the financial year (₹Crore),In-Force Sum Assured|Linked VIP-General Annuity Business / In-Force Su
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_2__count,422,COUNT,Business in force at start of the financial year (2) ('000s),In-Force Policies|Linked General annuity business / In-Force Policies|
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_4__inr,212,INR,Business in force at start of the financial year (4) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_5__inr,212,INR,Business in force at start of the financial year (5) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_7__inr,212,INR,Business in force at start of the financial year (7) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_2__inr,211,INR,Business in force at start of the financial year (2) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_3__inr,209,INR,Business in force at start of the financial year (3) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_9__inr,205,INR,Business in force at start of the financial year (9) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_8__inr,202,INR,Business in force at start of the financial year (8) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business financial force start year,11,6604,,DIFFERENT UNITS,YES,business_in_force_at_start_of_the_financial_year_6__inr,200,INR,Business in force at start of the financial year (6) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+others,4,1177,,SAME-UNIT DUPLICATE,,c_others__inr,519,INR,(c) Others (₹Crore),Shareholders Account|General / Shareholders Account|Income From Invest
+others,4,1177,,SAME-UNIT DUPLICATE,YES,c_others_2__inr,398,INR,(c) Others (2) (₹Crore),Shareholders Account|General
+others,4,1177,,SAME-UNIT DUPLICATE,,e_others__inr,173,INR,(e) Others (₹Crore),Shareholders Account|General
+others,4,1177,,SAME-UNIT DUPLICATE,,b_others__inr,87,INR,(b) Others (₹Lakh),Policyholders Account|Premiums earned – net
+12 6 months within,3,828,,DIFFERENT UNITS,,within_6_12_months__inr,283,INR,Within 6-12 months (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+12 6 months within,3,828,,DIFFERENT UNITS,YES,within_6_12_months_2__count,273,COUNT,Within 6-12 months (2) (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+12 6 months within,3,828,,DIFFERENT UNITS,,within_6_12_months__count,272,COUNT,Within 6-12 months (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+12 months more than,3,828,,DIFFERENT UNITS,,more_than_12_months__inr,283,INR,More than 12 months (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+12 months more than,3,828,,DIFFERENT UNITS,YES,more_than_12_months_2__count,273,COUNT,More than 12 months (2) (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+12 months more than,3,828,,DIFFERENT UNITS,,more_than_12_months__count,272,COUNT,More than 12 months (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+3 6 months within,3,828,,DIFFERENT UNITS,,within_3_6_months__inr,283,INR,Within 3-6 months (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+3 6 months within,3,828,,DIFFERENT UNITS,YES,within_3_6_months_2__count,273,COUNT,Within 3-6 months (2) (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+3 6 months within,3,828,,DIFFERENT UNITS,,within_3_6_months__count,272,COUNT,Within 3-6 months (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+dividend gross interest rent,2,1865,,SAME-UNIT DUPLICATE,,interest_dividend_rent_gross__inr,1445,INR,"Interest, Dividend & Rent – Gross (₹Crore)",Policyholders Account|Fire / Policyholders Account|Life
+dividend gross interest rent,2,1865,,SAME-UNIT DUPLICATE,,a_interest_dividend_rent_gross__inr,420,INR,"(a) Interest, Dividend & Rent – Gross (₹Crore)",Shareholders Account|General
+total,2,1457,,SAME-UNIT DUPLICATE,,total__inr,777,INR,TOTAL (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+total,2,1457,,SAME-UNIT DUPLICATE,YES,total_2__inr,680,INR,TOTAL (2) (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+agent corporate,2,814,,DIFFERENT UNITS,,corporate_agent__inr,541,INR,Corporate Agent (₹),Avg New Business Premium per Agent|General / Avg Premium per Policy|Ge
+agent corporate,2,814,,DIFFERENT UNITS,,corporate_agent__count,273,COUNT,Corporate Agent (Nos.),Avg Individual Policies Sold per Agent|General
+agent individual,2,801,,DIFFERENT UNITS,,individual_agent__inr,535,INR,Individual Agent (₹),Avg New Business Premium per Agent|General / Avg Premium per Policy|Ge
+agent individual,2,801,,DIFFERENT UNITS,,individual_agent__count,266,COUNT,Individual Agent (Nos.),Avg Individual Policies Sold per Agent|General
+bad debts off written,2,615,,SAME-UNIT DUPLICATE,,b_bad_debts_written_off__inr,366,INR,(b) Bad debts written off (₹Crore),Shareholders Account|General
+bad debts off written,2,615,,SAME-UNIT DUPLICATE,,bad_debts_written_off__inr,249,INR,Bad debts written off (₹Lakh),Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+premium,2,613,,SAME-UNIT DUPLICATE,,premium__inr,372,INR,Premium (₹lakh),Group Category|All Classes / Individual Category|All Classes
+premium,2,613,,SAME-UNIT DUPLICATE,,a_premium__inr,241,INR,(a) Premium (₹Lakh),Policyholders Account|Premiums earned – net
+booked claims intimated,2,568,,SAME-UNIT DUPLICATE,YES,claims_intimated_booked_2__inr,284,INR,Claims intimated / booked (2) (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+booked claims intimated,2,568,,SAME-UNIT DUPLICATE,,claims_intimated_booked__inr,284,INR,Claims intimated / booked (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims end pending year,2,568,,SAME-UNIT DUPLICATE,YES,claims_pending_at_end_of_year_2__inr,284,INR,Claims pending at end of year (2) (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims end pending year,2,568,,SAME-UNIT DUPLICATE,,claims_pending_at_end_of_year__inr,284,INR,Claims pending at end of year (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims paid,2,568,,SAME-UNIT DUPLICATE,YES,claims_paid_2__inr,284,INR,Claims paid (2) (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims paid,2,568,,SAME-UNIT DUPLICATE,,claims_paid__inr,284,INR,Claims paid (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims pending start year,2,568,,SAME-UNIT DUPLICATE,YES,claims_pending_at_start_of_year_2__inr,284,INR,Claims pending at start of year (2) (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims pending start year,2,568,,SAME-UNIT DUPLICATE,,claims_pending_at_start_of_year__inr,284,INR,Claims pending at start of year (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims rejected repudiated,2,568,,SAME-UNIT DUPLICATE,,claims_repudiated_rejected__inr,448,INR,Claims repudiated / rejected (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+claims rejected repudiated,2,568,,SAME-UNIT DUPLICATE,YES,claims_repudiated_rejected_2__inr,120,INR,Claims repudiated/rejected (2) (₹Lakh),Micro-Insurance Death Claims - Individual|Benefit Amount (₹Lakh)
+unclaimed,2,564,,SAME-UNIT DUPLICATE,,unclaimed__inr,444,INR,Unclaimed (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+unclaimed,2,564,,SAME-UNIT DUPLICATE,YES,unclaimed_2__inr,120,INR,Unclaimed (2) (₹Lakh),Micro-Insurance Death Claims - Individual|Benefit Amount (₹Lakh)
+covered lives,2,562,,DIFFERENT UNITS,,lives_covered__count,338,COUNT,Lives Covered (Nos.),Life Group New Business by Channel (2024-25)|Brokers / Life Group New 
+covered lives,2,562,,DIFFERENT UNITS,,of_lives_covered__inr,224,INR,of Lives covered (₹Lakh),Group Category|All Classes
+schemes,2,562,,DIFFERENT UNITS,,schemes__count,338,COUNT,Schemes (Nos.),Life Group New Business by Channel (2024-25)|Brokers / Life Group New 
+schemes,2,562,,DIFFERENT UNITS,,of_schemes__inr,224,INR,of Schemes (₹Lakh),Group Category|All Classes
+1 month within,2,546,,SAME-UNIT DUPLICATE,YES,within_1_month_2__count,273,COUNT,Within 1 month (2) (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+1 month within,2,546,,SAME-UNIT DUPLICATE,,within_1_month__count,273,COUNT,Within 1 month (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+1 3 months within,2,545,,SAME-UNIT DUPLICATE,YES,within_1_3_months_2__count,273,COUNT,Within 1-3 months (2) (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+1 3 months within,2,545,,SAME-UNIT DUPLICATE,,within_1_3_months__count,272,COUNT,Within 1-3 months (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+dividend final proposed,2,500,,SAME-UNIT DUPLICATE,,b_proposed_final_dividend__inr,332,INR,(b) Proposed final dividend (₹Crore),Shareholders Account|General
+dividend final proposed,2,500,,SAME-UNIT DUPLICATE,,c_proposed_final_dividend__inr,168,INR,(c) Proposed final dividend (₹Lakh),Shareholders Account|Income From Investments
+dividends during interim paid year,2,466,,SAME-UNIT DUPLICATE,,a_interim_dividends_paid_during_the_year__inr,331,INR,(a) Interim dividends paid during the year (₹Crore),Shareholders Account|General
+dividends during interim paid year,2,466,,SAME-UNIT DUPLICATE,,b_interim_dividends_paid_during_the_year__inr,135,INR,(b) Interim dividends paid during the year (₹Lakh),Shareholders Account|Income From Investments
+insurance miscellaneous,2,433,,SAME-UNIT DUPLICATE,,c_miscellaneous_insurance__inr,327,INR,(c ) Miscellaneous Insurance (₹Crore),Shareholders Account|General
+insurance miscellaneous,2,433,,SAME-UNIT DUPLICATE,,d_miscellaneous_insurance__inr,106,INR,(d) Miscellaneous Insurance (₹Crore),Shareholders Account|General
+business end financial force year,2,430,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_a__count,215,COUNT,Business in force at end of the financial year (A) ('000s),In-Force Policies|Non Linked Life Business
+business end financial force year,2,430,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_a__inr,215,INR,Business in force at end of the financial year (A) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business e end financial force year,2,427,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_e__count,215,COUNT,Business in force at end of the financial year (E) ('000s),In-Force Policies|Linked Business - Life business
+business e end financial force year,2,427,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_e__inr,212,INR,Business in force at end of the financial year (E) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business end financial force g year,2,427,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_g__count,215,COUNT,Business in force at end of the financial year (G) ('000s),In-Force Policies|Linked General annuity business
+business end financial force g year,2,427,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_g__inr,212,INR,Business in force at end of the financial year (G) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+b business end financial force year,2,426,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_b__count,215,COUNT,Business in force at end of the financial year (B) ('000s),In-Force Policies|Non Linked -General Annuity Business
+b business end financial force year,2,426,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_b__inr,211,INR,Business in force at end of the financial year (B) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business d end financial force year,2,426,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_d__count,214,COUNT,Business in force at end of the financial year ( D) ('000s),In-Force Policies|Non linked Health Business
+business d end financial force year,2,426,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_d__inr,212,INR,Business in force at end of the financial year ( D) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business c end financial force year,2,421,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_c__count,212,COUNT,Business in force at end of the financial year (C) ('000s),In-Force Policies|Non Linked - Pension Business
+business c end financial force year,2,421,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_c__inr,209,INR,Business in force at end of the financial year (C) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+distribution dividend tax,2,419,,SAME-UNIT DUPLICATE,,c_dividend_distribution_tax__inr,288,INR,(c) Dividend distribution tax (₹Crore),Shareholders Account|General
+distribution dividend tax,2,419,,SAME-UNIT DUPLICATE,,d_dividend_distribution_tax__inr,131,INR,(d) Dividend distribution tax (₹Lakh),Shareholders Account|Income From Investments
+business end financial force i year,2,414,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_i__count,207,COUNT,Business in force at end of the financial year (I) ('000s),In-Force Policies|Linked Health Business
+business end financial force i year,2,414,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_i__inr,207,INR,Business in force at end of the financial year (I) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business end financial force h year,2,408,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_h__count,204,COUNT,Business in force at end of the financial year (H) ('000s),In-Force Policies|Linked Health Business
+business end financial force h year,2,408,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_h__inr,204,INR,Business in force at end of the financial year (H) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business end financial force j year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_j__inr,204,INR,Business in force at end of the financial year (J) (₹Crore),In-Force Sum Assured|Non-Linked VIP-General Annuity Business
+business end financial force j year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_j__count,202,COUNT,Business in force at end of the financial year (J) ('000s),In-Force Policies|Non-Linked VIP-General Annuity Business
+business end financial force k year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_k__inr,204,INR,Business in force at end of the financial year (K) (₹Crore),In-Force Sum Assured|Non-Linked VIP-Pension Business
+business end financial force k year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_k__count,202,COUNT,Business in force at end of the financial year (K) ('000s),In-Force Policies|Non-Linked VIP-Pension Business
+business end financial force n year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_n__inr,204,INR,Business in force at end of the financial year (N) (₹Crore),In-Force Sum Assured|Linked VIP-General Annuity Business
+business end financial force n year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_n__count,202,COUNT,Business in force at end of the financial year (N) ('000s),In-Force Policies|Linked VIP-General Annuity Business
+business end financial force o year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_o__inr,204,INR,Business in force at end of the financial year (O) (₹Crore),In-Force Sum Assured|Linked VIP-Pension Business
+business end financial force o year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_o__count,202,COUNT,Business in force at end of the financial year (O) ('000s),In-Force Policies|Linked VIP-Pension Business
+business end financial force p year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_p__inr,204,INR,Business in force at end of the financial year (P) (₹Crore),In-Force Sum Assured|Linked VIP-Health Business
+business end financial force p year,2,406,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_p__count,202,COUNT,Business in force at end of the financial year (P) ('000s),In-Force Policies|Linked VIP-Health Business
+business end financial force l year,2,405,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_l__inr,204,INR,Business in force at end of the financial year (L) (₹Crore),In-Force Sum Assured|Non-Linked VIP-Health Business
+business end financial force l year,2,405,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_l__count,201,COUNT,Business in force at end of the financial year (L) ('000s),In-Force Policies|Non-Linked VIP-Health Business
+business end financial force m year,2,404,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_m__inr,203,INR,Business in force at end of the financial year (M) (₹Crore),In-Force Sum Assured|Linked VIP-Life Business
+business end financial force m year,2,404,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_m__count,201,COUNT,Business in force at end of the financial year (M) ('000s),In-Force Policies|Linked VIP-Life Business
+business end f financial force year,2,402,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_f__count,201,COUNT,Business in force at end of the financial year ( F) ('000s),In-Force Policies|Linked General annuity business
+business end f financial force year,2,402,,DIFFERENT UNITS,,business_in_force_at_end_of_the_financial_year_f__inr,201,INR,Business in force at end of the financial year ( F) (₹Crore),In-Force Sum Assured|Non Linked Life Business
+debts doubtful provision,2,303,,SAME-UNIT DUPLICATE,,b_provision_for_doubtful_debts__inr,157,INR,(b) Provision for doubtful debts (₹Lakh),Shareholders Account|Income From Investments
+debts doubtful provision,2,303,,SAME-UNIT DUPLICATE,,provision_for_doubtful_debts__inr,146,INR,Provision for doubtful debts (₹Lakh),Policyholders Account|Premiums earned – net
+balance beginning year,2,253,,SAME-UNIT DUPLICATE,,a_balance_at_the_beginning_of_the_year__inr,235,INR,(a) Balance at the beginning of the year (₹Lakh),Shareholders Account|Income From Investments
+balance beginning year,2,253,,SAME-UNIT DUPLICATE,,balance_at_the_beginning_of_the_year__inr,18,INR,Balance at the beginning of the year (₹Lakh),Policyholders Account|Premiums earned – net
+business linked pension,2,3,,DIFFERENT UNITS,,linked_pension_business__inr,2,INR,Linked Pension Business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business linked pension,2,3,,DIFFERENT UNITS,,linked_pension_business__count,1,COUNT,Linked Pension Business ('000s),In-Force Policies|Linked General annuity business
+business life linked non vip,2,2,,DIFFERENT UNITS,,non_linked_vip_life_business__count,1,COUNT,Non-Linked VIP-Life Business ('000s),In-Force Policies|Linked Health Business
+business life linked non vip,2,2,,DIFFERENT UNITS,,non_linked_vip_life_business__inr,1,INR,Non-Linked VIP-Life Business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+claims incurred net,1,7607,,SINGLE,,claims_incurred_net__inr,7607,INR,Claims Incurred (Net),Fire|All Classes / General (All Segments)|All Classes
+earned net premium,1,6147,,SINGLE,,net_earned_premium__inr,6147,INR,Net Earned Premium (₹Crore),Fire|All Classes / General (All Segments)|All Classes
+claims incurred ratio,1,5959,,SINGLE,,incurred_claims_ratio__percent,5959,PERCENT,Incurred Claims Ratio (Per cent),Fire|All Classes / Health|AB-PMJAY
+covered no persons,1,5567,,SINGLE,,no_of_persons_covered__count,5567,COUNT,No. of Persons Covered ('000s),Health Business by Life Insurers - New|Group (excl. Govt) / Health Bus
+gross premium,1,5541,,SINGLE,,gross_premium__inr,5541,INR,Gross Premium (₹Lakh),Health Business by Life Insurers - New|Group (excl. Govt) / Health Bus
+no policies,1,5541,,SINGLE,,no_of_policies__count,5541,COUNT,No. of Policies (Nos.),Health Business by Life Insurers - New|Group (excl. Govt) / Health Bus
+account shareholders transfer,1,1723,,SINGLE,,transfer_to_shareholders_account__inr,1723,INR,Transfer to Shareholders’ Account (₹Crore),Policyholders Account|Fire / Policyholders Account|Life
+business expenses insurance operating related,1,1709,,SINGLE,,operating_expenses_related_to_insurance_business__inr,1709,INR,Operating Expenses related to Insurance Business (₹Crore),Policyholders Account|Fire / Policyholders Account|Life
+commission,1,1702,,SINGLE,,commission__inr,1702,INR,Commission (₹Crore),Policyholders Account|Fire / Policyholders Account|Life
+deficiency premium,1,1682,,SINGLE,,premium_deficiency__inr,1682,INR,Premium Deficiency (₹Crore),General (All Segments)|All Classes / Policyholders Account|Fire
+earned net premiums,1,1466,,SINGLE,,premiums_earned_net__inr,1466,INR,Premiums earned (Net) (₹Crore),Policyholders Account|Fire / Policyholders Account|Life
+expenses income net other other,1,1415,,SINGLE,,other_income_net_of_other_expenses__inr,1415,INR,Other Income (Net of Other Expenses) (₹Crore),Policyholders Account|Fire / Policyholders Account|Life
+investments loss profit redemption sale,1,1411,,SINGLE,,profit_loss_on_sale_redemption_of_investments__inr,1411,INR,Profit/ Loss on sale/redemption of Investments (₹Crore),Policyholders Account|Fire / Policyholders Account|Life
+direct gross india premium within,1,1336,,SINGLE,,gross_direct_premium_within_india__inr,1336,INR,Gross Direct Premium (Within India) (₹Crore),Fire|All Classes / Health + PA + Travel|All Classes
+companies general health ratio reinsurance solve,1,1332,,SINGLE,,solvency_ratio_of_general_health_and_reinsurance_companies__ratio,1332,RATIO,"Solvency Ratio Of General, Health And Reinsurance Companies",General (All Segments)|All Classes / Health|All Classes
+amount benefit,1,1220,,SINGLE,,benefit_amount__inr,1220,INR,Benefit Amount (₹crore),Group Death Claims|Claims Repudiated / Group Death Claims|Claims Uncla
+ratio solvency,1,1098,,SINGLE,,solvency_ratio__ratio,1098,RATIO,Solvency Ratio,Life|All Classes / Reinsurance|All Classes
+business new premium,1,944,,SINGLE,,new_business_premium__inr,944,INR,New Business Premium (₹Crore),Life Group New Business by Channel (2024-25)|Brokers / Life Group New 
+1 181 days year,1,928,,SINGLE,,181_days_to_1_year__count,928,COUNT,181 Days to 1 Year (Nos.),Death Claim Settlement Duration - Group|General / Death Claim Settleme
+1 more than year,1,928,,SINGLE,,more_than_1_year__count,928,COUNT,More than 1 Year (Nos.),Death Claim Settlement Duration - Group|General / Death Claim Settleme
+180 91 days,1,928,,SINGLE,,91_to_180_days__count,928,COUNT,91 to 180 Days (Nos.),Death Claim Settlement Duration - Group|General / Death Claim Settleme
+30 days intimation within,1,928,,SINGLE,,within_30_days_of_intimation__count,928,COUNT,Within 30 Days of Intimation (Nos.),Death Claim Settlement Duration - Group|General / Death Claim Settleme
+31 90 days,1,928,,SINGLE,,31_to_90_days__count,928,COUNT,31 to 90 Days (Nos.),Death Claim Settlement Duration - Group|General / Death Claim Settleme
+account change credit debit fair value,1,839,,SINGLE,,credit_debit_fair_value_change_account__inr,839,INR,CREDIT/[DEBIT] FAIR VALUE CHANGE ACCOUNT (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+income other,1,814,,SINGLE,,other_income__inr,814,INR,OTHER INCOME (₹Crore),Policyholders Account|Premiums earned – net / Shareholders Account|Gen
+no riders,1,781,,SINGLE,,no_of_riders__count,781,COUNT,No. of riders (Nos.),Health Riders on Life Products - New|Group (excl. Govt) / Health Rider
+sub total,1,683,,SINGLE,,sub_total_a__inr,683,INR,Sub-Total (A) (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+advances assets other,1,682,,SINGLE,,advances_and_other_assets__inr,682,INR,ADVANCES AND OTHER ASSETS (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+balances bank cash,1,681,,SINGLE,,cash_and_bank_balances__inr,681,INR,CASH AND BANK BALANCES (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+current liabilities,1,680,,SINGLE,,current_liabilities__inr,680,INR,CURRENT LIABILITIES (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+provisions,1,678,,SINGLE,,provisions__inr,678,INR,PROVISIONS (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+capital share,1,677,,SINGLE,,share_capital__inr,677,INR,SHARE CAPITAL (₹Crore),Balance Sheet|General / Balance Sheet|Shareholders’ Funds
+assets fixed,1,673,,SINGLE,,fixed_assets__inr,673,INR,FIXED ASSETS (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+capital equity share,1,652,,SINGLE,,equity_share_capital__inr,652,INR,Equity Share Capital (₹Crore),General (All Segments)|All Classes / Life|All Classes
+reserves surplus,1,625,,SINGLE,,reserves_and_surplus__inr,625,INR,RESERVES AND SURPLUS (₹Crore),Balance Sheet|General / Balance Sheet|Shareholders’ Funds
+lives no,1,608,,SINGLE,,no_of_lives__count,608,COUNT,No. of Lives (Nos.),Group Death Claims|Claims Repudiated / Group Death Claims|Claims Uncla
+during reported year,1,595,,SINGLE,,reported_during_the_year__count,595,COUNT,Reported during the year (Nos.),Grievances (General & Health)|General / Grievances (Life)|General
+loans,1,578,,SINGLE,,loans__inr,578,INR,LOANS (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+provision taxation,1,567,,SINGLE,,provision_for_taxation__inr,567,INR,Provision for Taxation (₹Crore),Shareholders Account|General / Shareholders Account|Income From Invest
+borrowings,1,517,,SINGLE,,borrowings__inr,517,INR,BORROWINGS (₹Crore),Balance Sheet|General / Balance Sheet|Shareholders’ Funds
+approved investments,1,514,,SINGLE,,approved_investments__inr,514,INR,Approved Investments (₹Crore),AUM — Insurer-wise (Investments)|Life Fund / AUM — Insurer-wise (Inves
+c d total,1,502,,SINGLE,,total_c_d,502,UNKNOWN,Total (c+d),Linked Premium|All Classes / Non-Linked Premium|All Classes
+b business new,1,500,,SINGLE,,new_business_a_b,500,UNKNOWN,New Business (a+b),Linked Premium|All Classes / Non-Linked Premium|All Classes
+single,1,496,,SINGLE,,single__inr,496,INR,Single (₹Crore),Linked Premium|All Classes / Non-Linked Premium|All Classes
+first year,1,495,,SINGLE,,first_year__inr,495,INR,First Year (₹Crore),Linked Premium|All Classes / Non-Linked Premium|All Classes
+renewal,1,495,,SINGLE,,renewal__inr,495,INR,Renewal (₹Crore),Linked Premium|All Classes / Non-Linked Premium|All Classes
+dividends gross interest rent,1,483,,SINGLE,,a_interest_dividends_rent_gross__inr,483,INR,"(a) Interest, Dividends & Rent – Gross (₹Lakh)",Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+investments profit redemption sale,1,479,,SINGLE,,b_profit_on_sale_redemption_of_investments__inr,479,INR,(b) Profit on sale/redemption of investments (₹Lakh),Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+commission total,1,478,,SINGLE,,to_total_commission__inr,478,INR,% to Total Commission (₹Crore),Traditional Plans|All Classes / Unit Linked Plans|All Classes
+achieved,1,468,,SINGLE,,achieved__percent,468,PERCENT,Achieved (Per cent),Rural Sector Obligations|All Classes / Social Sector Obligations|All C
+target,1,467,,SINGLE,,target__percent,467,PERCENT,Target (Per cent),Rural Sector Obligations|All Classes / Social Sector Obligations|All C
+expenditure extent miscellaneous not off or writ,1,441,,SINGLE,,miscellaneous_expenditure_to_the_extent_not_written_off_or_a__inr,441,INR,MISCELLANEOUS EXPENDITURE (to the extent not written off or adjusted) ,Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+after profit tax,1,438,,SINGLE,,profit_after_tax__inr,438,INR,Profit after Tax (₹Crore),Shareholders Account|General
+before profit tax,1,438,,SINGLE,,profit_before_tax__inr,438,INR,Profit Before Tax (₹Crore),Shareholders Account|General
+loss operating profit,1,437,,SINGLE,,operating_profit_loss__inr,437,INR,OPERATING PROFIT/(LOSS) (₹Crore),Shareholders Account|General
+balance balance carried forward sheet,1,433,,SINGLE,,balance_carried_forward_to_balance_sheet__inr,433,INR,Balance carried forward to Balance Sheet (₹Crore),Shareholders Account|General
+investments loss redemption sale,1,430,,SINGLE,,c_loss_on_sale_redemption_of_investments__inr,430,INR,(c) (Loss on sale/ redemption of investments) (₹Lakh),Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+fire insurance,1,427,,SINGLE,,a_fire_insurance__inr,427,INR,(a) Fire Insurance (₹Crore),Shareholders Account|General
+insurance marine,1,425,,SINGLE,,b_marine_insurance__inr,425,INR,(b) Marine Insurance (₹Crore),Shareholders Account|General
+business expenses insurance other related than t,1,423,,SINGLE,,a_expenses_other_than_those_related_to_insurance_business__inr,423,INR,(a) Expenses other than those related to Insurance Business (₹Crore),Shareholders Account|General
+investments,1,420,,SINGLE,,investments__inr,420,INR,INVESTMENTS (₹Crore),Balance Sheet|General / Balance Sheet|Sources Of Funds
+central government securities,1,419,,SINGLE,,central_government_securities__inr,419,INR,Central Government Securities (₹Crore),AUM — Insurer-wise (Investments)|Life Fund / AUM — Insurer-wise (Inves
+investments other,1,416,,SINGLE,,other_investments__inr,416,INR,Other Investments (₹Crore),AUM — Insurer-wise (Investments)|Life Fund / AUM — Insurer-wise (Inves
+balance brought forward from last loss profit ye,1,415,,SINGLE,,balance_of_profit_loss_brought_forward_from_last_year__inr,415,INR,Balance of profit/ loss brought forward from last year (₹Crore),Shareholders Account|General
+investments profit sale,1,396,,SINGLE,,b_profit_on_sale_of_investments__inr,396,INR,(b) Profit on sale of investments (₹Crore),Shareholders Account|General
+investments less loss sale,1,380,,SINGLE,,less_loss_on_sale_of_investments__inr,380,INR,Less: Loss on sale of investments (₹Crore),Shareholders Account|General
+asset deferred liability tax,1,379,,SINGLE,,deferred_tax_asset_liability__inr,379,INR,DEFERRED TAX ASSET/(LIABILITY) (₹Crore),Balance Sheet|General / Balance Sheet|Sources Of Funds
+debts doubtful,1,378,,SINGLE,,b_for_doubtful_debts__inr,378,INR,(b) For doubtful debts (₹Crore),Shareholders Account|General
+diminution investments value,1,377,,SINGLE,,a_for_diminution_in_the_value_of_investments__inr,377,INR,(a) For diminution in the value of investments (₹Crore),Shareholders Account|General
+policies,1,364,,SINGLE,,policies__count,364,COUNT,Policies (Nos.),Life Individual New Business by Channel (2024-25)|Brokers / Life Indiv
+during resolved year,1,359,,SINGLE,,resolved_during_the_year__count,359,COUNT,Resolved during the year (Nos.),Grievances (General & Health)|General / Grievances (Life)|General
+loss profit underwriting,1,357,,SINGLE,,underwriting_profit_loss__inr,357,INR,Underwriting Profit/Loss (₹Crore),General (All Segments)|All Classes / Reinsurance|All Classes
+commission expenses management,1,356,,SINGLE,,commission_expenses_of_management__inr,356,INR,"Commission, Expenses of Management (₹Crore)",General (All Segments)|All Classes / Reinsurance|All Classes
+balance opening,1,353,,SINGLE,,opening_balance__count,353,COUNT,Opening Balance (Nos.),Grievances (General & Health)|General
+direct gross india outside premium within,1,345,,SINGLE,,gross_direct_premium_within_and_outside_india__inr,345,INR,Gross Direct Premium (Within And Outside India) (₹Crore),General (All Segments)|All Classes
+account balance debit loss profit,1,342,,SINGLE,,debit_balance_in_profit_and_loss_account__inr,342,INR,DEBIT BALANCE IN PROFIT AND LOSS ACCOUNT (₹Crore),Balance Sheet|General / Balance Sheet|Sources Of Funds
+accounts any or other reserves transfer,1,338,,SINGLE,,d_transfer_to_any_reserves_or_other_accounts__inr,338,INR,(d) Transfer to any Reserves or Other Accounts (₹Crore),Shareholders Account|General
+3 months,1,331,,SINGLE,,3_months__count,331,COUNT,< 3 months (Nos.),Group Death Claims|Break up of claims pending -- duration wise (Polici
+diminution investments net value,1,321,,SINGLE,,a_for_diminution_in_the_value_of_investments_net__inr,321,INR,(a) For diminution in the value of investments (Net) (₹Lakh),Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+approved government other securities state,1,319,,SINGLE,,state_government_other_approved_securities__inr,319,INR,State Government & Other Approved Securities (₹Crore),AUM — Insurer-wise (Investments)|Life Fund / Investments (AUM) by Inst
+complaints duplicate,1,297,,SINGLE,,duplicate_complaints__count,297,COUNT,Duplicate Complaints (Nos.),Grievances (General & Health)|General / Grievances (Life)|General
+agents individual number,1,296,,SINGLE,,number_of_individual_agents__count,296,COUNT,Number Of Individual Agents,Life|All Classes
+agents corporate number,1,295,,SINGLE,,number_of_corporate_agents__count,295,COUNT,Number Of Corporate Agents,Life|All Classes
+agents insurance life micro number,1,295,,SINGLE,,number_of_micro_insurance_agents_life__count,295,COUNT,Number Of Micro Insurance Agents (Life),Life|All Classes
+claims total,1,284,,SINGLE,YES,total_claims_2__inr,284,INR,Total Claims (2) (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+3 months within,1,283,,SINGLE,,within_3_months__inr,283,INR,Within 3 months (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh) / Micro-In
+premium total,1,270,,SINGLE,,total_premium__inr,270,INR,Total Premium (₹Crore),Life|All Classes
+metro,1,267,,SINGLE,,metro__count,267,COUNT,Metro (Nos.),Offices by Region|General
+urban,1,267,,SINGLE,,urban__count,267,COUNT,Urban (Nos.),Offices by Region|General
+adjustments period prior,1,263,,SINGLE,,prior_period_adjustments__inr,263,INR,Prior Period Adjustments (₹Crore),Shareholders Account|General
+application money share,1,257,,SINGLE,,share_application_money__inr,257,INR,SHARE APPLICATION MONEY (₹Crore),Balance Sheet|General / Balance Sheet|Sources Of Funds
+amortization discount investments premium,1,255,,SINGLE,,e_amortization_of_premium_discount_on_investments__inr,255,INR,(e) Amortization of Premium/Discount on Investments (₹Lakh),Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+o s start year,1,243,,SINGLE,,o_s_at_the_start_of_the_year__count,243,COUNT,O/S at the start of the year (Nos.),Grievances (Life)|General
+policyholders,1,243,,SINGLE,,policyholders__inr,243,INR,Policyholders’ (₹Lakh),Balance Sheet|Policyholders’ Funds
+semi urban,1,243,,SINGLE,,semi_urban__count,243,COUNT,Semi Urban (Nos.),Offices by Region|General
+shareholders,1,243,,SINGLE,,shareholders__inr,243,INR,Shareholders’ (₹Lakh),Balance Sheet|Policyholders’ Funds
+account amounts from policyholders technical tra,1,242,,SINGLE,,amounts_transferred_from_the_policyholders_account_technical__inr,242,INR,Amounts transferred from the Policyholders Account (Technical Account),Shareholders Account|General
+after loss profit tax,1,242,,SINGLE,,profit_loss_after_tax__inr,242,INR,Profit / (Loss) after tax (₹Lakh),Shareholders Account|Income From Investments
+appropriations available surplus,1,242,,SINGLE,,surplus_available_for_appropriations__inr,242,INR,Surplus available for appropriations (₹Lakh),Policyholders Account|Premiums earned – net
+balance carried profit sheet,1,242,,SINGLE,,profit_carried_to_the_balance_sheet__inr,242,INR,Profit carried to the Balance Sheet (₹Lakh),Shareholders Account|Income From Investments
+before loss profit tax,1,242,,SINGLE,,profit_loss_before_tax__inr,242,INR,Profit/ (Loss) before tax (₹Lakh),Shareholders Account|Income From Investments
+commission traditional,1,242,,SINGLE,,traditional_commission__inr,242,INR,Traditional Commission (₹Crore),Traditional Plans|All Classes
+directly expenses insurance other related than t,1,242,,SINGLE,,expenses_other_than_those_directly_related_to_the_insurance___inr,242,INR,Expenses other than those directly related to the insurance business (,Shareholders Account|Income From Investments
+premium traditional,1,242,,SINGLE,,to_traditional_premium__inr,242,INR,% to Traditional Premium (₹Crore),Traditional Plans|All Classes
+rural,1,242,,SINGLE,,rural__count,242,COUNT,Rural (Nos.),Offices by Region|General
+benefits net paid,1,241,,SINGLE,,benefits_paid_net__inr,241,INR,Benefits Paid (Net) (₹Lakh),Policyholders Account|Premiums earned – net
+gross,1,241,,SINGLE,,a_gross__inr,241,INR,(a) Gross (₹Lakh),Policyholders Account|Premiums earned – net
+liabilities policy,1,241,,SINGLE,,policy_liabilities__inr,241,INR,Policy Liabilities (₹Lakh),Balance Sheet|Policyholders’ Funds
+ceded reinsurance,1,240,,SINGLE,,b_reinsurance_ceded__inr,240,INR,(b) Reinsurance ceded (₹Lakh),Policyholders Account|Premiums earned – net
+d total,1,240,,SINGLE,,total_d__inr,240,INR,TOTAL (D) (₹Lakh),Policyholders Account|Premiums earned – net
+assets cover held liabilities linked,1,237,,SINGLE,,assets_held_to_cover_linked_liabilities__inr,237,INR,Assets Held to Cover Linked Liabilities (₹Lakh),Balance Sheet|Policyholders’ Funds
+liabilities linked provision,1,237,,SINGLE,,provision_for_linked_liabilities__inr,237,INR,Provision for Linked Liabilities (₹Lakh),Balance Sheet|Policyholders’ Funds
+13th month,1,236,,SINGLE,,13th_month__percent,236,PERCENT,13th Month (Per cent),Persistency|General
+attended during year,1,236,,SINGLE,,attended_to_during_the_year__count,236,COUNT,Attended to during the year (Nos.),Grievances (General & Health)|General
+commission ulip,1,236,,SINGLE,,ulip_commission__inr,236,INR,ULIP Commission (₹Crore),Unit Linked Plans|All Classes
+premium ulip,1,236,,SINGLE,,to_ulip_premium__inr,236,INR,% to ULIP Premium (₹Crore),Unit Linked Plans|All Classes
+appropriations funds future,1,235,,SINGLE,,funds_for_future_appropriations__inr,235,INR,Funds for Future Appropriations (₹Lakh),Balance Sheet|Policyholders’ Funds
+change fair gain revaluation transfer value,1,235,,SINGLE,,d_transfer_gain_on_revaluation_change_in_fair_value__inr,235,INR,(d) Transfer/Gain on revaluation/change in fair value (₹Lakh),Policyholders Account|Premiums earned – net / Shareholders Account|Inc
+000s number policies,1,234,,SINGLE,,number_of_policies_in_000s__count,234,COUNT,Number of policies in '000s (Nos.),Lapsed / Forfeited Policies (Non-Linked)|General
+25th month,1,234,,SINGLE,,25th_month__percent,234,PERCENT,25th Month (Per cent),Persistency|General
+37th month,1,234,,SINGLE,,37th_month__percent,234,PERCENT,37th Month (Per cent),Persistency|General
+49th month,1,234,,SINGLE,,49th_month__percent,234,PERCENT,49th Month (Per cent),Persistency|General
+assured crore sum,1,234,,SINGLE,,sum_assured_crore__count,234,COUNT,Sum Assured (₹Crore) ('000s),Lapsed / Forfeited Policies (Non-Linked)|General
+based cent lapse number per policies ratio,1,234,,SINGLE,,lapse_ratio_per_cent_based_on_number_of_policies__count,234,COUNT,Lapse Ratio (Per cent) (Based on number of policies) (Nos.),Lapsed / Forfeited Policies (Non-Linked)|General
+61th month,1,233,,SINGLE,,61th_month__percent,233,PERCENT,61th Month (Per cent),Persistency|General
+discontinued fund policy,1,231,,SINGLE,,fund_for_discontinued_policy__inr,231,INR,Fund for Discontinued Policy (₹Lakh),Balance Sheet|Policyholders’ Funds
+account contribution policyholders,1,230,,SINGLE,,contribution_to_policyholders_account__inr,230,INR,Contribution to Policyholders Account (₹Lakh),Shareholders Account|Income From Investments
+charges linked service tax unit,1,226,,SINGLE,,service_tax_on_unit_linked_charges__inr,226,INR,Service Tax on Unit Linked Charges (₹Lakh),Policyholders Account|Premiums earned – net
+account from shareholders transfer,1,223,,SINGLE,,transfer_from_shareholders_account__inr,223,INR,Transfer from Shareholders' Account (₹Lakh),Policyholders Account|Premiums earned – net
+infrastructure investments,1,222,,SINGLE,,infrastructure_investments__inr,222,INR,Infrastructure Investments (₹Crore),Investments (AUM) by Instrument|General
+ffe government housing housing loans state,1,221,,SINGLE,,housing_loans_to_state_government_for_housing_and_ffe__inr,221,INR,Housing & Loans to State Government for Housing and FFE (₹Crore),Investments (AUM) by Instrument|General
+appropriations balance being funds future policy,1,215,,SINGLE,,balance_being_funds_for_future_appropriations_policyholders__inr,215,INR,Balance being funds for future appropriations-Policyholders (₹Lakh),Policyholders Account|Premiums earned – net
+bonuses interim paid,1,205,,SINGLE,,interim_bonuses_paid__inr,205,INR,Interim Bonuses Paid (₹Lakh),Policyholders Account|Premiums earned – net
+actual complaints,1,203,,SINGLE,,actual_complaints__count,203,COUNT,Actual Complaints (Nos.),Grievances (General & Health)|General
+amount ceded reinsurance,1,187,,SINGLE,,b_amount_ceded_in_reinsurance__inr,187,INR,(b) Amount ceded in Reinsurance (₹Lakh),Policyholders Account|Premiums earned – net
+allotment application money pending share,1,178,,SINGLE,,share_application_money_pending_allotment__inr,178,INR,Share Application Money Pending Allotment (₹Lakh),Balance Sheet|Shareholders’ Funds
+insurance reserves,1,164,,SINGLE,,insurance_reserves__inr,164,INR,Insurance Reserves (₹Lakh),Balance Sheet|Policyholders’ Funds
+booked claims during intimated period,1,162,,SINGLE,,claims_intimated_booked_during_the_period__count,162,COUNT,Claims intimated/ booked during the period (Nos.),Status of Claims|Number of Claims
+claims during paid period,1,162,,SINGLE,,claims_paid_during_the_period__count,162,COUNT,Claims paid during the period (Nos.),Status of Claims|Number of Claims
+claims during period repudiated,1,162,,SINGLE,,claims_repudiated_during_the_period__count,162,COUNT,Claims repudiated during the period (Nos.),Status of Claims|Number of Claims
+claims end o period s,1,162,,SINGLE,,claims_o_s_at_the_end_of_period__count,162,COUNT,Claims O/S at the end of period (Nos.),Status of Claims|Number of Claims
+claims o period s start,1,162,,SINGLE,,claims_o_s_at_start_of_the_period__count,162,COUNT,Claims O/S at start of the period (Nos.),Status of Claims|Number of Claims
+1 3 year years,1,159,,SINGLE,,1_year_to_3_years__count,159,COUNT,1 year to <3 years* (Nos.),Status of Claims|Age Analysis of Number of Claims Paid (%)
+3 6 months months,1,159,,SINGLE,,3_months_to_6_months__count,159,COUNT,3 months to 6 months (Nos.),Status of Claims|Age Analysis of Number of Claims Paid (%)
+1 6 months year,1,158,,SINGLE,,6_months_to_1_year__count,158,COUNT,6 months to <1 year (Nos.),Status of Claims|Age Analysis of Number of Claims Paid (%)
+3 5 years years,1,158,,SINGLE,,3_years_to_5_years__count,158,COUNT,3 years to <5 years** (Nos.),Status of Claims|Age Analysis of Number of Claims Paid (%)
+3 6 months,1,156,,SINGLE,,3_6_months__count,156,COUNT,3 - < 6 months (Nos.),Group Death Claims|Break up of claims pending -- duration wise (Polici
+asset deferred tax,1,156,,SINGLE,,deferred_tax_asset__inr,156,INR,Deferred Tax Asset (₹Lakh),Balance Sheet|Policyholders’ Funds
+5 years,1,155,,SINGLE,,5_years__count,155,COUNT,≥ 5 years (Nos.),Status of Claims|Age Analysis of Number of Claims Paid (%)
+1 6 yr,1,154,,SINGLE,,6_1_yr__count,154,COUNT,6 - <1 yr (Nos.),Group Death Claims|Break up of claims pending -- duration wise (Polici
+1 yr,1,147,,SINGLE,,1_yr__count,147,COUNT,> 1 yr (Nos.),Group Death Claims|Break up of claims pending -- duration wise (Polici
+accounts other reserves transfer,1,146,,SINGLE,,e_transfer_to_reserves_other_accounts__inr,146,INR,(e) Transfer to reserves/ other accounts (₹Lakh),Shareholders Account|Income From Investments
+claims closed during period,1,144,,SINGLE,,claims_closed_during_the_period__count,144,COUNT,Claims closed during the period (Nos.),Status of Claims|Number of Claims
+assigned branches capital capital equity foreign,1,143,,SINGLE,,equity_share_capital_assigned_capital_of_branches_of_foreign__inr,143,INR,Equity Share Capital /Assigned Capital Of Branches Of Foreign Reinsure,Reinsurance|All Classes
+fund fund linked reserve transfer,1,137,,SINGLE,,d_transfer_to_linked_fund_fund_reserve__inr,137,INR,(d) Transfer to Linked Fund (Fund Reserve) (₹Lakh),Policyholders Account|Premiums earned – net
+account account balance debit loss profit shareh,1,130,,SINGLE,,debit_balance_in_profit_loss_account_shareholders_account__inr,130,INR,Debit Balance In Profit & Loss Account (Shareholders’ Account) (₹Lakh),Balance Sheet|Policyholders’ Funds
+discontinued fund policies,1,124,,SINGLE,,e_fund_for_discontinued_policies__inr,124,INR,(e) Fund for discontinued policies (₹Lakh),Policyholders Account|Premiums earned – net
+provision tax,1,113,,SINGLE,,provision_for_tax__inr,113,INR,Provision for Tax (₹Lakh),Policyholders Account|Premiums earned – net
+accepted premium reinsurance,1,107,,SINGLE,,premium_on_reinsurance_accepted__inr,107,INR,Premium on Reinsurance accepted (₹Crore),Reinsurance Premium Schedule|General
+net premium written,1,107,,SINGLE,,net_written_premium__inr,107,INR,Net Written Premium (₹Crore),Reinsurance Premium Schedule|General
+ceded premium reinsurance,1,106,,SINGLE,,premium_on_reinsurance_ceded__inr,106,INR,Premium on Reinsurance ceded (₹Crore),Reinsurance Premium Schedule|General
+insurance life,1,102,,SINGLE,,c_life_insurance__inr,102,INR,(c ) Life Insurance (₹Crore),Shareholders Account|General
+approved govt other securities state,1,99,,SINGLE,,state_govt_other_approved_securities__inr,99,INR,State Govt & Other Approved Securities (₹Crore),AUM — Insurer-wise (Investments)|Pension & General Annuity & Group Fun
+actual during reported year,1,98,,SINGLE,,actual_reported_during_the_year__count,98,COUNT,Actual reported during the year (Nos.),Grievances (Life)|General
+housing infrastructure investments,1,98,,SINGLE,,housing_infrastructure_investments__inr,98,INR,Housing & Infrastructure Investments (₹Crore),AUM — Insurer-wise (Investments)|Life Fund
+life,1,95,,SINGLE,,life__inr,95,INR,Life (₹Crore),Segment-wise Reinsurance Premium Accepted|General
+marine,1,95,,SINGLE,,marine__inr,95,INR,Marine (₹Crore),Segment-wise Reinsurance Premium Accepted|General
+misc,1,95,,SINGLE,,misc__inr,95,INR,Misc. (₹Crore),Segment-wise Reinsurance Premium Accepted|General
+motor,1,95,,SINGLE,,motor__inr,95,INR,Motor (₹Crore),Segment-wise Reinsurance Premium Accepted|General
+fire,1,94,,SINGLE,,fire__inr,94,INR,Fire (₹Crore),Segment-wise Reinsurance Premium Accepted|General
+health,1,94,,SINGLE,,health__inr,94,INR,Health (₹Crore),Segment-wise Reinsurance Premium Accepted|General
+balance closing,1,62,,SINGLE,,closing_balance__count,62,COUNT,Closing Balance (Nos.),Grievances (General & Health)|General / Grievances (Life)|General
+investment property reserve revaluation,1,30,,SINGLE,,revaluation_reserve_investment_property__inr,30,INR,Revaluation Reserve-Investment Property (₹Lakh),Balance Sheet|Policyholders’ Funds
+balance c debit policyholders,1,28,,SINGLE,,debit_balance_in_policyholders_a_c__inr,28,INR,Debit Balance In Policyholders’ A/c (₹Lakh),Balance Sheet|Policyholders’ Funds
+unclassified,1,24,,SINGLE,,unclassified__count,24,COUNT,Unclassified (Nos.),Offices by Region|General
+break claims duration lives number pending up wi,1,21,,SINGLE,,break_up_of_claims_pending_duration_wise_number_of_lives__inr,21,INR,Break up of claims pending -- duration wise (Number of Lives) (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh)
+lives number,1,21,,SINGLE,,number_of_lives__inr,21,INR,Number of Lives (₹Lakh),Micro-Insurance Death Claims - Group|Benefit Amount (₹Lakh)
+claims lives number settlement,1,20,,SINGLE,,settlement_of_claims_number_of_lives__count,20,COUNT,Settlement of claims- Number of Lives (Nos.),Micro-Insurance Claim Settlement - Group|Settlement of claims- Benefit
+gains loss unrealised,1,20,,SINGLE,,unrealised_gains_loss__inr,20,INR,Unrealised Gains/Loss (₹Lakh),Policyholders Account|Premiums earned – net
+amount c from s shareholder transferred,1,17,,SINGLE,,amount_transferred_from_shareholder_s_a_c__inr,17,INR,Amount transferred from Shareholder's A/c (₹Lakh),Policyholders Account|Premiums earned – net
+assets current,1,17,,SINGLE,,current_assets__inr,17,INR,CURRENT ASSETS (₹Crore),Balance Sheet|General / Balance Sheet|Policyholders’ Funds
+balance balance sheet transferred,1,16,,SINGLE,,balance_transferred_to_balance_sheet__inr,16,INR,Balance transferred to Balance Sheet (₹Lakh),Policyholders Account|Premiums earned – net
+account accounts from non shareholders technical,1,12,,SINGLE,,transfer_from_shareholders_account_non_technical_accounts__inr,12,INR,Transfer from shareholders’ Account(Non Technical Accounts) (₹Lakh),Policyholders Account|Premiums earned – net
+claims number policies settlement,1,11,,SINGLE,,settlement_of_claims_number_of_policies__count,11,COUNT,Settlement of claims- Number of Policies (Nos.),Micro-Insurance Claim Settlement - Individual|Settlement of claims- Be
+debenture h redemption reserve,1,11,,SINGLE,,h_debenture_redemption_reserve__inr,11,INR,(h) Debenture redemption reserve (₹Lakh),Shareholders Account|Income From Investments
+break claims duration number pending policies up,1,10,,SINGLE,,break_up_of_claims_pending_duration_wise_number_of_policies__inr,10,INR,Break up of claims pending -- duration wise (Number of Policies) (₹Lak,Micro-Insurance Death Claims - Individual|Benefit Amount (₹Lakh)
+current tax,1,10,,SINGLE,,current_tax__inr,10,INR,Current Tax (₹Crore),Shareholders Account|General
+individual issued life new number policies,1,10,,SINGLE,,number_of_individual_new_policies_issued_life__number,10,NUMBER,Number Of Individual New Policies Issued (Life) (Lakhs),Life|All Classes
+number policies,1,10,,SINGLE,,number_of_policies__inr,10,INR,Number of Policies (₹Lakh),Micro-Insurance Death Claims - Individual|Benefit Amount (₹Lakh)
+other provisions taxation than,1,8,,SINGLE,,provisions_other_than_taxation__inr,8,INR,PROVISIONS (Other than taxation) (₹Crore),Shareholders Account|General / Shareholders Account|Income From Invest
+appropriations balance being funds future previo,1,6,,SINGLE,,balance_being_funds_for_future_appropriations_previous_year__inr,6,INR,Balance being funds for future appropriations-Previous year (₹Lakh),Policyholders Account|Premiums earned – net
+expenses other,1,6,,SINGLE,,other_expenses__inr,6,INR,OTHER EXPENSES (₹Crore),Shareholders Account|General
+from income investments,1,6,,SINGLE,,income_from_investments__inr,6,INR,INCOME FROM INVESTMENTS (₹Crore),Shareholders Account|General
+accepted amount reinsurance,1,5,,SINGLE,,c_amount_accepted_in_reinsurance__inr,5,INR,(c) Amount accepted in Reinsurance (₹Lakh),Policyholders Account|Premiums earned – net
+accepted reinsurance,1,5,,SINGLE,,c_reinsurance_accepted__inr,5,INR,(c) Reinsurance accepted (₹Lakh),Policyholders Account|Premiums earned – net
+appropriations,1,5,,SINGLE,,appropriations__inr,5,INR,APPROPRIATIONS (₹Crore),Shareholders Account|General
+appropriations funds future lapsed link reserve ,1,4,,SINGLE,,funds_for_future_appropriations_reserve_for_lapsed_unit_link__inr,4,INR,Funds for future appropriations (Reserve for lapsed unit linked polici,Policyholders Account|Premiums earned – net
+from fund lapsed linked policies transfer,1,4,,SINGLE,,transfer_from_linked_fund_lapsed_policies__inr,4,INR,Transfer from Linked Fund (Lapsed Policies) (₹Lakh),Policyholders Account|Premiums earned – net
+account adjustment depreciation py,1,3,,SINGLE,,f_adjustment_on_account_of_depreciation_in_py__inr,3,INR,(f) Adjustment on account of depreciation in PY (₹Lakh),Shareholders Account|Income From Investments
+application funds,1,2,,SINGLE,,application_of_funds__inr,2,INR,APPLICATION OF FUNDS (₹Crore),Balance Sheet|General
+funds sources,1,2,,SINGLE,,sources_of_funds__inr,2,INR,SOURCES OF FUNDS (₹Crore),Balance Sheet|General
+adjustment approved court done due g high scheme,1,1,,SINGLE,,g_adjustment_done_due_to_scheme_approved_by_high_court__inr,1,INR,(g) Adjustment done due to scheme approved by High Court (₹Lakh),Shareholders Account|Income From Investments
+adjustment previous related year,1,1,,SINGLE,,adjustment_related_to_previous_year__inr,1,INR,Adjustment related to previous year (₹Lakh),Policyholders Account|Premiums earned – net
+annuity business general linked,1,1,,SINGLE,,linked_general_annuity_business__inr,1,INR,Linked General annuity business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+annuity business general linked non,1,1,,SINGLE,,non_linked_general_annuity_business__inr,1,INR,Non Linked -General Annuity Business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business business life linked,1,1,,SINGLE,,linked_business_life_business__inr,1,INR,Linked Business - Life business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business health linked,1,1,,SINGLE,,linked_health_business__inr,1,INR,Linked Health Business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business health linked non,1,1,,SINGLE,,non_linked_health_business__inr,1,INR,Non linked Health Business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+business linked non pension,1,1,,SINGLE,,non_linked_pension_business__inr,1,INR,Non Linked - Pension Business (₹Crore),In-Force Sum Assured|Non Linked Life Business
+expenses period prior,1,1,,SINGLE,,prior_period_expenses__inr,1,INR,Prior period expenses (₹Lakh),Shareholders Account|Income From Investments
