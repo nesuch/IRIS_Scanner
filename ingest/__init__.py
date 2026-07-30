@@ -186,6 +186,7 @@ def segment_pdf(pdf_path, spec):
     """Run the deterministic pipeline. Returns (rows, report, spec_errors) where
     each row is {id, clause, tag}."""
     blocks, dropped = extract(pdf_path, ignore_patterns=spec.get("ignore_patterns"),
+                              keep_hindi=spec.get("keep_hindi", False),
                               small=spec.get("small_type"))
     for step in spec.get("preprocess", []):
         if step == "explode_layout_tables":

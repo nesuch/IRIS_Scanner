@@ -1981,14 +1981,19 @@ def api_pq_list():
     if depts:
         want = set(depts)
         items = [it for it in items if want & set(it.get("departments") or [])]
-    # Highlight terms, same contract as /api/search: `highlight` is per-word (amber),
-    # `highlight_phrase` is the verbatim query as one unit (green). Drawn from the
-    # PQ stoplist, so what lights up is exactly what could have matched.
+    # Highlight terms, same contract as /api/search: `highlight` is the per-word
+    # (light) layer, `highlight_phrase` is the verbatim query as one unit (solid).
+    # Drawn from the PQ stoplist, so what lights up is exactly what could have matched.
+    #
+    # The verbatim layer covers SINGLE words too, matching /api/search. For a
+    # one-word query the typed word IS the exact match, and without this it fell
+    # through to the word layer only — which, now that the word layer is a quiet
+    # underline, would leave the strongest possible hit as the faintest mark.
     phrase_l = " ".join(hl_source.lower().split())
     return jsonify({
         "items": items, "chips": chips, "deep": deep_flag,
         "highlight": _word_highlights(hl_source, stop=_PQ_STOP) if hl_source else [],
-        "highlight_phrase": [phrase_l.split()] if (hl_source and " " in phrase_l) else [],
+        "highlight_phrase": _verbatim_highlight(phrase_l, stop=_PQ_STOP),
     })
 
 
@@ -2432,6 +2437,18 @@ def api_pq_reextract():
             r.doc_date_iso = row["date_iso"] = parsed["doc_date_iso"]
             if not r.doc_date:
                 r.doc_date = parsed["doc_date"]
+            changed += 1
+        # pq_no / house are derived, not user-authored, so an extraction fix must
+        # be able to reach rows written before it. Only ever fill a blank or
+        # correct a value the parser now reads differently — never blank one out,
+        # so a row the parser can no longer read keeps what it has.
+        if parsed.get("pq_no") and parsed["pq_no"] != (r.pq_no or ""):
+            row["pq_no_was"], r.pq_no = r.pq_no, parsed["pq_no"]
+            row["pq_no"] = r.pq_no
+            changed += 1
+        if parsed.get("house") and not (r.house or "").strip():
+            r.house = parsed["house"]
+            row["house"] = r.house
             changed += 1
         row["after"], row["status"] = len(r.body_text or ""), "ok"
         out.append(row)
@@ -3128,6 +3145,12 @@ def api_pq_update(pid):
         r.tags = (data.get("tags") or "").strip()
     if "departments" in data:
         r.departments = ",".join(_norm_departments(data.get("departments")))
+    # pq_no drives the "/9000" number search and the bulk-upload duplicate check,
+    # so it has to be correctable without a re-upload.
+    if "pq_no" in data:
+        r.pq_no = (data.get("pq_no") or "").strip()[:20]
+    if "house" in data:
+        r.house = (data.get("house") or "").strip()[:40]
     _app.db.session.commit()
     _audit(f"Edited PQ {r.pq_no or pid}", "PQ edit")
     return jsonify({"ok": True, "title": r.title, "date": r.doc_date,
@@ -3197,6 +3220,25 @@ def _word_highlights(query, stop=None):
             seen.add(s)
             out.append([s])
     return out
+
+
+def _verbatim_highlight(phrase_l, stop=None):
+    """The exact query as ONE highlight unit — the strongest tier.
+
+    Multi-word queries pass through as a consecutive run. A single word is also a
+    verbatim match (it is exactly what the user typed), with one guard: a lone
+    stopword or a two-letter token would otherwise light up solidly on every line,
+    which is precisely the noise the tiered design exists to remove.
+    """
+    words = (phrase_l or "").split()
+    if not words:
+        return []
+    if len(words) == 1:
+        w = words[0]
+        stop = _HL_STOP if stop is None else stop
+        if w in stop or (len(w) < 3 and w.isalpha()):
+            return []
+    return [words]
 
 
 

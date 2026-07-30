@@ -168,11 +168,16 @@ def _iso_date(s):
 
 
 def _meta(text, filename):
-    pq_no = (re.search(r"(?:question\s*no\.?\s*|pq[\s_-]*)(\d{2,6})", filename + " " + text, re.I)
-             or re.search(r"\b(\d{3,6})\b", filename))
-    pq_no = pq_no.group(1) if pq_no else ""
-    house = ("Lok Sabha" if re.search(r"\blok\s*sabha\b|\bls\b", filename + " " + text, re.I)
-             else "Rajya Sabha" if re.search(r"\brajya\s*sabha\b|\brs\b", filename + " " + text, re.I)
+    # PQ numbers carry an optional Starred/Unstarred letter prefix (S850, U2774)
+    # and often sit next to an underscore in a filename. The old patterns missed
+    # both: "\d" refused the letter, and "\b" never fires against "_" because
+    # underscore is a word character. Hence a third of the corpus had no number.
+    pq_no = (re.search(r"(?:question|q|pq|dy)[\s._-]*(?:no|dy)?\.?[\s._-]*"
+                       r"([SU]?[\s._-]?\d{2,6})", filename + " " + text, re.I)
+             or re.search(r"(?<![A-Za-z0-9])([SU]?\d{3,6})(?![0-9])", filename))
+    pq_no = re.sub(r"[\s._-]", "", pq_no.group(1)).upper() if pq_no else ""
+    house = ("Lok Sabha" if re.search(r"\blok\s*sabha\b|\bls\b|\blspq\b|\bls\s*pq\b", filename + " " + text, re.I)
+             else "Rajya Sabha" if re.search(r"\brajya\s*sabha\b|\brs\b|\brspq\b|\brs\s*pq\b", filename + " " + text, re.I)
              else "")
     starred = "Starred" if re.search(r"starred", text, re.I) else "Unstarred" if re.search(r"unstarred", text, re.I) else ""
     sm = re.search(r"Subject:\s*(.+)", text)

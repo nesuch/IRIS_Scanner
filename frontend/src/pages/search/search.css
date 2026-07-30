@@ -207,21 +207,46 @@ html.app-fixed .main { min-height: 0; height: 100%; }
   overflow-wrap: anywhere;
 }
 
+/* ---- Match highlighting, in three tiers ----
+   Every match used to be painted the same solid amber. On a multi-word query that
+   turned a clause into a wall of colour and destroyed the signal: the eye cannot
+   tell the exact phrase from an incidental cousin of one word when both shout
+   equally loudly. Matches are NOT equally important, so they no longer look it.
+
+     1. verbatim phrase (.hl-phrase) — solid fill. This is the answer; it should be
+        findable by eye alone, without reading.
+     2. all query words in one line (.hl-cover) — a faint wash over the line. Says
+        "the concept lives here" without marking anything individually.
+     3. individual words (.hl) — a thin dotted underline, no fill. Traceable when
+        you look for it, invisible when you don't. This is a why-it-matched
+        breadcrumb, not a destination.
+
+   Tier 3 is the one that changed most: it must never compete with tier 1. */
 .clause-body .hl, .clause-html .hl, mark.hl {
-  background: rgba(250,204,21,0.45);
+  background: none;
   color: inherit;
   font-weight: 600;
-  border-bottom: 2px solid #f59e0b;
-  border-radius: 2px;
-  padding: 0 2px;
+  border-bottom: 1px dotted rgba(180,83,9,0.85);
+  border-radius: 0;
+  padding: 0;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
-/* Verbatim-phrase highlight — a distinct green so an exact-phrase find reads as one
-   unit, clearly apart from the amber individual-word matches. */
+/* Verbatim match — the exact thing typed, as one unit. The only tier that fills. */
 .clause-body .hl-phrase, .clause-html .hl-phrase, mark.hl-phrase {
-  background: rgba(16,185,129,0.30);
-  border-bottom-color: #059669;
+  background: rgba(250,204,21,0.55);
+  border-bottom: 2px solid #f59e0b;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+/* A line carrying EVERY query word — the concept, even when phrased differently.
+   Deliberately near-invisible on its own; it reads as a change of paper, not as a
+   mark. Anything stronger would recreate the noise this design removes. */
+.clause-body .clause-line.hl-cover,
+.clause-snippet.hl-cover {
+  background: rgba(250,204,21,0.10);
+  box-shadow: -6px 0 0 rgba(250,204,21,0.10);
+  border-radius: 2px;
 }
 .clause-md-table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0; }
 .clause-md-table th, .clause-md-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }

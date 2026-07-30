@@ -79,6 +79,33 @@ function buildHighlightRegex(terms) {
   return new RegExp(`(${pats.join('|')})`, 'gi');
 }
 
+// One regex PER term, rather than the single combined matcher above. Used only to
+// answer "does this line contain every query word?" — the tier-2 signal. A combined
+// regex can't answer that: it tells you something matched, not that everything did.
+// Returns null below two terms, where "all words present" is the same statement as
+// "a word is present" and the wash would just be a second, redundant mark.
+function buildTermRegexes(terms) {
+  if (!terms || terms.length < 2) return null;
+  const out = [];
+  const seen = new Set();
+  for (const phrase of terms) {
+    const words = Array.isArray(phrase) ? phrase : [phrase];
+    const wps = words.map(wordPattern).filter(Boolean);
+    if (!wps.length) continue;
+    const pat = `\\b${wps.join('[\\s\\-]+')}`;
+    if (seen.has(pat)) continue;
+    seen.add(pat);
+    out.push(new RegExp(pat, 'i'));   // no /g: .test() only, so lastIndex can't drift
+  }
+  return out.length >= 2 ? out : null;
+}
+
+// True when every query term appears in this stretch of text.
+function coversAll(termRes, text) {
+  if (!termRes) return false;
+  return termRes.every((re) => re.test(text));
+}
+
 // Highlight keyword matches inside pre-rendered clause HTML (edited / imported
 // clauses that carry clause_html and render via dangerouslySetInnerHTML, so they
 // otherwise miss the keyword highlighting that ClauseBody applies). Walks text
@@ -163,6 +190,7 @@ function markLine(text, phraseRe, wordRe, keyPrefix) {
 export const ClauseBody = memo(function ClauseBody({ text, keywords, phraseKeywords }) {
   const regex = buildHighlightRegex(keywords);
   const phraseRe = buildHighlightRegex(phraseKeywords);
+  const termRes = buildTermRegexes(keywords);
   const lines = String(text || '').split('\n');
   const blocks = [];
   let tableRows = [];
@@ -212,10 +240,14 @@ export const ClauseBody = memo(function ClauseBody({ text, keywords, phraseKeywo
       return;
     }
     flushTable(idx);
+    // Tier 2: wash the whole line when it carries every query word. Skipped on
+    // heading lines — a bold heading is already emphasised, and tinting it too
+    // stacks two signals on the least informative line.
+    const cover = coversAll(termRes, line) ? ' hl-cover' : '';
     if (stripped.endsWith(':') && stripped.length) {
       blocks.push(<div className="clause-line clause-head" key={idx}><strong>{markLine(line, phraseRe, regex, idx)}</strong></div>);
     } else {
-      blocks.push(<div className="clause-line" key={idx}>{markLine(line, phraseRe, regex, idx)}</div>);
+      blocks.push(<div className={`clause-line${cover}`} key={idx}>{markLine(line, phraseRe, regex, idx)}</div>);
     }
   });
   flushTable('end');
@@ -234,12 +266,24 @@ export function ClauseSnippet({ text, keywords, phraseKeywords, radius = 170 }) 
   const raw = String(text || '').replace(/\s+/g, ' ').trim();
   const regex = buildHighlightRegex(keywords);
   const phraseRe = buildHighlightRegex(phraseKeywords);
+  const termRes = buildTermRegexes(keywords);
+  // Centre on the VERBATIM match when there is one, falling back to the first
+  // single-word hit. Previously only the word regex steered the window, so a
+  // snippet could open on an incidental cousin of one word while the exact phrase
+  // sat outside the window entirely — showing the weakest evidence for the match.
   let start = 0;
-  if (regex) {
+  let anchor = -1;
+  if (phraseRe) {
+    phraseRe.lastIndex = 0;
+    const pm = phraseRe.exec(raw);
+    if (pm) anchor = pm.index;
+  }
+  if (anchor < 0 && regex) {
     regex.lastIndex = 0;
     const m = regex.exec(raw);
-    if (m && m.index > radius) start = m.index - radius;
+    if (m) anchor = m.index;
   }
+  if (anchor > radius) start = anchor - radius;
   let end = Math.min(raw.length, start + radius * 2);
   // Snap the window edges to word boundaries so we never cut a word in half.
   if (start > 0) {
@@ -252,7 +296,7 @@ export function ClauseSnippet({ text, keywords, phraseKeywords, radius = 170 }) 
   }
   const slice = raw.slice(start, end);
   return (
-    <div className="clause-snippet">
+    <div className={`clause-snippet${coversAll(termRes, slice) ? ' hl-cover' : ''}`}>
       {start > 0 && '… '}
       {markLine(slice, phraseRe, regex, 'snip')}
       {end < raw.length && ' …'}
