@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import PageHeader from '../components/PageHeader.jsx';
 import { Spinner, Modal } from '../components/UI.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import FlagModal from '../components/FlagModal.jsx';
 import { api } from '../api.js';
-import { ClauseSnippet } from './search/clauseRender.jsx';
+import { ClauseSnippet, highlightHtml } from './search/clauseRender.jsx';
 import { PQ_SLASH_COMMANDS, parseSlash } from './search/slash.js';
 import './search/search.css';   // reuse the universal-search shell (bottom bar, suggestions)
 import './pqs/pqs.css';
@@ -75,13 +75,48 @@ function DeptPicker({ value, onChange }) {
 // refinement. Renders cards, the no-match deep-scan prompt, or a dept-empty note.
 function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep, onFlag }) {
   const [deptFilter, setDeptFilter] = useState(resp.initialDept || []);
+  const [filter, setFilter] = useState('');
+  const [sort, setSort] = useState('relevance');
   const results = resp.items || [];
   const toggleDept = (code) => setDeptFilter((cur) => cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]);
-  const visible = results.filter((p) => !dismissed.has(p.id)
-    && (deptFilter.length === 0 || (p.departments || []).some((c) => deptFilter.includes(c))));
+  // Highlight terms travel with the reply when it is opened, so the words lit up on
+  // the card are still lit up in the full text.
+  const hl = { words: resp.highlight || [], phrases: resp.highlight_phrase || [] };
+
+  // Narrow-down box. Deliberately a literal substring match over the fields shown on
+  // the card, NOT another relevance search: this is for "the one about pandemic
+  // cover, I'll know it when I see it" over a long list, where a ranked re-query
+  // would reshuffle the very thing the reader is scanning. Reply bodies are excluded
+  // for the same reason — a filter that matches text you cannot see looks broken.
+  const needle = filter.trim().toLowerCase();
+  const matchesFilter = (p) => !needle || [
+    p.subject, p.title, p.pq_no, p.house, ...(p.tags || []),
+    ...(p.departments || []).map((c) => DEPT_LABEL[c]),
+  ].some((f) => String(f || '').toLowerCase().includes(needle));
+
+  let visible = results.filter((p) => !dismissed.has(p.id)
+    && (deptFilter.length === 0 || (p.departments || []).some((c) => deptFilter.includes(c)))
+    && matchesFilter(p));
+
+  // Date sorts reorder the answer set the search already chose — they do not re-run
+  // the search. An undated reply sorts last either way: an unparsed date is neither
+  // the newest nor the oldest thing here, and guessing would put it at one extreme.
+  if (sort !== 'relevance') {
+    const dir = sort === 'oldest' ? 1 : -1;
+    visible = visible.slice().sort((a, b) => {
+      const x = a.date_iso || ''; const y = b.date_iso || '';
+      if (!x && !y) return 0;
+      if (!x) return 1;
+      if (!y) return -1;
+      return x < y ? dir : x > y ? -dir : 0;
+    });
+  }
+
   // A tag hit is an editor's judgement that the reply IS about this; a body hit is
-  // a mention somewhere in the text. Worth telling apart, so the groups are labelled.
-  const tiered = results.some((p) => p.tier);
+  // a mention somewhere in the text. Worth telling apart, so the groups are labelled
+  // — but only under relevance order. Grouping by tier while sorting by date would
+  // silently break the date order the reader just asked for, into two runs.
+  const tiered = results.some((p) => p.tier) && sort === 'relevance';
 
   // No matches at all — explain and offer Deep Scan (full reply bodies).
   if (results.length === 0) {
@@ -132,22 +167,43 @@ function PqResponse({ resp, dismissed, isAdmin, onOpen, onHide, onDelete, onDeep
           {deptFilter.length > 0 && <button className="pq-dept-clear" onClick={() => setDeptFilter([])}>Clear</button>}
         </div>
       )}
-      <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{resp.deep ? ` mentioning ${resp.label} · deep scan` : resp.browse ? ' in the database' : ` for “${resp.label}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}</div>
+      {results.length > 1 && (
+        <div className="pq-toolbar">
+          <div className="pq-filter">
+            <i className="fas fa-filter" />
+            <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)}
+              placeholder={`Filter these ${results.length} replies — subject, Q number, tag…`}
+              aria-label="Filter these results" />
+            {filter && <button className="pq-filter-x" onClick={() => setFilter('')} aria-label="Clear filter">&times;</button>}
+          </div>
+          <div className="pq-sort" role="group" aria-label="Sort results">
+            {[['relevance', 'Relevance'], ['newest', 'Newest'], ['oldest', 'Oldest']].map(([k, lbl]) => (
+              <button key={k} type="button" className={sort === k ? 'on' : ''}
+                onClick={() => setSort(k)}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="pq-result-count">{visible.length} {visible.length === 1 ? 'reply' : 'replies'}{resp.deep ? ` mentioning ${resp.label} · deep scan` : resp.browse ? ' in the database' : ` for “${resp.label}”`}{deptFilter.length > 0 ? ` · ${deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')}` : ''}{needle ? ` · filtered by “${filter.trim()}”` : ''}{sort !== 'relevance' ? ` · ${sort} first` : ''}</div>
       {visible.length === 0 ? (
-        <p className="iris-msg">No {deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.</p>
+        <p className="iris-msg">
+          {needle
+            ? <>No reply here matches “{filter.trim()}”. <button className="flag-link" onClick={() => setFilter('')}>Clear the filter</button></>
+            : <>No {deptFilter.map((c) => DEPT_LABEL[c]).join(' / ')} PQs in this set.</>}
+        </p>
       ) : (
         <div className="pq-list">
-          {TIERS.map(([tier, head, icon]) => {
-            const group = visible.filter((p) => (p.tier || 'tag') === tier);
+          {/* Split into tiers only under relevance order. Under a date sort the list
+              is one run, or the tier split would quietly re-break the ordering. */}
+          {(tiered ? TIERS : [['all', null, null]]).map(([tier, head, icon]) => {
+            const group = tiered ? visible.filter((p) => (p.tier || 'tag') === tier) : visible;
             if (group.length === 0) return null;
             return (
               <Fragment key={tier}>
-                {/* Label the groups only when the distinction exists — browse, tag
-                    and number results carry no tier and want no header. */}
                 {tiered && <div className="pq-tier-head"><i className={`fas ${icon}`} /> {head}</div>}
                 {group.map((p) => (
-                  <div key={p.id} className="pq-card" onClick={() => onOpen(p.id)} role="button" tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id); }}>
+                  <div key={p.id} className="pq-card" onClick={() => onOpen(p.id, hl)} role="button" tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id, hl); }}>
                     <button className="pq-card-hide" title="Hide from results" onClick={(e) => { e.stopPropagation(); onHide(p.id); }}>&times;</button>
                     {onFlag && <button className="pq-card-flag" title="Flag this reply" onClick={(e) => { e.stopPropagation(); onFlag(p); }}><i className="fas fa-flag" /></button>}
                     {isAdmin && <button className="pq-card-del" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}><i className="fas fa-trash" /></button>}
@@ -191,17 +247,63 @@ export default function Pqs() {
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [active, setActive] = useState(null);
+  // Highlight terms carried IN from the search that found this reply, so the words
+  // that were lit up on the card stay lit up in the full text. Without this, opening
+  // a hit dropped every mark and left the reader hunting through 25k characters for
+  // the word they had just searched for.
+  const [activeHl, setActiveHl] = useState(null);
+  const [hitIdx, setHitIdx] = useState(0);
   const [opening, setOpening] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [allTags, setAllTags] = useState([]);
   const [flagTarget, setFlagTarget] = useState(null);   // PQ (or no-result) being flagged
   const chatRef = useRef(null);
+  const docRef = useRef(null);        // the rendered reply, for match navigation
   const lastUserRef = useRef(null);
   const inputAreaRef = useRef(null);
   const inputRef = useRef(null);      // picking a slash command hands focus back
   const liveIdRef = useRef(null);     // id of the current as-you-type block, or null
   const liveSeqRef = useRef(0);       // guards against out-of-order live responses
+
+  // Mark the search terms inside the opened reply. highlightHtml parses and walks
+  // text nodes only, so the stored markup is untouched — and it is memoised because
+  // a PQ body is tens of thousands of characters and this would otherwise re-parse
+  // on every keystroke elsewhere on the page.
+  const activeHtml = useMemo(() => {
+    if (!active?.html) return '';
+    if (!activeHl?.words?.length && !activeHl?.phrases?.length) return active.html;
+    return highlightHtml(active.html, activeHl.words, activeHl.phrases);
+  }, [active, activeHl]);
+
+  // Counted off the markup rather than the DOM so it is ready on first paint —
+  // highlightHtml emits class="hl" and class="hl hl-phrase", both matched here.
+  const hitCount = useMemo(
+    () => (activeHtml.match(/<mark class="hl/g) || []).length, [activeHtml]);
+
+  // Jump straight to the first match. The verbatim hit wins over a single-word one:
+  // landing on an incidental cousin of one word, when the exact phrase sits further
+  // down, is worse than not scrolling at all.
+  useEffect(() => {
+    if (!active || !docRef.current) return;
+    const marks = docRef.current.querySelectorAll('mark.hl');
+    if (!marks.length) { setHitIdx(0); return; }
+    const first = docRef.current.querySelector('mark.hl-phrase') || marks[0];
+    const i = [...marks].indexOf(first);
+    setHitIdx(i);
+    marks.forEach((el, n) => el.classList.toggle('is-cur', n === i));
+    first.scrollIntoView({ block: 'center' });
+  }, [active, activeHtml]);
+
+  // Step through matches. Wraps, so it never dead-ends at the last hit.
+  function gotoHit(delta) {
+    const marks = docRef.current?.querySelectorAll('mark.hl');
+    if (!marks?.length) return;
+    const next = (hitIdx + delta + marks.length) % marks.length;
+    setHitIdx(next);
+    marks.forEach((el, n) => el.classList.toggle('is-cur', n === next));
+    marks[next].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
 
   const loadTags = () => api.get('/pq/tags').then((d) => setAllTags(d.tags || [])).catch(() => setAllTags([]));
   useEffect(() => { loadTags(); }, []);
@@ -361,8 +463,11 @@ export default function Pqs() {
 
   function pickTag(tag) { setQuery(''); setSuggestions([]); runSearch(tag, 'tag'); }
 
-  function open(id) {
+  // `hl` is the highlight payload of the search that surfaced this reply; null when
+  // opened from browse or a suggestion, where nothing was searched for.
+  function open(id, hl = null) {
     setOpening(true);
+    setActiveHl(hl);
     api.get(`/pq/${id}`).then(setActive)
       .catch((e) => toast.error(e.message || 'Could not load PQ'))
       .finally(() => setOpening(false));
@@ -387,6 +492,14 @@ export default function Pqs() {
         <PageHeader fullForm="Regulatory Library" title="Parliamentary Q&A" scope="Search IRDAI replies to Parliamentary Questions" scopeDot={false} />
         <div className="pq-read-bar">
           <button className="btn btn-ghost btn-sm" onClick={() => setActive(null)}><i className="fas fa-arrow-left" /> Back to results</button>
+          {hitCount > 0 && (
+            <div className="pq-hitnav" title="Matches for your search, in this reply">
+              <i className="fas fa-highlighter" />
+              <span className="pq-hitnav-n"><strong>{hitIdx + 1}</strong> of {hitCount}</span>
+              <button type="button" onClick={() => gotoHit(-1)} aria-label="Previous match"><i className="fas fa-chevron-up" /></button>
+              <button type="button" onClick={() => gotoHit(1)} aria-label="Next match"><i className="fas fa-chevron-down" /></button>
+            </div>
+          )}
           <div className="pq-read-actions">
             {isEditor && <EditMeta pq={active}
               onSaved={(title, tags, departments, date) => { setActive({ ...active, title, tags, departments, date }); loadTags(); }} />}
@@ -415,7 +528,7 @@ export default function Pqs() {
             {active.tags?.length > 0 && (
               <div className="pq-tags">{active.tags.map((t) => <span key={t} className="pq-tag">{t}</span>)}</div>
             )}
-            <div className="pq-html" dangerouslySetInnerHTML={{ __html: active.html }} />
+            <div className="pq-html" ref={docRef} dangerouslySetInnerHTML={{ __html: activeHtml }} />
           </div>
         </div>
       </div>

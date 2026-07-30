@@ -143,6 +143,71 @@
   color: var(--muted, #64748b); text-decoration: underline; padding: 4px 6px; }
 .pq-dept-clear:hover { color: var(--brand, #2563eb); }
 
+/* ---- Narrow-down + sort toolbar ----
+   Sits between the department facet and the list: both controls act on the
+   result set that is already on screen, so they belong with it rather than in
+   the search bar at the foot of the page (which starts a NEW search). */
+.pq-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.pq-filter {
+  display: flex; align-items: center; gap: 7px; flex: 1 1 240px; min-width: 0;
+  border: 1px solid var(--line, #eef1f6); border-radius: var(--r-pill, 999px);
+  background: var(--card, #fff); padding: 0 12px; height: 34px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pq-filter:focus-within { border-color: var(--brand, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.10); }
+.pq-filter > i { font-size: 11px; color: var(--faint, #94a3b8); flex: 0 0 auto; }
+.pq-filter input {
+  flex: 1 1 auto; min-width: 0; border: none; outline: none; background: none;
+  font: inherit; font-size: 12.5px; color: inherit; padding: 0;
+}
+.pq-filter input::-webkit-search-cancel-button { display: none; }
+.pq-filter-x {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; padding: 0 2px;
+  font-size: 17px; line-height: 1; color: var(--faint, #94a3b8);
+}
+.pq-filter-x:hover { color: var(--bad, #dc2626); }
+
+.pq-sort { display: flex; flex: 0 0 auto; border: 1px solid var(--line, #eef1f6);
+  border-radius: var(--r-pill, 999px); overflow: hidden; background: var(--card, #fff); }
+.pq-sort button {
+  border: none; background: none; cursor: pointer; font: inherit; font-size: 11.5px;
+  font-weight: 600; padding: 0 13px; height: 34px; color: var(--muted, #64748b);
+  transition: background .15s, color .15s;
+}
+.pq-sort button + button { border-left: 1px solid var(--line, #eef1f6); }
+.pq-sort button:hover { background: rgba(0,0,0,.03); color: var(--ink, #0f172a); }
+.pq-sort button.on { background: var(--navy-700, #1a237e); color: #fff; }
+
+/* ---- Match navigation in the reading view ----
+   A PQ reply runs to tens of thousands of characters, so "your search term is in
+   here somewhere" is not an answer. This counts the hits and steps between them. */
+.pq-hitnav {
+  display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  border: 1px solid var(--line, #eef1f6); border-radius: var(--r-pill, 999px);
+  padding: 0 6px 0 11px; height: 32px; background: var(--card, #fff);
+}
+.pq-hitnav > i { font-size: 11px; color: #b45309; }
+.pq-hitnav-n { font-size: 11.5px; color: var(--muted, #64748b); white-space: nowrap; }
+.pq-hitnav-n strong { color: var(--ink, #0f172a); }
+.pq-hitnav button {
+  border: none; background: none; cursor: pointer; padding: 0; width: 22px; height: 22px;
+  border-radius: 50%; color: var(--muted, #64748b); font-size: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pq-hitnav button:hover { background: rgba(0,0,0,.06); color: var(--ink, #0f172a); }
+
+/* The hit you are currently parked on, while stepping. Distinct from the tiering
+   (which says how strong a match is) — this says where you are. */
+.pq-html mark.hl.is-cur {
+  background: rgba(37,99,235,.22);
+  border-bottom: 2px solid var(--brand, #2563eb);
+  border-radius: 2px; padding: 0 2px;
+  scroll-margin: 40vh;
+}
+
 /* Department badge on cards / read view */
 .pq-dept-badge {
   display: inline-block; padding: 2px 9px; border-radius: 999px;
