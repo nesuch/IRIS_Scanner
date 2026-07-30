@@ -45,7 +45,8 @@
       "canonical": "CreditAccess Life Insurance Ltd.",
       "variants": [
         "CreditAccess Life Insurance Ltd.",
-        "CAL"
+        "CAL",
+        "Credit Access Life Insurance Ltd."
       ],
       "why": [
         "The handbook writes this insurer as the bare abbreviation 'CAL', so no",
@@ -61,9 +62,41 @@
         "Renaming also fixes the CLASS: insurer_class is derived from the name after",
         "aliases are applied, so 'CAL' (which matched nothing) was falling through to",
         "General while sitting in a life-only table.",
-        "insurer_class is pinned here rather than left to the name-based derivation, because that derivation is skipped whenever the DB already carries the column - so a stored 'General' would survive the rename."
+        "insurer_class is pinned here rather than left to the name-based derivation, because that derivation is skipped whenever the DB already carries the column - so a stored 'General' would survive the rename.",
+        "A third rendering, 'Credit Access Life Insurance Ltd.' (356 rows), was found reconciling against the Annual Report - so this insurer was split THREE ways: 'CAL', 'CreditAccess' and 'Credit Access'. Zero overlapping (metric, lob, fy) triples across all three. Annexure 6 (p.171, S.No 11) prints it closed up as 'CreditAccess Life Insurance Ltd.'"
       ],
       "insurer_class": "Life"
+    },
+    {
+      "canonical": "Ageas Federal Life Insurance Ltd.",
+      "variants": [
+        "Ageas Federal Life Insurance Ltd.",
+        "Aegas Federal Life Insurance Ltd."
+      ],
+      "why": [
+        "'Aegas' is a misspelling of 'Ageas' in the handbook - the letters are transposed.",
+        "Same class (Life), zero overlapping (metric, lob, fy) triples, 1,150 rows stranded off",
+        "the 2,008-row main book. Annual Report 2024-25 Annexure 7 (p.172, S.No 4 of Life,",
+        "Private Sector) prints 'Ageas Federal Life Insurance Co. Ltd.', confirming the spelling.",
+        "Canonical keeps our dominant existing rendering so the insurer_id does not churn."
+      ]
+    },
+    {
+      "canonical": "Future Generali India Insurance Co. Ltd.",
+      "variants": [
+        "Future Generali India Insurance Co. Ltd.",
+        "Future Generali India Insurance C. Ltd."
+      ],
+      "why": [
+        "'C. Ltd.' is a typo for 'Co. Ltd.'. Both are the GENERAL insurer - the life business is a",
+        "separate entity (future_generali_india_life_insurance_ltd) and is untouched here.",
+        "The main general book (1,644 rows, 17 lines of business) was split from a",
+        "Personal-Accident-only fragment (397 rows), with zero overlapping triples.",
+        "Confirmed present as one general insurer in Annexure 3 (p.162, S.No 4, printed",
+        "'Future Generalli General Insurance Co. Ltd.' - the report's own typo).",
+        "NOTE: renamed to Generali Central Insurance after this report; the display name is",
+        "left as filed for now so it matches the handbook and the Annual Report."
+      ]
     }
   ]
 }

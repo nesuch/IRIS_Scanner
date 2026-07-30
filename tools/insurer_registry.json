@@ -1,0 +1,132 @@
+{
+  "_readme": [
+    "The registered insurer population, transcribed from the IRDAI Annual Report",
+    "2024-25 annexures. This is the AUTHORITY for which insurers are current and",
+    "which segment each belongs to.",
+    "",
+    "Why it has to be curated: nothing in the handbook data distinguishes a current",
+    "insurer from one that has wound up or merged. Both were checked and both fail.",
+    "The footnote markers ($ * ^^ #) that mark exits in the handbook's own tables are",
+    "absent from the frame the app reads, and 'last filed year' is not a proxy either",
+    "- Exide Life and Sahara India Life both still show 2024-25, years after ceasing",
+    "to write business, because the handbook keeps carrying them.",
+    "",
+    "Insurers NOT listed here are not errors and must not be deleted. They are",
+    "registered insurers that discontinued operations or merged, and their historical",
+    "filings are real. They are marked inactive so that current counts, market shares",
+    "and peer cohorts exclude them, while history still resolves.",
+    "",
+    "Sources, all from IRDAI Annual Report 2024-25:",
+    "  Annexure 3 (p.162) - Motor Third Party market share: the definitive list of 25",
+    "     general insurers.",
+    "  Annexure 6 (p.171) - micro-insurance products by life insurers: 24 life",
+    "     insurers, and the second confirmation of CreditAccess Life.",
+    "  Annexure 7 (p.172) - products and riders: life, general, specialised (public",
+    "     sector) and standalone health, split public/private.",
+    "",
+    "Names are as printed, including the report's own typos ('Future Generalli',",
+    "'CreditAccess Life Insurance Ltd..'), because matching is done on normalised",
+    "tokens rather than exact strings and the printed form is the citable one."
+  ],
+  "source": "IRDAI Annual Report 2024-25, Annexures 3, 6 and 7",
+  "as_at": "2025-03-31",
+  "segments": {
+    "General": {
+      "authority": "Annexure 3 (p.162), 25 insurers",
+      "public": [
+        "National Insurance Co. Ltd.",
+        "The New India Assurance Co. Ltd.",
+        "The Oriental Insurance Co. Ltd.",
+        "United India Insurance Co. Ltd."
+      ],
+      "private": [
+        "Acko General Insurance Ltd.",
+        "Bajaj Allianz General Insurance Co. Ltd.",
+        "Cholamandalam MS General Insurance Co. Ltd.",
+        "Future Generali India Insurance Co. Ltd.",
+        "Go Digit General Insurance Ltd.",
+        "HDFC ERGO General Insurance Co. Ltd.",
+        "ICICI Lombard General Insurance Co. Ltd.",
+        "IFFCO Tokio General Insurance Co. Ltd.",
+        "Kshema General Insurance Ltd.",
+        "Liberty General Insurance Ltd.",
+        "Magma General Insurance Ltd.",
+        "Navi General Insurance Ltd.",
+        "Raheja QBE General Insurance Co. Ltd.",
+        "Reliance General Insurance Co. Ltd.",
+        "Royal Sundaram General Insurance Co. Ltd.",
+        "SBI General Insurance Co. Ltd.",
+        "Shriram General Insurance Co. Ltd.",
+        "Tata AIG General Insurance Co. Ltd.",
+        "Universal Sompo General Insurance Co. Ltd.",
+        "Zuno General Insurance Co. Ltd.",
+        "Zurich Kotak General Insurance Co. (India) Ltd."
+      ]
+    },
+    "Specialised": {
+      "authority": "Annexure 7 (p.172), Specialised Insurers (Public Sector), 2 insurers",
+      "public": [
+        "Agriculture Insurance Co of India Ltd",
+        "ECGC Ltd."
+      ],
+      "private": []
+    },
+    "SAHI": {
+      "authority": "Annexure 7 (p.172), Standalone Health Insurers, 7 listed",
+      "public": [],
+      "private": [
+        "Aditya Birla Health Insurance Co. Ltd.",
+        "Care Health Insurance Ltd.",
+        "Galaxy Health & Allied Insurance Co. Ltd.",
+        "Manipal Cigna Health Insurance Co. Ltd.",
+        "Niva Bupa Health Insurance Co. Ltd.",
+        "Narayana Health Insurance Co. Ltd.",
+        "Star Health and Allied Insurance Co Ltd"
+      ]
+    },
+    "Life": {
+      "authority": "Annexure 7 (p.172), 25 insurers (1 public + 24 private)",
+      "public": [
+        "Life Insurance Corporation of India"
+      ],
+      "private": [
+        "Acko Life Insurance Ltd.",
+        "Aditya Birla Sun Life Insurance Co. Ltd.",
+        "Ageas Federal Life Insurance Co. Ltd.",
+        "Aviva Life Insurance Company India Ltd.",
+        "Axis Max Life Insurance Co. Ltd.",
+        "Bajaj Allianz Life Insurance Co. Ltd.",
+        "Bandhan Life Insurance Ltd.",
+        "Bharti AXA Life Insurance Co. Ltd.",
+        "Canara HSBC Life Insurance Co. Ltd.",
+        "CreditAccess Life Insurance Ltd.",
+        "Edelweiss Life Insurance Co. Ltd.",
+        "Future Generali Life Insurance Co. Ltd.",
+        "Go Digit Life Insurance Ltd.",
+        "HDFC Life Insurance Co. Ltd.",
+        "ICICI Prudential Life Insurance Co. Ltd.",
+        "IndiaFirst Life Insurance Co. Ltd.",
+        "Kotak Mahindra Life Insurance Co. Ltd.",
+        "PNB MetLife India Insurance Co. Ltd.",
+        "Pramerica Life Insurance Ltd.",
+        "Reliance Nippon Life Insurance Co Ltd",
+        "SBI Life Insurance Co. Ltd.",
+        "Shriram Life Insurance Co. Ltd.",
+        "Star Union Dai-ichi Life Ins. Co. Ltd.",
+        "Tata AIA Life Insurance Co. Ltd."
+      ]
+    }
+  },
+  "_pending": [
+    "Reinsurers and Foreign Reinsurance Branches are NOT yet transcribed - the list",
+    "is not in Annexures 3, 6 or 7 (pages 162-172). The user reports 12 reinsurers",
+    "and FRBs including one newly registered reinsurer; find that annexure and add a",
+    "'Reinsurer' and 'FRB' segment here.",
+    "",
+    "Counts to reconcile against the user's stated registration figures (74 total):",
+    "life 26 v 25 transcribed, SAHI 8 v 7 transcribed. Annexures 3/6/7 are activity",
+    "tables (products filed, MTP written), so an insurer registered but not yet",
+    "writing may be absent. Treat the gap as unresolved rather than assuming either",
+    "number is wrong."
+  ]
+}
