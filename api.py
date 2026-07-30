@@ -1232,6 +1232,64 @@ def api_insurer_compare():
             "note": "size-normalised — the comparable conduct measure",
         })
 
+    # LINE-OF-BUSINESS OVERLAP — the reason a General/SAHI comparison is not
+    # apples-to-oranges after all. Their books overlap on health, so on that LINE
+    # they are direct competitors even though their CLASSES differ. Where the
+    # selected insurers share a line, compare them on it and rank them against
+    # every insurer writing that line, not just their own class.
+    LOB_MARKETS = {"Health + PA + Travel": ("Health", ("General", "SAHI")),
+                   "Fire": ("Fire", ("General",)),
+                   "Motor": ("Motor", ("General",)),
+                   "Marine": ("Marine", ("General",))}
+    lob_rows = []
+    if "Line_of_Business" in df.columns:
+        gdp_l = "gross_direct_premium_within_india__inr"
+        writes = {}
+        for iid, m in subs.items():
+            g = m[m["metric_id"] == gdp_l]
+            writes[iid] = set(g["Line_of_Business"].dropna().unique()) if not g.empty else set()
+        shared = set.intersection(*writes.values()) if writes and all(writes.values()) else set()
+        for lob in sorted(shared):
+            spec = LOB_MARKETS.get(str(lob))
+            if not spec:
+                continue
+            mkt_label, members = spec
+            mkt = df[(df["metric_id"] == gdp_l) & (df["Line_of_Business"] == lob)
+                     & (df["insurer_class"].isin(members))]
+            if mkt.empty:
+                continue
+            fys = _fy_series(mkt["fy_canonical"])
+            if not fys:
+                continue
+            fy = fys[-1]
+            by = mkt[mkt["fy_canonical"] == fy].groupby("insurer_id")["value_base"].sum()
+            tot = float(by.sum())
+            if tot <= 0:
+                continue
+            vals, shares = {}, {}
+            for iid in subs:
+                if iid in by.index:
+                    vals[iid] = float(by[iid])
+                    shares[iid] = round(float(by[iid]) / tot * 100, 2)
+            if len(vals) != len(subs):
+                continue
+            lob_rows.append({
+                "id": f"lob:{lob}:gdp", "label": f"{mkt_label} — gross direct premium",
+                "unit": "inr", "fy": fy, "higher_is_better": True,
+                "best": max(vals, key=vals.get), "worst": min(vals, key=vals.get),
+                "values": vals, "trends": {}, "derived": True,
+                "note": f"same line of business, so directly comparable across classes",
+            })
+            lob_rows.append({
+                "id": f"lob:{lob}:share", "label": f"{mkt_label} market share",
+                "unit": "percent", "fy": fy, "higher_is_better": True,
+                "best": max(shares, key=shares.get), "worst": min(shares, key=shares.get),
+                "values": shares, "trends": {}, "derived": True,
+                "note": f"of the whole {mkt_label.lower()} market ({' + '.join(members)}, "
+                        f"{len(by)} insurers) — not of either insurer's own class",
+            })
+    rows = lob_rows + rows
+
     # Market share is only meaningful inside one class — a share of "all insurance"
     # would mix incompatible premium definitions.
     share = {}

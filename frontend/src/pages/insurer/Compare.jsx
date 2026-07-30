@@ -64,9 +64,12 @@ export default function Compare({ data, insurers }) {
           <i className="fas fa-triangle-exclamation" />
           <div>
             <strong>Comparing across insurer classes ({data.classes.join(', ')}).</strong>{' '}
-            Only lines that every selected insurer reports are shown — class-specific
-            metrics (premium, solvency, claims) are hidden because they mean different
-            things in each class. Market share is suppressed for the same reason.
+            Only lines every selected insurer reports are shown; class-specific metrics are
+            hidden because they mean different things in each class, and class market share
+            is suppressed. <strong>Where their books overlap on a line of business</strong>,
+            that line is compared directly at the top — a standalone health insurer and a
+            general insurer genuinely compete on health, and are ranked there against every
+            insurer writing it.
           </div>
         </div>
       )}
