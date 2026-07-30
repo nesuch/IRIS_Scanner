@@ -2041,17 +2041,28 @@ def api_pq_download(pid):
 # question was starred. Both appear in half a dozen written forms — "9000", "U9000",
 # "U 9000", "*9000", "U.9000" — so a plain string compare treats the same question
 # filed twice as two questions.
-_PQ_STAR_RE = re.compile(r"[\*★]")
+#
+# This corpus writes starred as a leading "S" ("S850", "RSPQ_S6487") far more often
+# than as an asterisk. Without S here it parsed as "marker unsaid", which is
+# compatible with everything — so "S850" and "U850" would have merged, fusing a
+# starred and an unstarred question into one. That is precisely the case the marker
+# exists to keep apart, and it is the silent direction of the bug: a wrong merge
+# hides a reply, where a wrong split merely shows two.
+_PQ_STAR_RE = re.compile(r"[\*★]|\bs\b|^s(?=\d)", re.I)
 _PQ_UNSTAR_RE = re.compile(r"\bu\b|^u(?=\d)", re.I)
 
 
 def _pq_num_parts(pq_no):
     """(digits, marker) for a PQ number. marker: '*' starred, 'u' unstarred, '' unsaid.
 
-    Splitting the two lets us say "same question, written differently" (same digits,
-    compatible markers) apart from "different questions that share a serial" — a
-    starred and an unstarred Q both numbered 9000 in the same session are genuinely
-    two questions, and collapsing them would lose one.
+    Starred is written "*9000", "★9000", "S9000" or "S 9000"; unstarred "U9000" or
+    "U 9000". "RS6487" does NOT read as starred — the S there is Rajya Sabha, and it
+    carries no word boundary, so neither branch of the pattern fires.
+
+    Splitting digits from marker lets us say "same question, written differently"
+    (same digits, compatible markers) apart from "different questions that share a
+    serial" — a starred and an unstarred Q both numbered 9000 in the same session are
+    genuinely two questions, and collapsing them would lose one.
     """
     s = (pq_no or "").strip().lower()
     if not s:
