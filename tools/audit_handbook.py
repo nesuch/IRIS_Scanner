@@ -59,13 +59,24 @@ HANDBOOK_DIR = ("/Users/sudeepchandranemalikanti/Desktop/Parliament Questions/"
 
 # A handbook amount is scaled; IRIS stores base rupees. Which scale applies is stated
 # in the table's own subtitle, so it is read per table rather than assumed.
+# The word "in" is optional. Table 62 writes "(Amount in ₹Lakh)" and Table 50 just
+# "(₹Crore)" — requiring "in" silently left every Crore table unscaled, which made
+# correct values look absent and produced a 57% "missing" rate that was entirely mine.
 _SCALE_HINTS = (
-    (re.compile(r"in\s*[`₹rs.]*\s*crore", re.I), 1e7),
-    (re.compile(r"in\s*[`₹rs.]*\s*lakh", re.I), 1e5),
-    (re.compile(r"in\s*[`₹rs.]*\s*thousand", re.I), 1e3),
+    (re.compile(r"\bcrore", re.I), 1e7),
+    (re.compile(r"\blakh", re.I), 1e5),
+    (re.compile(r"\bthousand|'000", re.I), 1e3),
 )
 _YEAR_RE = re.compile(r"^(19|20)\d{2}\s*-\s*\d{2,4}$")
 _PCT_RE = re.compile(r"ratio|per\s*cent|%|share", re.I)
+# IRIS deliberately stores leaf items only; totals were removed and are recomputed from
+# tools/total_definitions.json. So a handbook Total column is EXPECTED to be absent, and
+# counting it as a loss overstates the gap badly.
+#
+# It is also the strongest test available. The handbook prints the whole, we hold the
+# parts, and neither was derived from the other - so if our leaves sum to their total,
+# the leaves are right. That checks far more than a label comparison can.
+_TOTAL_RE = re.compile(r"^\s*(grand\s+)?total\b|\ball\s+classes\b|\btotal\s*$", re.I)
 
 
 def norm(s):
@@ -146,6 +157,44 @@ def find_header_block(rows):
     return first, hdr
 
 
+def parse_sheet_transposed(rows, is_insurer, first, filled, width):
+    """The other layout: insurers ACROSS the top, metrics down the side.
+
+    Every account statement is shaped this way - Policyholders, Shareholders, Balance
+    Sheet, for both life and general - so a parser that only understands insurer-per-row
+    silently skipped six of the largest tables in the handbook. Here the row label is the
+    metric ("Premiums earned (Net)"), and a column resolves to (insurer, year, line of
+    business) through the header stack.
+    """
+    def at(level, ci):
+        if level is None or level < 0 or level >= len(filled):
+            return ""
+        row = filled[level]
+        return row[ci] if ci < len(row) else ""
+
+    ins_lvl = max(range(len(filled)),
+                  key=lambda l: sum(1 for v in filled[l] if v and is_insurer(v)))
+    year_lvl = next((l for l in range(len(filled))
+                     if any(_YEAR_RE.match(str(v).strip()) for v in filled[l])), None)
+
+    for r in rows[first:]:
+        metric = next((c for c in r[:2] if isinstance(c, str) and c.strip()), None)
+        if not metric:
+            continue
+        for ci in range(width):
+            v = r[ci] if ci < len(r) else None
+            if not isinstance(v, (int, float)) or isinstance(v, bool):
+                continue
+            label = at(ins_lvl, ci)
+            if not label or not is_insurer(label):
+                continue
+            year = at(year_lvl, ci) if year_lvl is not None else ""
+            ctx = " · ".join(dict.fromkeys(
+                x for lvl in range(len(filled))
+                if lvl not in (ins_lvl, year_lvl) and (x := at(lvl, ci))))
+            yield label, str(year).strip(), ctx, str(metric).strip(), float(v)
+
+
 def parse_sheet(rows, is_insurer):
     """Yield (insurer_label, year, context, metric, value) for every numeric cell."""
     first, hdr = find_header_block(rows)
@@ -163,6 +212,15 @@ def parse_sheet(rows, is_insurer):
             return ""
         row = filled[level]
         return row[ci] if ci < len(row) else ""
+
+    # Which way round is the table? If insurer names sit in the HEADER rather than the
+    # label column, it is an account-statement layout and needs the transposed reader.
+    hdr_names = sum(1 for lv in filled for v in lv if v and is_insurer(v))
+    lbl_names = sum(1 for r in rows[first:]
+                    for c in r[:4] if isinstance(c, str) and is_insurer(c))
+    if hdr_names > lbl_names:
+        yield from parse_sheet_transposed(rows, is_insurer, first, filled, width)
+        return
 
     # Whichever header row holds year strings is the year level; the row closest to the
     # data is the metric; anything between is context.
@@ -242,6 +300,7 @@ def audit_sheet(rows, iris_idx, names, sheet, part, tol=0.02):
         # A percentage is stored as filed; an amount is scaled to base rupees. Try both
         # rather than trusting the header, since a "Ratio" column can print 0.61 or 61.
         col_scale = column_scale(metric, ctx, scale)
+        is_total = bool(_TOTAL_RE.search(metric) or _TOTAL_RE.search(ctx))
         cands = [val] if _PCT_RE.search(metric) else [val * col_scale, val]
         hit = None
         for want in cands:
@@ -274,6 +333,35 @@ def audit_sheet(rows, iris_idx, names, sheet, part, tol=0.02):
                 if len(slots) > 1:
                     break
             slot = slots[0] if len(slots) == 1 else None
+
+            # A total we chose not to store: rebuild it from the leaves and see whether
+            # it agrees. This is the reconciliation that actually proves the data.
+            if slot is None and is_total and not _PCT_RE.search(metric):
+                mt = toks(metric)
+                # Sum ONE metric, not everything sharing a word. "Premiums earned (Net)"
+                # overlaps both premiums_earned_net__inr and net_earned_premium__inr, and
+                # adding both double-counted the total. Pick the single best-matching
+                # metric_id, then sum only its non-total contexts.
+                best, best_score = None, 0
+                for _v, mid2, _l, _c in pool:
+                    sc = len(mt & toks(mid2))
+                    if sc > best_score:
+                        best, best_score = mid2, sc
+                parts_sum = sum(v for v, mid2, lob2, cob2 in pool
+                                if best and mid2 == best
+                                and not _TOTAL_RE.search(f"{lob2} {cob2}")) if best else 0
+                want = val * col_scale
+                if parts_sum and want:
+                    agree = abs(parts_sum - want) <= abs(want) * 0.02
+                    out.append({"part": part, "table": sheet, "insurer": label[:44],
+                                "year": year, "hb_context": ctx[:60],
+                                "hb_metric": metric[:44], "hb_value": val,
+                                "status": "total_ok" if agree else "total_mismatch",
+                                "iris_metric": "(sum of leaves)", "iris_lob": "",
+                                "iris_cob": "", "iris_value": parts_sum,
+                                "ratio": parts_sum / want})
+                    continue
+
             if slot is not None:
                 v, mid, lob, cob = slot
                 out.append({"part": part, "table": sheet, "insurer": label[:44],
@@ -354,7 +442,8 @@ def main():
             agg[k] = agg.get(k, 0) + v
     total = sum(agg.values()) or 1
     print("\n=== totals ===")
-    for k in ("ok", "value_mismatch", "relocated", "missing", "missing_zero"):
+    for k in ("ok", "total_ok", "total_mismatch", "value_mismatch",
+              "relocated", "missing", "missing_zero"):
         print(f"  {k:<14} {agg.get(k,0):>8}  {agg.get(k,0)/total*100:5.1f}%")
 
     if skipped:
