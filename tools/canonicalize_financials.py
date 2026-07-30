@@ -19,6 +19,8 @@ Everything is ADDITIVE (new nullable columns + new dim tables) and IDEMPOTENT
   python tools/canonicalize_financials.py --db iris.db --revert   # remove the layer
 """
 import argparse
+import json
+import os
 import re
 import sqlite3
 import sys
@@ -50,10 +52,62 @@ def slug(text: str, maxlen: int = 60) -> str:
     return s[:maxlen] or "x"
 
 
-def canonical_display(variants):
+def canonical_display(variants, pinned=None):
     """Prefer the most complete/long form as the display name (it usually
-    carries the full legal suffix), tie-broken alphabetically for stability."""
+    carries the full legal suffix), tie-broken alphabetically for stability.
+
+    `pinned` (from the alias file) wins outright. The length heuristic is only a
+    guess at which rendering is most complete, and it guesses wrong exactly when
+    an alias group exists: "Galaxy Health and Allied Insurance Ltd." is longer
+    than "Galaxy Health Insurance Co. Ltd" but is not the name to show.
+    """
+    if pinned:
+        return pinned
     return sorted(variants, key=lambda v: (-len(v), v))[0]
+
+
+# ----------------------------------------------------------------------------
+# Verified same-company aliases
+# ----------------------------------------------------------------------------
+# insurer_key() merges typographic variants. It cannot merge two genuinely
+# different NAMES for one company — that is a real-world fact, not a string
+# operation — so those live in tools/insurer_aliases.json and are applied here.
+# Kept as data rather than code so a merge is reviewable in a diff, and shared
+# with the runtime (iris_brain) so a deploy carries the fix to production, which
+# restores its DB from the Litestream replica and never sees a local migration.
+_ALIAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "insurer_aliases.json")
+
+
+def load_aliases(path=None):
+    """-> (key_remap, display_pin) both keyed on insurer_key().
+
+    key_remap sends every variant's key to the canonical variant's key, so all
+    of them group together. display_pin fixes the label for that group.
+    Returns empty maps when the file is missing: the alias layer is an override,
+    never a prerequisite.
+    """
+    path = path or _ALIAS_FILE
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            spec = json.load(fh)
+    except (OSError, ValueError):
+        return {}, {}
+    key_remap, display_pin = {}, {}
+    for group in spec.get("aliases") or []:
+        canonical = (group.get("canonical") or "").strip()
+        variants = [v for v in (group.get("variants") or []) if (v or "").strip()]
+        if not canonical or len(variants) < 2:
+            continue
+        target = insurer_key(canonical)
+        if not target:
+            continue
+        display_pin[target] = canonical
+        for v in variants:
+            k = insurer_key(v)
+            if k:
+                key_remap[k] = target
+    return key_remap, display_pin
 
 
 # ----------------------------------------------------------------------------
@@ -179,16 +233,18 @@ def apply(conn):
     # --- Build insurer dimension -------------------------------------------
     insurers = [r[0] for r in cur.execute(
         "SELECT DISTINCT insurer FROM financial_metrics WHERE insurer IS NOT NULL AND insurer<>''")]
+    key_remap, display_pin = load_aliases()
     groups = {}
     for name in insurers:
-        groups.setdefault(insurer_key(name), []).append(name)
+        k = insurer_key(name)
+        groups.setdefault(key_remap.get(k, k), []).append(name)
     insurer_id_of = {}          # raw name -> insurer_id
     cur.execute("""CREATE TABLE IF NOT EXISTS insurer_dim (
         insurer_id TEXT PRIMARY KEY, canonical_name TEXT, variants INTEGER)""")
     cur.execute("DELETE FROM insurer_dim")
     used = set()
     for key, variants in groups.items():
-        disp = canonical_display(variants)
+        disp = canonical_display(variants, display_pin.get(key))
         iid = slug(disp)
         while iid in used:
             iid += "_x"
@@ -282,6 +338,69 @@ def revert(conn):
     conn.commit()
 
 
+_SPLIT_NOISE = {"ltd", "limited", "co", "company", "india", "the", "assurance",
+                "pvt", "private", "corporation", "of", "plc", "se", "insurance",
+                "and", "allied"}
+
+
+def _report_suspected_splits(conn):
+    """Flag one company that may have landed under two insurer_ids.
+
+    insurer_key() cannot see that "Galaxy Health and Allied Insurance Ltd." and
+    "Galaxy Health Insurance Co. Ltd" are the same company, and that split is
+    almost invisible downstream — it just makes a profile look thin and a market
+    look one insurer more crowded than it is. This surfaces the candidates at
+    ingest, when a new name first appears, instead of when someone notices two
+    entries in a picker.
+
+    Reported, never merged: only the alias file merges, and only after a human has
+    confirmed it. Entries already covered there are excluded, so a resolved case
+    stops nagging.
+
+    Heuristic: same licence class, and identical once group/suffix words and the
+    class words are stripped. Different classes are left alone — Bajaj Allianz
+    Life and Bajaj Allianz General really are two companies.
+    """
+    q = conn.execute
+    if not q("SELECT 1 FROM sqlite_master WHERE type='table' AND name='insurer_dim'").fetchone():
+        return
+    key_remap, _pin = load_aliases()
+    rows = q("""SELECT d.insurer_id, d.canonical_name,
+                       (SELECT COUNT(*) FROM financial_metrics f WHERE f.insurer_id=d.insurer_id)
+                FROM insurer_dim d""").fetchall()
+
+    def dkey(name):
+        s = re.sub(r"[#^*$~]+", "", name or "")
+        toks = [t for t in re.split(r"[^a-z0-9]+", s.lower())
+                if t and t not in _SPLIT_NOISE]
+        return tuple(sorted(toks))
+
+    groups = {}
+    for iid, name, n in rows:
+        cls = [r[0] for r in q("""SELECT DISTINCT insurer_class FROM financial_metrics
+                                  WHERE insurer_id=? AND insurer_class IS NOT NULL""", (iid,))]
+        groups.setdefault((dkey(name), tuple(sorted(cls))), []).append((iid, name, n))
+
+    flagged = []
+    for (k, cls), members in sorted(groups.items()):
+        if len(members) < 2 or not k:
+            continue
+        # Already declared as one company in the alias file? Then it is resolved.
+        if all(insurer_key(nm) in key_remap for _i, nm, _n in members):
+            continue
+        flagged.append((k, cls, members))
+
+    if not flagged:
+        print("   no suspected same-company splits")
+        return
+    print(f"   ⚠ {len(flagged)} suspected same-company split(s) "
+          f"— confirm, then add to tools/insurer_aliases.json:")
+    for k, cls, members in flagged:
+        print(f"      [{' '.join(k)}] class={'/'.join(cls) or '?'}")
+        for iid, name, n in members:
+            print(f"          {n:>7} rows  {name}  [{iid}]")
+
+
 def report(conn):
     q = conn.execute
     print("\n--- canonicalization report ---")
@@ -291,6 +410,7 @@ def report(conn):
         q("SELECT COUNT(*) FROM insurer_dim WHERE variants>1").fetchone()[0]))
     for iid, name, n in q("SELECT * FROM insurer_dim WHERE variants>1 ORDER BY variants DESC"):
         print(f"   merged x{n}: {name}  [{iid}]")
+    _report_suspected_splits(conn)
     print("metrics: %d raw -> %d canonical, %d still unit=UNKNOWN" % (
         q("SELECT COUNT(DISTINCT metric) FROM financial_metrics").fetchone()[0],
         q("SELECT COUNT(*) FROM metric_dim").fetchone()[0],

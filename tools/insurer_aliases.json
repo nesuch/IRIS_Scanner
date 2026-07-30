@@ -1,0 +1,45 @@
+{
+  "_readme": [
+    "Verified 'these different NAMES are one company' facts.",
+    "",
+    "insurer_key() in canonicalize_financials.py collapses TYPOGRAPHIC variants only",
+    "- case, '&' vs 'and', 'Co. Ltd.' vs 'Ltd', punctuation. It deliberately does not",
+    "strip distinguishing words, because doing so would fuse separately licensed",
+    "entities of one group: Bajaj Allianz Life and Bajaj Allianz General are two",
+    "companies, not two spellings.",
+    "",
+    "That leaves a gap no string function can close. When the handbook renders one",
+    "company under two genuinely different names, only a real-world fact can merge",
+    "them. This file is where those facts live, so the default stays conservative and",
+    "every merge is explicit, reviewable and attributable.",
+    "",
+    "Add an entry ONLY after confirming the companies are the same legal entity.",
+    "A wrong entry here silently fuses two real insurers into one, which is far",
+    "harder to notice than the split it fixes.",
+    "",
+    "'canonical' is pinned as the display name - it overrides the usual",
+    "longest-variant heuristic, which would otherwise have picked the wrong Galaxy",
+    "name simply because it is longer."
+  ],
+  "aliases": [
+    {
+      "canonical": "Galaxy Health Insurance Co. Ltd",
+      "variants": [
+        "Galaxy Health Insurance Co. Ltd",
+        "Galaxy Health and Allied Insurance Ltd."
+      ],
+      "why": [
+        "One SAHI insurer appearing under two names in different tables of",
+        "handbook_2024-25_parts.xlsx. Evidence: identical insurer class (SAHI),",
+        "same source workbook, and ZERO overlapping (metric, line-of-business,",
+        "year) triples - the two names carry complementary halves of one book,",
+        "not duplicate filings. 'Galaxy Health and Allied Insurance Ltd.' held",
+        "8 lines of business (Health, Balance Sheet, Investments, Claims);",
+        "'Galaxy Health Insurance Co. Ltd' held Personal Accident alone,",
+        "stranding 6,390 policies and 274 lakh of gross premium off the profile.",
+        "Confirmed as the same company by the user on 2026-07-30, who also",
+        "chose the 'Co. Ltd' rendering as canonical."
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import re
 import functools
 import bisect
 import json
+import unicodedata
 from datetime import datetime
 import glob
 import difflib
@@ -1744,6 +1745,59 @@ _CLASS_OVERRIDES = {
 }
 
 
+_INSURER_ALIAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "tools", "insurer_aliases.json")
+
+
+def _apply_insurer_aliases(df):
+    """Merge insurer_ids that the alias file says are one company.
+
+    Applied to the in-memory frame, deliberately, rather than as a DB migration:
+    production restores iris.db from the Litestream replica, so a local UPDATE
+    would never arrive. Same reasoning as _derive_entity_columns — the fix ships
+    with the code.
+
+    Splitting one insurer across two ids is quiet but corrosive: it strands part
+    of the book (Galaxy's Personal Accident line, 6,390 policies, sat outside its
+    own profile) and inflates every count that treats ids as companies, so SAHI
+    read as 10 insurers rather than 9 in the concentration figures.
+    """
+    if df is None or getattr(df, "empty", True) or "insurer_id" not in df.columns:
+        return df
+    try:
+        with open(_INSURER_ALIAS_FILE, "r", encoding="utf-8") as fh:
+            spec = json.load(fh)
+    except (OSError, ValueError):
+        return df                      # an override, never a prerequisite
+
+    def _slug(text):
+        s = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode()
+        return re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower()[:60]
+
+    id_remap, name_remap = {}, {}
+    for group in spec.get("aliases") or []:
+        canonical = (group.get("canonical") or "").strip()
+        variants = [v for v in (group.get("variants") or []) if (v or "").strip()]
+        if not canonical or len(variants) < 2:
+            continue
+        target = _slug(canonical)
+        for v in variants:
+            id_remap[_slug(v)] = target
+            name_remap[v.strip()] = canonical
+    if not id_remap:
+        return df
+
+    hit = df["insurer_id"].isin(id_remap)
+    if hit.any():
+        df.loc[hit, "insurer_id"] = df.loc[hit, "insurer_id"].map(id_remap)
+        # Keep the display name in step, or the picker shows the merged entity
+        # under whichever raw label happened to come first.
+        for col in ("insurer", "Insurer", "Entity"):
+            if col in df.columns:
+                df[col] = df[col].map(lambda v: name_remap.get(str(v).strip(), v))
+    return df
+
+
 def _derive_entity_columns(df):
     """Add entity_type / insurer_class to the in-memory frame when absent."""
     if df is None or getattr(df, "empty", True):
@@ -1859,6 +1913,10 @@ def load_master_data_engine():
             ind = UNIFIED_DF['Dimension'] == 'Industry'
             UNIFIED_DF.loc[ind, 'Entity'] = UNIFIED_DF.loc[ind, 'Entity'].map(
                 lambda e: _INDUSTRY_ALIASES.get(e, e))
+
+        # Merge verified same-company aliases BEFORE the entity/class layer, so
+        # classification and every downstream count see one insurer, not two.
+        UNIFIED_DF = _apply_insurer_aliases(UNIFIED_DF)
 
         # Derive the entity/class layer if the DB was not migrated (production
         # restores from the GCS replica, which has no such columns).
